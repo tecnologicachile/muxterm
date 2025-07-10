@@ -1,44 +1,53 @@
-FROM node:18-slim
+# Build stage
+FROM node:18-alpine AS builder
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    tmux \
-    git \
-    build-essential \
-    python3 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 COPY client/package*.json ./client/
 
-# Install dependencies
-RUN npm ci --only=production
-RUN cd client && npm ci --only=production
+# Install build dependencies
+RUN npm ci
+RUN cd client && npm ci
 
-# Copy application files
+# Copy source
 COPY . .
 
-# Build client
+# Build client (optimized)
 RUN cd client && npm run build
 
-# Create data directories
-RUN mkdir -p data logs sessions
+# Production stage
+FROM node:18-alpine
 
-# Create non-root user
-RUN useradd -m -s /bin/bash muxterm && \
+# Install runtime dependencies only
+RUN apk add --no-cache tmux
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies only
+RUN npm ci --production && npm cache clean --force
+
+# Copy built application
+COPY --from=builder /app/client/dist ./client/dist
+COPY server ./server
+COPY db ./db
+COPY utils ./utils
+COPY .tmux.webssh.conf ./
+COPY update.sh ./
+
+# Create directories
+RUN mkdir -p data logs sessions && \
+    adduser -D -s /bin/sh muxterm && \
     chown -R muxterm:muxterm /app
 
 USER muxterm
 
-# Expose port
 EXPOSE 3002
 
-# Volume for persistent data
 VOLUME ["/app/data", "/app/logs", "/app/sessions"]
 
-# Start command
 CMD ["node", "server/index.js"]

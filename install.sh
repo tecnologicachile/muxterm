@@ -123,14 +123,29 @@ setup_muxterm() {
     
     # Install server dependencies
     echo "Installing server dependencies..."
-    npm install
+    npm ci --production || npm install --production
     
-    # Install and build client
-    echo "Building client..."
-    cd client
-    npm install
-    npm run build
-    cd ..
+    # Check for pre-built client
+    echo -e "${BLUE}Checking for pre-built client...${NC}"
+    RELEASE_URL="https://api.github.com/repos/tecnologicachile/muxterm/releases/latest"
+    RELEASE_INFO=$(curl -s $RELEASE_URL)
+    DOWNLOAD_URL=$(echo $RELEASE_INFO | grep -o '"browser_download_url": "[^"]*client-dist.tar.gz"' | cut -d'"' -f4 || true)
+    
+    if [ -n "$DOWNLOAD_URL" ]; then
+        echo -e "${GREEN}Found pre-built client! Downloading...${NC}"
+        curl -L -o client-dist.tar.gz "$DOWNLOAD_URL"
+        mkdir -p client
+        tar -xzf client-dist.tar.gz -C client/
+        rm client-dist.tar.gz
+        echo -e "${GREEN}Client downloaded successfully!${NC}"
+    else
+        echo -e "${YELLOW}No pre-built client found. Building from source...${NC}"
+        echo -e "${YELLOW}This may take several minutes...${NC}"
+        cd client
+        npm ci --production || npm install --production
+        npm run build
+        cd ..
+    fi
     
     # Create default .env
     if [ ! -f .env ]; then

@@ -17,5 +17,23 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    // Optimizaciones para build más rápido
+    minify: 'esbuild',
+    target: 'es2015',
+    sourcemap: false,
+    // Reducir el tamaño de chunks
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'mui-vendor': ['@mui/material', '@mui/icons-material'],
+          'xterm-vendor': ['xterm', 'xterm-addon-fit', 'xterm-addon-web-links'],
+          'socket-vendor': ['socket.io-client']
+        }
+      }
+    }
   }
 })
