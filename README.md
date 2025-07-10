@@ -85,11 +85,15 @@ MuxTerm uses:
 - **Rename**: Give panels custom names
 
 ### Keyboard Shortcuts
-- `Ctrl+Shift+H`: Split horizontal
-- `Ctrl+Shift+V`: Split vertical
-- `Ctrl+Shift+N`: New terminal
-- `Ctrl+Tab`: Next panel
-- `Ctrl+W`: Close panel
+All shortcuts use tmux-style prefix `Ctrl+B` followed by:
+- `%`: Split horizontal
+- `"`: Split vertical  
+- `c`: New terminal
+- `o`: Next panel
+- `x`: Close panel
+- `d`: Detach (return to sessions)
+- `[`: Enter scroll mode
+- `0-9`: Switch to panel by number
 
 ### Auto-Yes Feature
 Enable Auto-Yes on any terminal to automatically respond to CLI prompts from tools like:
