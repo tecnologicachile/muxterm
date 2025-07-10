@@ -101,6 +101,14 @@ install_nodejs() {
 clone_repository() {
     echo -e "${BLUE}Cloning MuxTerm repository...${NC}"
     
+    # Check if we're in Windows filesystem (WSL)
+    if [[ "$PWD" == /mnt/* ]]; then
+        echo -e "${YELLOW}Warning: You're in Windows filesystem (/mnt/*)${NC}"
+        echo -e "${YELLOW}WSL has permission issues here. Moving to Linux home directory...${NC}"
+        cd ~
+        echo -e "${GREEN}Changed to: $PWD${NC}"
+    fi
+    
     if [ -d "muxterm" ]; then
         echo -e "${YELLOW}Directory 'muxterm' already exists${NC}"
         read -p "Remove and re-clone? (y/N) " -n 1 -r
@@ -114,8 +122,12 @@ clone_repository() {
         fi
     fi
     
-    git clone https://github.com/tecnologicachile/muxterm.git
+    # Clone with filemode disabled for WSL compatibility
+    git clone -c core.filemode=false https://github.com/tecnologicachile/muxterm.git
     cd muxterm
+    
+    # Ensure git config is set correctly for WSL
+    git config core.filemode false 2>/dev/null || true
 }
 
 setup_muxterm() {

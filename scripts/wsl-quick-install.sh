@@ -21,12 +21,19 @@ if ! command -v node &> /dev/null || ! command -v tmux &> /dev/null; then
     sudo apt-get install -y -qq nodejs npm tmux curl git > /dev/null 2>&1
 fi
 
+# Move to Linux filesystem if in Windows
+if [[ "$PWD" == /mnt/* ]]; then
+    echo "Moving to Linux home directory for proper permissions..."
+    cd ~
+fi
+
 # Clone or update
 if [ -d "muxterm" ]; then
     cd muxterm && git pull -q
 else
-    git clone -q https://github.com/tecnologicachile/muxterm.git
+    git clone -q -c core.filemode=false https://github.com/tecnologicachile/muxterm.git
     cd muxterm
+    git config core.filemode false
 fi
 
 # Download pre-built client

@@ -21,6 +21,12 @@ MuxTerm is a web-based terminal multiplexer that provides persistent SSH session
 curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
 
+**WSL Users**: Run from Linux filesystem, not Windows:
+```bash
+cd ~  # Important: Move to Linux home first
+curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
+```
+
 ### Docker Install
 
 ```bash
