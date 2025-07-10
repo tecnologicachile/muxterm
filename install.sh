@@ -319,6 +319,14 @@ print_success() {
     echo -e "${NC}"
     echo
     
+    # Check if MuxTerm is actually running
+    MUXTERM_RUNNING=false
+    if systemctl is-active --quiet muxterm 2>/dev/null; then
+        MUXTERM_RUNNING=true
+    elif [ -f muxterm.pid ] && kill -0 $(cat muxterm.pid) 2>/dev/null; then
+        MUXTERM_RUNNING=true
+    fi
+    
     # Get IP addresses
     LOCAL_IP="localhost"
     if command -v hostname &> /dev/null; then
@@ -328,23 +336,38 @@ print_success() {
         fi
     fi
     
-    echo -e "${BLUE}▶ MuxTerm is running!${NC}"
-    echo
-    echo "Access MuxTerm at:"
-    echo -e "  ${GREEN}http://localhost:3002${NC}"
-    if [ "$LOCAL_IP" != "localhost" ]; then
-        echo -e "  ${GREEN}http://$LOCAL_IP:3002${NC}"
+    if [ "$MUXTERM_RUNNING" = true ]; then
+        echo -e "${BLUE}▶ MuxTerm is running!${NC}"
+        echo
+        echo "Access MuxTerm at:"
+        echo -e "  ${GREEN}http://localhost:3002${NC}"
+        if [ "$LOCAL_IP" != "localhost" ]; then
+            echo -e "  ${GREEN}http://$LOCAL_IP:3002${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ MuxTerm is installed but NOT running${NC}"
+        echo
+        echo "To start MuxTerm:"
+        echo -e "  ${GREEN}cd ~/muxterm && npm start${NC}"
+        echo "  OR"
+        echo -e "  ${GREEN}sudo systemctl start muxterm${NC}"
     fi
+    
     echo
     echo "Default credentials:"
     echo -e "  Username: ${YELLOW}test${NC}"
     echo -e "  Password: ${YELLOW}test123${NC}"
     echo
-    echo "Commands:"
-    echo "  Stop:    sudo systemctl stop muxterm"
-    echo "  Restart: sudo systemctl restart muxterm"
-    echo "  Logs:    journalctl -u muxterm -f"
-    echo "  Update:  ./update.sh"
+    echo "Useful commands:"
+    if [ "$MUXTERM_RUNNING" = true ]; then
+        echo "  Stop:    sudo systemctl stop muxterm"
+        echo "  Restart: sudo systemctl restart muxterm"
+        echo "  Logs:    journalctl -u muxterm -f"
+    else
+        echo "  Start:   cd ~/muxterm && npm start"
+        echo "  Service: sudo systemctl start muxterm"
+    fi
+    echo "  Update:  cd ~/muxterm && ./update.sh"
     echo
     if [ -f muxterm.pid ]; then
         echo "Manual stop: kill \$(cat muxterm.pid)"
@@ -367,19 +390,29 @@ main() {
     setup_muxterm
     create_systemd_service
     
-    # Ask if user wants to start now
-    echo
-    echo -e "${BLUE}Do you want to start MuxTerm now?${NC}"
-    read -p "(Y/n) " -n 1 -r
-    echo
-    
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    # Check if --auto-start flag was passed
+    if [[ "$1" == "--auto-start" ]]; then
+        echo -e "${BLUE}Auto-starting MuxTerm...${NC}"
         start_service
+    else
+        # Ask if user wants to start now (default Yes)
+        echo
+        echo -e "${BLUE}Do you want to start MuxTerm now? ${GREEN}[Y/n]${NC} "
+        read -r REPLY
+        
+        # Default to Yes if just Enter is pressed
+        if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
+            start_service
+        else
+            echo
+            echo -e "${YELLOW}MuxTerm not started.${NC}"
+            echo "To start later, run: ${GREEN}cd ~/muxterm && npm start${NC}"
+        fi
     fi
     
     setup_nginx
     print_success
 }
 
-# Run main
-main
+# Run main with all arguments
+main "$@"
