@@ -176,33 +176,32 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           lastOutputRef.current = lastOutputRef.current.slice(-500);
         }
         
-        // Auto-yes detection
+        // Auto-yes detection - focused on Claude CLI
         if (autoYesProp) {
-          const patterns = [
-            /Do you want to proceed\?.*❯\s*1\.\s*Yes/s,
-            /Continue\?\s*\[Y\/n\]/i,
-            /Are you sure.*\[y\/N\]/i,
-            /Proceed\?\s*\(y\/n\)/i
-          ];
+          // Clean the output for better pattern matching
+          const cleanOutput = lastOutputRef.current.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
           
-          for (const pattern of patterns) {
-            if (pattern.test(lastOutputRef.current)) {
-              console.log('[Auto-Yes] Detected confirmation prompt, sending "1"');
-              
-              // Log the auto-yes action
-              if (onAutoYesLog && panelId) {
-                onAutoYesLog(panelId, lastOutputRef.current, '1');
-              }
-              
-              setTimeout(() => {
-                socket.emit('terminal-input', { 
-                  terminalId: localTerminalId, 
-                  input: '1\r' 
-                });
-                lastOutputRef.current = ''; // Clear after responding
-              }, 100);
-              break;
+          // Claude CLI specific detection
+          const claudePattern = /Do you want to proceed\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/;
+          
+          if (claudePattern.test(cleanOutput)) {
+            console.log('[Auto-Yes] CLAUDE CLI DETECTED! Sending response...');
+            console.log('[Auto-Yes] Clean output:', cleanOutput);
+            
+            // Log the auto-yes action
+            if (onAutoYesLog && panelId) {
+              onAutoYesLog(panelId, cleanOutput, '1');
             }
+            
+            // Send the response immediately
+            console.log('[Auto-Yes] Emitting terminal-input with "1"');
+            socket.emit('terminal-input', { 
+              terminalId: localTerminalId, 
+              input: '1\r' 
+            });
+            
+            // Clear the buffer
+            lastOutputRef.current = '';
           }
         }
       }
