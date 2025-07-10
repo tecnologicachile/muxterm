@@ -128,8 +128,13 @@ setup_muxterm() {
     # Check for pre-built client
     echo -e "${BLUE}Checking for pre-built client...${NC}"
     RELEASE_URL="https://api.github.com/repos/tecnologicachile/muxterm/releases/latest"
-    RELEASE_INFO=$(curl -s $RELEASE_URL)
-    DOWNLOAD_URL=$(echo $RELEASE_INFO | grep -o '"browser_download_url": "[^"]*client-dist.tar.gz"' | cut -d'"' -f4 || true)
+    
+    if command -v curl &> /dev/null; then
+        RELEASE_INFO=$(curl -s $RELEASE_URL 2>/dev/null || echo "")
+        DOWNLOAD_URL=$(echo $RELEASE_INFO | grep -o '"browser_download_url": "[^"]*client-dist.tar.gz"' | cut -d'"' -f4 || true)
+    else
+        DOWNLOAD_URL=""
+    fi
     
     if [ -n "$DOWNLOAD_URL" ]; then
         echo -e "${GREEN}Found pre-built client! Downloading...${NC}"
@@ -140,9 +145,9 @@ setup_muxterm() {
         echo -e "${GREEN}Client downloaded successfully!${NC}"
     else
         echo -e "${YELLOW}No pre-built client found. Building from source...${NC}"
-        echo -e "${YELLOW}This may take several minutes...${NC}"
+        echo -e "${YELLOW}This may take 3-5 minutes...${NC}"
         cd client
-        npm ci --production || npm install --production
+        npm ci --silent || npm install --silent
         npm run build
         cd ..
     fi
@@ -255,6 +260,45 @@ EOF
     echo -e "${YELLOW}Don't forget to setup SSL with certbot!${NC}"
 }
 
+start_service() {
+    echo -e "${BLUE}Starting MuxTerm service...${NC}"
+    
+    # Try to start with systemd
+    if command -v systemctl &> /dev/null && [ -f /etc/systemd/system/muxterm.service ]; then
+        sudo systemctl daemon-reload
+        sudo systemctl start muxterm
+        
+        # Wait for service to start
+        sleep 2
+        
+        if systemctl is-active --quiet muxterm; then
+            echo -e "${GREEN}MuxTerm service started successfully!${NC}"
+            STARTED_WITH_SYSTEMD=true
+        else
+            echo -e "${YELLOW}Systemd service failed to start. Starting manually...${NC}"
+            STARTED_WITH_SYSTEMD=false
+        fi
+    else
+        STARTED_WITH_SYSTEMD=false
+    fi
+    
+    # Start manually if systemd failed
+    if [ "$STARTED_WITH_SYSTEMD" = false ]; then
+        echo -e "${BLUE}Starting MuxTerm in background...${NC}"
+        nohup npm start > logs/muxterm.log 2>&1 &
+        MUXTERM_PID=$!
+        sleep 3
+        
+        if kill -0 $MUXTERM_PID 2>/dev/null; then
+            echo -e "${GREEN}MuxTerm started successfully! (PID: $MUXTERM_PID)${NC}"
+            echo $MUXTERM_PID > muxterm.pid
+        else
+            echo -e "${RED}Failed to start MuxTerm${NC}"
+            return 1
+        fi
+    fi
+}
+
 print_success() {
     echo -e "${GREEN}"
     echo "╔══════════════════════════════════════╗"
@@ -262,20 +306,37 @@ print_success() {
     echo "╚══════════════════════════════════════╝"
     echo -e "${NC}"
     echo
-    echo "Installation directory: $(pwd)"
+    
+    # Get IP addresses
+    LOCAL_IP="localhost"
+    if command -v hostname &> /dev/null; then
+        HOSTNAME=$(hostname -I 2>/dev/null | awk '{print $1}')
+        if [ -n "$HOSTNAME" ]; then
+            LOCAL_IP=$HOSTNAME
+        fi
+    fi
+    
+    echo -e "${BLUE}▶ MuxTerm is running!${NC}"
     echo
-    echo "To start MuxTerm:"
-    echo "  1. As a service:    sudo systemctl start muxterm"
-    echo "  2. Enable on boot:  sudo systemctl enable muxterm"
-    echo "  3. Manual start:    npm start"
-    echo
-    echo "Access MuxTerm at: http://localhost:3002"
+    echo "Access MuxTerm at:"
+    echo -e "  ${GREEN}http://localhost:3002${NC}"
+    if [ "$LOCAL_IP" != "localhost" ]; then
+        echo -e "  ${GREEN}http://$LOCAL_IP:3002${NC}"
+    fi
     echo
     echo "Default credentials:"
-    echo "  Username: test"
-    echo "  Password: test123"
+    echo -e "  Username: ${YELLOW}test${NC}"
+    echo -e "  Password: ${YELLOW}test123${NC}"
     echo
-    echo "To update: ./update.sh"
+    echo "Commands:"
+    echo "  Stop:    sudo systemctl stop muxterm"
+    echo "  Restart: sudo systemctl restart muxterm"
+    echo "  Logs:    journalctl -u muxterm -f"
+    echo "  Update:  ./update.sh"
+    echo
+    if [ -f muxterm.pid ]; then
+        echo "Manual stop: kill \$(cat muxterm.pid)"
+    fi
     echo
 }
 
@@ -293,6 +354,17 @@ main() {
     clone_repository
     setup_muxterm
     create_systemd_service
+    
+    # Ask if user wants to start now
+    echo
+    echo -e "${BLUE}Do you want to start MuxTerm now?${NC}"
+    read -p "(Y/n) " -n 1 -r
+    echo
+    
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        start_service
+    fi
+    
     setup_nginx
     print_success
 }
