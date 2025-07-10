@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Login Manual</title>
+</head>
+<body>
+    <h1>Test Login WebSSH</h1>
+    
+    <form id="loginForm">
+        <input type="text" id="username" placeholder="Username" value="test" /><br>
+        <input type="password" id="password" placeholder="Password" value="test123" /><br>
+        <button type="submit">Login</button>
+    </form>
+    
+    <div id="result"></div>
+    
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                const response = await fetch('http://localhost:3002/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<h3 style="color: green">Login exitoso!</h3>
+                    <p>Token: ${data.token.substring(0, 50)}...</p>
+                    <p>Usuario: ${data.user.username}</p>
+                    <p>ID: ${data.user.id}</p>`;
+                } else {
+                    resultDiv.innerHTML = `<h3 style="color: red">Error: ${data.error}</h3>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<h3 style="color: red">Error de conexión: ${error.message}</h3>`;
+            }
+        });
+    </script>
+</body>
+</html>

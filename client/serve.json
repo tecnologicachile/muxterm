@@ -1,0 +1,18 @@
+{
+  "rewrites": [
+    { "source": "/api/**", "destination": "http://localhost:3002/api/:splat" },
+    { "source": "/socket.io/**", "destination": "http://localhost:3002/socket.io/:splat" },
+    { "source": "/**", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "**/*",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
+  ]
+}

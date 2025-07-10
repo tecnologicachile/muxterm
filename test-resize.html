@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manual Resize Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        .instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-step {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f8f8;
+            border-left: 4px solid #007acc;
+        }
+        .success {
+            color: #22c55e;
+            font-weight: bold;
+        }
+        .fail {
+            color: #ef4444;
+            font-weight: bold;
+        }
+        code {
+            background: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="instructions">
+        <h1>Terminal Resize Functionality Test</h1>
+        <p>Follow these steps to verify that terminal resize is working:</p>
+        
+        <div class="test-step">
+            <h3>Step 1: Open the Application</h3>
+            <p>Navigate to <a href="http://localhost:3003" target="_blank">http://localhost:3003</a></p>
+            <p>Login with credentials: <code>test</code> / <code>test123</code></p>
+        </div>
+        
+        <div class="test-step">
+            <h3>Step 2: Create Split Panels</h3>
+            <p>Press <code>Ctrl+Shift+D</code> to create a horizontal split (side-by-side terminals)</p>
+            <p>Or press <code>Ctrl+Shift+S</code> to create a vertical split (top-bottom terminals)</p>
+        </div>
+        
+        <div class="test-step">
+            <h3>Step 3: Test Resize</h3>
+            <p>Look for the resize handle between the terminals (a thin gray bar)</p>
+            <p>Try to drag the resize handle to change the size of the panels</p>
+            <p>
+                <span class="success">✓ SUCCESS</span> if you can drag the handle and panels resize<br>
+                <span class="fail">✗ FAIL</span> if the handle doesn't move or panels don't resize
+            </p>
+        </div>
+        
+        <div class="test-step">
+            <h3>Step 4: Verify Terminal Content</h3>
+            <p>Type some commands in both terminals before resizing</p>
+            <p>After resizing, verify that:</p>
+            <ul>
+                <li>Terminal content is still visible</li>
+                <li>You can still type in both terminals</li>
+                <li>The terminals adjust their display properly to the new size</li>
+            </ul>
+        </div>
+        
+        <div class="test-step">
+            <h3>Expected Behavior</h3>
+            <p>✓ Resize handles should be draggable</p>
+            <p>✓ Panels should resize smoothly when dragging</p>
+            <p>✓ Minimum panel size should be respected (100px)</p>
+            <p>✓ Terminal content should remain intact after resize</p>
+            <p>✓ Terminals should reflow text to fit new dimensions</p>
+        </div>
+        
+        <div class="test-step" style="background: #fef3c7; border-left-color: #f59e0b;">
+            <h3>Previous Issue</h3>
+            <p>The resize threshold was set too high (200px), preventing resize in smaller panels.</p>
+            <p>This has been fixed by reducing the threshold to 50px.</p>
+        </div>
+    </div>
+</body>
+</html>

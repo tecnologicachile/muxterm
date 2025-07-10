@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Terminal Test</title>
+</head>
+<body>
+    <h1>Direct Terminal Test</h1>
+    <p>Testing SMART CLEANUP</p>
+    <button onclick="goToTerminal()">Go to Terminal Session</button>
+    <button onclick="refresh()">Refresh Page</button>
+    
+    <script>
+        // Set token in localStorage
+        localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InRlc3QtdXNlci1pZCIsInVzZXJuYW1lIjoidGVzdCIsImlhdCI6MTc1MjA4ODg3NCwiZXhwIjoxNzUyNjkzNjc0fQ.sUY4f0k451eh6TQr9p2nKgCs0HaOQSeA0u8uwrGKT8Q');
+        
+        function goToTerminal() {
+            window.location.href = 'http://127.0.0.1:3003/terminal/2fc541c4-ab48-4670-85ef-f1168e1c5731';
+        }
+        
+        function refresh() {
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>

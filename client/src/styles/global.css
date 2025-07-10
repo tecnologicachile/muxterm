@@ -1,0 +1,277 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap');
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Fira Code', monospace;
+  background-color: #0a0a0a;
+  color: #f0f0f0;
+}
+
+.xterm {
+  height: 100%;
+  width: 100%;
+}
+
+.xterm-viewport {
+  overflow-y: auto !important;
+}
+
+.panel-container {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  position: relative;
+}
+
+.panel {
+  position: relative;
+  min-width: 200px;
+  min-height: 100px;
+  background-color: #000;
+  border: 1px solid #333;
+}
+
+.panel-header {
+  background-color: #1a1a1a;
+  padding: 1px 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+  user-select: none;
+  height: 20px;
+}
+
+.panel-title {
+  font-size: 10px;
+  color: #888;
+  line-height: 18px;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.panel-action-btn {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 10px;
+  transition: color 0.2s;
+  line-height: 1;
+  height: 16px;
+}
+
+.panel-action-btn:hover {
+  color: #fff;
+}
+
+.resize-handle {
+  position: absolute;
+  background-color: #333;
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background-color: #00ff00;
+}
+
+.resize-handle-vertical {
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  right: -2px;
+  top: 0;
+}
+
+.resize-handle-horizontal {
+  height: 4px;
+  width: 100%;
+  cursor: row-resize;
+  bottom: -2px;
+  left: 0;
+}
+
+.auth-container {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+}
+
+.auth-form {
+  background-color: #1a1a1a;
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 255, 0, 0.1);
+  min-width: 400px;
+}
+
+.session-list {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.session-card {
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.session-card:hover {
+  border-color: #00ff00;
+  box-shadow: 0 2px 8px rgba(0, 255, 0, 0.2);
+}
+
+.toolbar {
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #333;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: auto !important;
+  height: 24px !important;
+}
+
+.toolbar .MuiToolbar-root {
+  min-height: 24px !important;
+  height: 24px !important;
+  padding: 0 8px !important;
+}
+
+.toolbar .MuiTypography-h6 {
+  font-size: 0.75rem !important;
+  line-height: 1 !important;
+}
+
+.toolbar .MuiButton-root {
+  padding: 2px 6px !important;
+  font-size: 0.7rem !important;
+  min-height: 20px !important;
+  line-height: 1 !important;
+}
+
+.toolbar .MuiIconButton-root {
+  padding: 2px !important;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.toolbar .MuiSvgIcon-root {
+  font-size: 16px !important;
+}
+
+/* SessionList AppBar styles */
+.MuiAppBar-root {
+  min-height: auto !important;
+  height: 32px !important;
+}
+
+.MuiAppBar-root .MuiToolbar-root {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 12px !important;
+}
+
+.MuiAppBar-root .MuiTypography-h6 {
+  font-size: 0.85rem !important;
+  line-height: 1 !important;
+}
+
+.MuiAppBar-root .MuiIconButton-root {
+  padding: 4px !important;
+  width: 24px !important;
+  height: 24px !important;
+}
+
+.MuiAppBar-root .MuiSvgIcon-root {
+  font-size: 18px !important;
+}
+
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  background-color: #1a1a1a;
+  border-top: 1px solid #333;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 10px;
+  color: #888;
+  line-height: 1;
+}
+
+.keyboard-shortcut {
+  background-color: #333;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 9px;
+  margin: 0 1px;
+  line-height: 1;
+}
+
+@media (max-width: 768px) {
+  .auth-container {
+    padding: 16px;
+  }
+  
+  .auth-form {
+    min-width: 100%;
+    width: 100%;
+    padding: 20px;
+    margin: 0;
+    box-shadow: none !important;
+  }
+  
+  .auth-form .MuiTypography-h4 {
+    font-size: 1.5rem !important;
+  }
+  
+  .panel {
+    min-width: 100px;
+    min-height: 80px;
+  }
+  
+  .toolbar {
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  
+  .toolbar .MuiToolbar-root {
+    min-height: 24px !important;
+    height: 24px !important;
+  }
+  
+  /* Status bar is hidden via JS in mobile, no need for CSS */
+  
+  /* Adjust terminal container for mobile */
+  .terminal-container {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
