@@ -1,0 +1,45 @@
+# Changelog
+
+## [1.1.0] - 2025-01-10
+
+### Added
+- Non-interactive installation mode with `--yes` flag for automation
+- Support for root user installation (no sudo required)
+- SESSION_SECRET environment variable for secure session management
+- Automatic UTF-8 locale configuration during installation
+- Locale environment variables (LANG, LC_ALL) in terminal sessions
+- `npm run create-user` command for creating users in production
+- Default user creation on first run (even in production)
+- Better error handling and dependency checking in installer
+- tmux availability check with warning if not installed
+- Support for systems without systemd
+
+### Changed
+- Installation now auto-starts MuxTerm without prompting
+- Improved installer to work in containerized environments (Docker, LXC, Proxmox)
+- Enhanced support for various Linux distributions
+- Better handling of missing commands (sudo, git, openssl)
+
+### Fixed
+- Installation failures on systems without sudo
+- Character encoding issues (accents appearing as _)
+- Missing SESSION_SECRET causing 500 errors
+- User creation only working in development mode
+- Installation issues in WSL with git permissions
+- Service creation on systems without systemd
+
+### Security
+- Added SESSION_SECRET to default configuration
+- Improved secret generation with fallback for systems without openssl
+
+## [1.0.0] - 2025-01-09
+
+### Initial Release
+- Web-based terminal multiplexer with tmux backend
+- Persistent sessions that survive restarts
+- Multi-panel terminal interface
+- User authentication system
+- Real-time terminal synchronization
+- Auto-yes feature for CLI tools
+- Session management and organization
+- Mobile responsive design

@@ -385,15 +385,26 @@ server.listen(PORT, async () => {
     console.warn('WARNING: tmux not installed. Sessions will not persist!');
   }
   
-  // Create test user for development
-  if (process.env.NODE_ENV !== 'production') {
+  // Create default user if no users exist
+  const users = database.getAllUsers();
+  if (!users || users.length === 0) {
     const bcrypt = require('bcryptjs');
     const hashedPassword = bcrypt.hashSync('test123', 10);
     const user = database.createUser('test', hashedPassword);
     if (user) {
-      console.log('Test user created: username=test, password=test123');
-    } else {
-      console.log('Test user already exists');
+      console.log('Default user created: username=test, password=test123');
+      console.log('⚠️  IMPORTANT: Change the default password or create a new user!');
+    }
+  } else if (process.env.NODE_ENV !== 'production') {
+    // In development, always ensure test user exists
+    const testUser = database.getUserByUsername('test');
+    if (!testUser) {
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = bcrypt.hashSync('test123', 10);
+      const user = database.createUser('test', hashedPassword);
+      if (user) {
+        console.log('Test user created for development');
+      }
     }
   }
 });

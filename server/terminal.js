@@ -51,7 +51,10 @@ class TerminalManager {
             TERM: 'xterm-256color',
             COLUMNS: cols.toString(),
             LINES: rows.toString(),
-            SHELL: '/bin/bash'
+            SHELL: '/bin/bash',
+            LANG: process.env.LANG || 'en_US.UTF-8',
+            LC_ALL: process.env.LC_ALL || 'en_US.UTF-8',
+            LC_CTYPE: 'en_US.UTF-8'
           }
         });
 

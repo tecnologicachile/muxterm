@@ -29,6 +29,15 @@ wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/instal
 
 **Note**: MuxTerm will start automatically after installation.
 
+**Non-interactive install** (for scripts/automation):
+```bash
+# With curl
+curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
+
+# With wget  
+wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
+```
+
 **WSL Users**: Run from Linux filesystem, not Windows:
 ```bash
 cd ~  # Important: Move to Linux home first
@@ -71,9 +80,15 @@ npm start
 
 The server will start on `http://localhost:3002`
 
-Default test credentials:
+Default credentials:
 - Username: `test`
 - Password: `test123`
+
+**Important**: The default user is created automatically on first run. For production use, create a new admin user:
+
+```bash
+npm run create-user
+```
 
 ## Architecture
 
@@ -162,8 +177,26 @@ Custom tmux config is in `.tmux.webssh.conf` for invisible operation.
 
 - Passwords are hashed with bcrypt
 - JWT tokens for authentication
+- Session secrets for secure sessions
 - Sessions isolated per user
 - No SSH keys stored on server
+- UTF-8 locale support for international characters
+
+### Creating Users
+
+For production environments, create admin users:
+
+```bash
+npm run create-user
+```
+
+### Installation in Containers
+
+MuxTerm works in Docker/LXC containers. For root installations:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
+```
 
 ## Contributing
 

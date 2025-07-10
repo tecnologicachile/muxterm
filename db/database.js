@@ -56,6 +56,7 @@ const statements = {
   // Users
   createUser: db.prepare('INSERT INTO users (username, password) VALUES (?, ?)'),
   findUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
+  getAllUsers: db.prepare('SELECT id, username FROM users'),
   
   // Sessions
   createSession: db.prepare('INSERT INTO sessions (id, user_id, name, tmux_session) VALUES (?, ?, ?, ?)'),
@@ -96,6 +97,10 @@ const dbHelpers = {
 
   findUserByUsername(username) {
     return statements.findUserByUsername.get(username);
+  },
+  
+  getAllUsers() {
+    return statements.getAllUsers.all();
   },
 
   // Sessions

@@ -12,6 +12,24 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Variables
+IS_ROOT=false
+USE_SUDO=""
+NON_INTERACTIVE=false
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --yes|-y)
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
 # Functions
 print_banner() {
     echo -e "${BLUE}"
@@ -35,10 +53,23 @@ detect_os() {
 
 check_root() {
     if [ "$EUID" -eq 0 ]; then 
-        echo -e "${YELLOW}Warning: Running as root. It's recommended to run as regular user.${NC}"
-        read -p "Continue anyway? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        IS_ROOT=true
+        echo -e "${YELLOW}Running as root user${NC}"
+        if [ "$NON_INTERACTIVE" = false ]; then
+            echo -e "${YELLOW}Note: It's recommended to run as regular user.${NC}"
+            read -p "Continue anyway? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        fi
+    else
+        # Check if sudo is available
+        if command -v sudo &> /dev/null; then
+            USE_SUDO="sudo"
+        else
+            echo -e "${RED}Error: 'sudo' command not found${NC}"
+            echo "Please install sudo or run this script as root"
             exit 1
         fi
     fi
@@ -49,17 +80,17 @@ install_dependencies() {
     
     case $OS in
         ubuntu|debian)
-            sudo apt-get update
-            sudo apt-get install -y curl git tmux build-essential python3
+            $USE_SUDO apt-get update
+            $USE_SUDO apt-get install -y curl git tmux build-essential python3 locales
             ;;
         fedora)
-            sudo dnf install -y curl git tmux gcc-c++ make python3
+            $USE_SUDO dnf install -y curl git tmux gcc-c++ make python3 glibc-langpack-en
             ;;
         centos|rhel)
-            sudo yum install -y curl git tmux gcc-c++ make python3
+            $USE_SUDO yum install -y curl git tmux gcc-c++ make python3 glibc-langpack-en
             ;;
         arch|manjaro)
-            sudo pacman -Syu --noconfirm curl git tmux base-devel python
+            $USE_SUDO pacman -Syu --noconfirm curl git tmux base-devel python
             ;;
         *)
             echo -e "${RED}Unsupported OS: $OS${NC}"
@@ -67,6 +98,45 @@ install_dependencies() {
             exit 1
             ;;
     esac
+}
+
+configure_locales() {
+    echo -e "${BLUE}Configuring system locales...${NC}"
+    
+    # Check if locale command exists
+    if ! command -v locale &> /dev/null; then
+        echo -e "${YELLOW}locale command not found, skipping locale configuration${NC}"
+        return
+    fi
+    
+    # Check if UTF-8 locale is already configured
+    if locale -a 2>/dev/null | grep -qE "(en_US|C)\.utf8|UTF-8"; then
+        echo -e "${GREEN}UTF-8 locale already configured${NC}"
+        return
+    fi
+    
+    echo -e "${BLUE}Configuring UTF-8 locales...${NC}"
+    
+    case $OS in
+        ubuntu|debian)
+            # Generate locales
+            if [ -f /etc/locale.gen ]; then
+                $USE_SUDO sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
+                $USE_SUDO locale-gen
+            fi
+            ;;
+        fedora|centos|rhel)
+            # These usually have UTF-8 locales pre-installed
+            if ! locale -a | grep -q "en_US.utf8"; then
+                echo -e "${YELLOW}UTF-8 locale not found, please install glibc-langpack-en${NC}"
+            fi
+            ;;
+    esac
+    
+    # Set default locale
+    if [ -f /etc/default/locale ]; then
+        $USE_SUDO sh -c 'echo "LANG=en_US.UTF-8" > /etc/default/locale'
+    fi
 }
 
 install_nodejs() {
@@ -83,17 +153,21 @@ install_nodejs() {
     fi
     
     # Install Node.js via NodeSource
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    if [ "$IS_ROOT" = true ]; then
+        curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+    else
+        curl -fsSL https://deb.nodesource.com/setup_lts.x | $USE_SUDO -E bash -
+    fi
     
     case $OS in
         ubuntu|debian)
-            sudo apt-get install -y nodejs
+            $USE_SUDO apt-get install -y nodejs
             ;;
         fedora|centos|rhel)
-            sudo dnf install -y nodejs || sudo yum install -y nodejs
+            $USE_SUDO dnf install -y nodejs || $USE_SUDO yum install -y nodejs
             ;;
         arch|manjaro)
-            sudo pacman -S --noconfirm nodejs npm
+            $USE_SUDO pacman -S --noconfirm nodejs npm
             ;;
     esac
 }
@@ -120,6 +194,13 @@ clone_repository() {
             git pull
             return
         fi
+    fi
+    
+    # Check if git is available
+    if ! command -v git &> /dev/null; then
+        echo -e "${RED}Error: git is not installed${NC}"
+        echo "Please install git and run the installer again"
+        exit 1
     fi
     
     # Clone with filemode disabled for WSL compatibility
@@ -164,11 +245,22 @@ setup_muxterm() {
         cd ..
     fi
     
+    # Check if openssl is available
+    if ! command -v openssl &> /dev/null; then
+        echo -e "${YELLOW}Warning: openssl not found, using fallback for secrets${NC}"
+        JWT_SECRET="muxterm-jwt-secret-$(date +%s)-CHANGE-THIS"
+        SESSION_SECRET="muxterm-session-secret-$(date +%s)-CHANGE-THIS"
+    else
+        JWT_SECRET=$(openssl rand -base64 32)
+        SESSION_SECRET=$(openssl rand -base64 32)
+    fi
+    
     # Create default .env
     if [ ! -f .env ]; then
         echo -e "${BLUE}Creating configuration file...${NC}"
         cat > .env << EOF
-JWT_SECRET=$(openssl rand -base64 32)
+JWT_SECRET=$JWT_SECRET
+SESSION_SECRET=$SESSION_SECRET
 PORT=3002
 NODE_ENV=production
 EOF
@@ -182,6 +274,13 @@ EOF
 create_systemd_service() {
     echo -e "${BLUE}Creating systemd service...${NC}"
     
+    # Check if systemd is available
+    if ! command -v systemctl &> /dev/null; then
+        echo -e "${YELLOW}systemd not found, skipping service creation${NC}"
+        echo -e "${YELLOW}You'll need to start MuxTerm manually${NC}"
+        return
+    fi
+    
     if [ -f /etc/systemd/system/muxterm.service ]; then
         echo -e "${YELLOW}Service already exists${NC}"
         return
@@ -190,7 +289,7 @@ create_systemd_service() {
     INSTALL_DIR=$(pwd)
     USER=$(whoami)
     
-    sudo tee /etc/systemd/system/muxterm.service > /dev/null << EOF
+    $USE_SUDO tee /etc/systemd/system/muxterm.service > /dev/null << EOF
 [Unit]
 Description=MuxTerm - Web-based Terminal Multiplexer
 After=network.target
@@ -213,11 +312,16 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl daemon-reload
+    $USE_SUDO systemctl daemon-reload
     echo -e "${GREEN}Systemd service created${NC}"
 }
 
 setup_nginx() {
+    if [ "$NON_INTERACTIVE" = true ]; then
+        echo -e "${YELLOW}Skipping Nginx setup in non-interactive mode${NC}"
+        return
+    fi
+    
     echo -e "${BLUE}Would you like to setup Nginx reverse proxy?${NC}"
     read -p "(y/N) " -n 1 -r
     echo
@@ -230,13 +334,13 @@ setup_nginx() {
     if ! command -v nginx &> /dev/null; then
         case $OS in
             ubuntu|debian)
-                sudo apt-get install -y nginx
+                $USE_SUDO apt-get install -y nginx
                 ;;
             fedora|centos|rhel)
-                sudo dnf install -y nginx || sudo yum install -y nginx
+                $USE_SUDO dnf install -y nginx || $USE_SUDO yum install -y nginx
                 ;;
             arch|manjaro)
-                sudo pacman -S --noconfirm nginx
+                $USE_SUDO pacman -S --noconfirm nginx
                 ;;
         esac
     fi
@@ -245,7 +349,7 @@ setup_nginx() {
     read -p "Enter your domain name (e.g., muxterm.example.com): " DOMAIN
     
     # Create nginx config
-    sudo tee /etc/nginx/sites-available/muxterm > /dev/null << EOF
+    $USE_SUDO tee /etc/nginx/sites-available/muxterm > /dev/null << EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -265,8 +369,8 @@ server {
 EOF
 
     # Enable site
-    sudo ln -sf /etc/nginx/sites-available/muxterm /etc/nginx/sites-enabled/
-    sudo nginx -t && sudo systemctl reload nginx
+    $USE_SUDO ln -sf /etc/nginx/sites-available/muxterm /etc/nginx/sites-enabled/
+    $USE_SUDO nginx -t && $USE_SUDO systemctl reload nginx
     
     echo -e "${GREEN}Nginx configured for $DOMAIN${NC}"
     echo -e "${YELLOW}Don't forget to setup SSL with certbot!${NC}"
@@ -277,8 +381,8 @@ start_service() {
     
     # Try to start with systemd
     if command -v systemctl &> /dev/null && [ -f /etc/systemd/system/muxterm.service ]; then
-        sudo systemctl daemon-reload
-        sudo systemctl start muxterm
+        $USE_SUDO systemctl daemon-reload
+        $USE_SUDO systemctl start muxterm
         
         # Wait for service to start
         sleep 2
@@ -308,6 +412,15 @@ start_service() {
             echo -e "${RED}Failed to start MuxTerm${NC}"
             return 1
         fi
+    fi
+}
+
+check_tmux() {
+    if ! command -v tmux &> /dev/null; then
+        echo -e "${YELLOW}⚠️  WARNING: tmux is not installed!${NC}"
+        echo -e "${YELLOW}Sessions will not persist without tmux.${NC}"
+        echo -e "${YELLOW}Please install tmux for full functionality.${NC}"
+        echo
     fi
 }
 
@@ -385,6 +498,7 @@ main() {
     echo
     
     install_dependencies
+    configure_locales
     install_nodejs
     clone_repository
     setup_muxterm
@@ -396,6 +510,7 @@ main() {
     start_service
     
     setup_nginx
+    check_tmux
     print_success
 }
 

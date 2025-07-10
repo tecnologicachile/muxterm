@@ -10,7 +10,8 @@
     "build": "cd client && npm run build",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
-    "test:debug": "playwright test --debug"
+    "test:debug": "playwright test --debug",
+    "create-user": "node scripts/create-user.js"
   },
   "keywords": [
     "ssh",
