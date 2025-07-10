@@ -3,9 +3,18 @@
 ## 🚀 Quick Install Methods
 
 ### 1. One-Line Install (Recommended)
+
+**Option A - Using curl:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
+
+**Option B - Using wget:**
+```bash
+wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
+```
+
+**Note**: Most systems have either `curl` or `wget` pre-installed. Try `curl` first, if not available use `wget`.
 
 ### 2. Docker
 ```bash
