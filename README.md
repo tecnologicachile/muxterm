@@ -85,21 +85,11 @@ MuxTerm uses:
 3. Your session is now persistent
 
 ### Managing Panels
-- **Split Horizontal/Vertical**: Create new terminal panels
-- **Drag to Resize**: Adjust panel sizes
-- **Minimize**: Hide panels to a dock
-- **Rename**: Give panels custom names
-
-### Keyboard Shortcuts
-All shortcuts use tmux-style prefix `Ctrl+B` followed by:
-- `%`: Split horizontal
-- `"`: Split vertical  
-- `c`: New terminal
-- `o`: Next panel
-- `x`: Close panel
-- `d`: Detach (return to sessions)
-- `[`: Enter scroll mode
-- `0-9`: Switch to panel by number
+- **Split Horizontal/Vertical**: Create new terminal panels with the split button
+- **Drag to Resize**: Adjust panel sizes by dragging borders
+- **Minimize**: Hide panels to a dock at the bottom
+- **Rename**: Click rename button to give panels custom names
+- **Auto-Yes**: Toggle per-terminal automatic confirmations
 
 ### Auto-Yes Feature
 Enable Auto-Yes on any terminal to automatically respond to CLI prompts from tools like:

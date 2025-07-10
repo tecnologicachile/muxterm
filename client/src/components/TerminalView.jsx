@@ -33,7 +33,6 @@ import {
 import Terminal from './Terminal';
 import PanelManager from './PanelManager';
 import { useSocket } from '../utils/SocketContext';
-import { useKeyboardShortcuts, SHORTCUTS } from '../utils/KeyboardShortcuts';
 import { v4 as uuidv4 } from 'uuid';
 
 function TerminalView() {
@@ -209,21 +208,6 @@ function TerminalView() {
     navigate('/sessions');
   };
 
-  const handleNextPanel = () => {
-    const currentIndex = panels.findIndex(p => p.id === activePanel);
-    const nextIndex = (currentIndex + 1) % panels.length;
-    setActivePanel(panels[nextIndex].id);
-  };
-
-  const handleSwitchToPanel = (index) => {
-    if (index < panels.length) {
-      setActivePanel(panels[index].id);
-    }
-  };
-
-  const handleNewTerminal = () => {
-    handleSplitHorizontal();
-  };
   
   const handleRenamePanel = (panelId) => {
     const panel = panels.find(p => p.id === panelId);
@@ -291,15 +275,6 @@ function TerminalView() {
     setAutoYesLog(prev => [...prev, logEntry]);
   };
 
-  useKeyboardShortcuts({
-    splitHorizontal: handleSplitHorizontal,
-    splitVertical: handleSplitVertical,
-    closePanel: () => activePanel && handleClosePanel(activePanel),
-    nextPanel: handleNextPanel,
-    newTerminal: handleNewTerminal,
-    detach: handleBack,
-    switchToPanel: handleSwitchToPanel
-  });
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
