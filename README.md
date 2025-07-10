@@ -27,14 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/insta
 wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
 
-**Auto-start version** (installs and starts automatically):
-```bash
-# With curl
-curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --auto-start
-
-# With wget
-wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --auto-start
-```
+**Note**: MuxTerm will start automatically after installation.
 
 **WSL Users**: Run from Linux filesystem, not Windows:
 ```bash

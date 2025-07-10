@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/insta
 wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
 
-**Note**: Most systems have either `curl` or `wget` pre-installed. Try `curl` first, if not available use `wget`.
+**Note**: Most systems have either `curl` or `wget` pre-installed. Try `curl` first, if not available use `wget`. MuxTerm will start automatically after installation.
 
 ### 2. Docker
 ```bash

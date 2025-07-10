@@ -390,25 +390,10 @@ main() {
     setup_muxterm
     create_systemd_service
     
-    # Check if --auto-start flag was passed
-    if [[ "$1" == "--auto-start" ]]; then
-        echo -e "${BLUE}Auto-starting MuxTerm...${NC}"
-        start_service
-    else
-        # Ask if user wants to start now (default Yes)
-        echo
-        echo -e "${BLUE}Do you want to start MuxTerm now? ${GREEN}[Y/n]${NC} "
-        read -r REPLY
-        
-        # Default to Yes if just Enter is pressed
-        if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
-            start_service
-        else
-            echo
-            echo -e "${YELLOW}MuxTerm not started.${NC}"
-            echo "To start later, run: ${GREEN}cd ~/muxterm && npm start${NC}"
-        fi
-    fi
+    # Auto-start MuxTerm without asking
+    echo
+    echo -e "${BLUE}Starting MuxTerm service...${NC}"
+    start_service
     
     setup_nginx
     print_success
