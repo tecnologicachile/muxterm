@@ -37,3 +37,24 @@ error-screenshots/
 *.tmp
 *.temp
 .claude/
+
+# Development files
+test-*.js
+debug-*.js
+manual-*.js
+automated-*.js
+fix-*.js
+verify-*.js
+run-*.js
+*.html
+!client/index.html
+!client/public/index.html
+
+# Screenshots and images
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Old directories
+webssh/

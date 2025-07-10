@@ -4,8 +4,6 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const session = require('express-session');
-// const redis = require('redis');
-// const RedisStore = require('connect-redis').default;
 const path = require('path');
 
 const authRoutes = require('./auth');
@@ -25,11 +23,6 @@ const io = socketIo(server, {
   }
 });
 
-// Redis temporarily disabled for testing
-const redisClient = null;
-
-// Fallback in-memory session store
-const sessionStore = new Map();
 
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
