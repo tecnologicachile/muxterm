@@ -1,0 +1,54 @@
+name: muxterm
+version: '1.0.0'
+summary: Web-based Terminal Multiplexer
+description: |
+  MuxTerm is a web-based terminal multiplexer that provides persistent 
+  SSH sessions with tmux-like features. Access your terminals from 
+  anywhere with full session persistence.
+
+grade: stable
+confinement: strict
+base: core22
+
+apps:
+  muxterm:
+    command: bin/start-muxterm
+    daemon: simple
+    plugs:
+      - network
+      - network-bind
+      - home
+      - removable-media
+    environment:
+      NODE_ENV: production
+      
+  muxterm-cli:
+    command: bin/muxterm
+    plugs:
+      - network
+      - home
+
+parts:
+  muxterm:
+    plugin: npm
+    source: .
+    npm-node-version: 18.17.0
+    build-packages:
+      - python3
+      - build-essential
+      - tmux
+    stage-packages:
+      - tmux
+    override-build: |
+      npm install --production
+      cd client
+      npm install --production
+      npm run build
+      cd ..
+      
+  wrapper:
+    plugin: dump
+    source: snap/local
+    organize:
+      start-muxterm: bin/start-muxterm
+      muxterm: bin/muxterm

@@ -15,32 +15,43 @@ MuxTerm is a web-based terminal multiplexer that provides persistent SSH session
 
 ## Quick Start
 
-### Prerequisites
+### One-Line Install (Linux/WSL)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
+```
+
+### Docker Install
+
+```bash
+# Using Docker Compose
+curl -O https://raw.githubusercontent.com/tecnologicachile/muxterm/main/docker-compose.yml
+docker-compose up -d
+
+# Or using Docker directly
+docker run -d -p 3002:3002 -v muxterm-data:/app/data ghcr.io/tecnologicachile/muxterm
+```
+
+### Manual Installation
+
+#### Prerequisites
 
 - Node.js 16+ 
 - tmux (for session persistence)
 - Git
-
-### Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/tecnologicachile/muxterm.git
 cd muxterm
 
-# Install dependencies
+# Run installer
+./install.sh
+
+# Or install manually
 npm install
-
-# Install client dependencies
-cd client
-npm install
-npm run build
-cd ..
-
-# Create .env file
-echo "JWT_SECRET=your-secret-key-here" > .env
-
-# Start the server
+cd client && npm install && npm run build && cd ..
+echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
 npm start
 ```
 
