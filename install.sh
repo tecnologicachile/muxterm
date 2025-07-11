@@ -17,6 +17,10 @@ IS_ROOT=false
 USE_SUDO=""
 NON_INTERACTIVE=false
 MINIMAL_INSTALL=false
+AUTO_DETECTED_MINIMAL=false
+IS_DOCKER=false
+IS_LXC=false
+IS_CI=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -53,6 +57,35 @@ detect_os() {
     else
         echo -e "${RED}Cannot detect OS${NC}"
         exit 1
+    fi
+}
+
+detect_environment() {
+    echo -e "${BLUE}Detecting environment...${NC}"
+    
+    # Detect if running in Docker
+    if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+        IS_DOCKER=true
+        echo -e "${GREEN}✓ Docker environment detected${NC}"
+    fi
+    
+    # Detect if running in LXC
+    if grep -qa lxc /proc/1/cgroup 2>/dev/null || [ -f /run/systemd/container ]; then
+        IS_LXC=true
+        echo -e "${GREEN}✓ LXC container detected${NC}"
+    fi
+    
+    # Detect if running in CI/CD
+    if [ -n "$CI" ] || [ -n "$CONTINUOUS_INTEGRATION" ] || [ -n "$GITHUB_ACTIONS" ] || [ -n "$GITLAB_CI" ]; then
+        IS_CI=true
+        NON_INTERACTIVE=true
+        echo -e "${GREEN}✓ CI/CD environment detected - enabling non-interactive mode${NC}"
+    fi
+    
+    # Detect if stdin is not a terminal (piped install)
+    if [ ! -t 0 ]; then
+        NON_INTERACTIVE=true
+        echo -e "${GREEN}✓ Non-interactive mode detected${NC}"
     fi
 }
 
@@ -123,10 +156,17 @@ check_memory() {
         TOTAL_MEM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
         TOTAL_MEM_MB=$((TOTAL_MEM / 1024))
         
+        echo -e "${BLUE}System memory: ${TOTAL_MEM_MB}MB${NC}"
+        
         if [ "$TOTAL_MEM_MB" -lt 1024 ]; then
-            echo -e "${YELLOW}⚠️  WARNING: System has only ${TOTAL_MEM_MB}MB RAM${NC}"
-            echo -e "${YELLOW}Minimum 1GB recommended for building the client${NC}"
-            echo -e "${YELLOW}Consider using --minimal flag or increasing memory${NC}"
+            if [ "$MINIMAL_INSTALL" = false ]; then
+                echo -e "${YELLOW}✓ Low memory detected - automatically enabling minimal mode${NC}"
+                MINIMAL_INSTALL=true
+                AUTO_DETECTED_MINIMAL=true
+            fi
+        elif [ "$TOTAL_MEM_MB" -lt 512 ]; then
+            echo -e "${RED}⚠️  WARNING: Very low memory (${TOTAL_MEM_MB}MB)${NC}"
+            echo -e "${RED}Installation may fail. Consider using a system with more memory.${NC}"
             
             if [ "$NON_INTERACTIVE" = false ]; then
                 read -p "Continue anyway? (y/N) " -n 1 -r
@@ -135,6 +175,8 @@ check_memory() {
                     exit 1
                 fi
             fi
+        else
+            echo -e "${GREEN}✓ Sufficient memory for full installation${NC}"
         fi
     fi
 }
@@ -259,12 +301,25 @@ clone_repository() {
     git config core.filemode false 2>/dev/null || true
 }
 
+print_status() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_info() {
+    echo -e "${BLUE}→${NC} $1"
+}
+
 setup_muxterm() {
     echo -e "${BLUE}Setting up MuxTerm...${NC}"
     
     # Install server dependencies
-    echo "Installing server dependencies..."
-    npm ci --production || npm install --production
+    print_info "Installing server dependencies..."
+    npm ci --production --silent || npm install --production --silent
+    print_status "Server dependencies installed"
     
     # Handle client build/download
     if [ "$MINIMAL_INSTALL" = true ]; then
@@ -580,17 +635,25 @@ print_success() {
 # Main installation flow
 main() {
     print_banner
+    
+    # Detection phase
     detect_os
+    detect_environment
     check_root
     
-    echo -e "${BLUE}Detected OS: $OS $VER${NC}"
+    echo -e "${BLUE}System information:${NC}"
+    echo -e "  OS: $OS $VER"
+    if [ "$IS_DOCKER" = true ]; then echo -e "  Environment: Docker"; fi
+    if [ "$IS_LXC" = true ]; then echo -e "  Environment: LXC"; fi
+    if [ "$IS_CI" = true ]; then echo -e "  Environment: CI/CD"; fi
     echo
     
-    # New checks before installing
+    # Pre-installation checks
     check_basic_deps
     configure_locales
     check_memory
     
+    # Installation phase
     install_dependencies
     install_nodejs
     clone_repository

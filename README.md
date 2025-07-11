@@ -22,44 +22,23 @@ MuxTerm is a web-based terminal multiplexer that provides persistent SSH session
 
 ## Quick Start
 
-### One-Line Install (Linux/WSL)
+### One-Line Install
 
-**Option 1 - Using curl:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
 
-**Option 2 - Using wget:**
-```bash
-wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
-```
+The installer automatically detects and adapts to your environment:
+- ✓ Auto-detects low memory and switches to minimal mode
+- ✓ Auto-detects Docker/LXC containers and optimizes
+- ✓ Auto-detects CI/CD and runs non-interactively
+- ✓ Auto-installs missing dependencies
 
-**Option 3 - For minimal containers (no curl/wget):**
-```bash
-apt update && apt install -y curl && curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
-```
+**Alternative methods:**
+- Using wget: `wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash`
+- Force options: Add `--minimal` (low memory) or `--yes` (non-interactive)
 
-**Option 4 - For systems with <1GB RAM (minimal install):**
-```bash
-curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --minimal
-```
-
-**Note**: MuxTerm will start automatically after installation.
-
-**Non-interactive install** (for scripts/automation):
-```bash
-# With curl
-curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
-
-# With wget  
-wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
-```
-
-**WSL Users**: Run from Linux filesystem, not Windows:
-```bash
-cd ~  # Important: Move to Linux home first
-# Then use either curl or wget command above
-```
+**Note**: MuxTerm starts automatically after installation at http://localhost:3002
 
 ### Docker Install
 
