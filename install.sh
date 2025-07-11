@@ -373,7 +373,35 @@ EOF
     
     # Create global tmux config as fallback for production environments
     echo -e "${BLUE}Creating global tmux configuration...${NC}"
-    echo "set -g status off" | $USE_SUDO tee /etc/tmux.conf > /dev/null
+    $USE_SUDO tee /etc/tmux.conf > /dev/null << 'EOF'
+# MuxTerm global tmux configuration
+# Make tmux completely invisible and non-interactive
+
+# Disable status bar
+set -g status off
+
+# Disable ALL tmux hotkeys
+set -g prefix None
+unbind-key -a
+unbind-key -T copy-mode -a
+unbind-key -T copy-mode-vi -a
+
+# Disable tmux mouse completely
+set -g mouse off
+
+# No pane borders
+set -g pane-border-style none
+set -g pane-active-border-style none
+
+# No visual notifications
+set -g visual-activity off
+set -g visual-bell off
+set -g visual-silence off
+set -g bell-action none
+
+# Default shell
+set -g default-shell /bin/bash
+EOF
     echo -e "${GREEN}Global tmux config created${NC}"
 }
 
