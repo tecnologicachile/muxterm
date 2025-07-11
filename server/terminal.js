@@ -2,6 +2,7 @@ const pty = require('node-pty');
 const { v4: uuidv4 } = require('uuid');
 const os = require('os');
 const path = require('path');
+const fs = require('fs');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
 const logger = require('./utils/logger');
@@ -26,7 +27,6 @@ class TerminalManager {
         const tmuxConfigPath = path.join(__dirname, '..', '.tmux.webssh.conf');
         
         // Verificar si el archivo de configuración existe
-        const fs = require('fs');
         if (!fs.existsSync(tmuxConfigPath)) {
           logger.error(`tmux config file not found at: ${tmuxConfigPath}`);
           logger.error('tmux will use default settings (with status bar visible)');
@@ -65,10 +65,7 @@ class TerminalManager {
             '-s', tmuxSessionName,     // Nombre de sesión único
             '-x', cols.toString(),     // Ancho
             '-y', rows.toString(),     // Alto
-            '-c', process.env.HOME,    // Directorio inicial
-            ';',
-            'set-option', '-g', 'status', 'off', ';',  // Deshabilitar barra de estado
-            'set-option', '-g', 'prefix', 'None'        // Deshabilitar prefix
+            '-c', process.env.HOME     // Directorio inicial
           ];
         }
         
@@ -124,7 +121,7 @@ class TerminalManager {
                     ptyProcess.write('\x0c');
                   }, 50);
                 }
-              }, 100);
+              }, 300); // Aumentar delay para LXC
             }
           }
           
