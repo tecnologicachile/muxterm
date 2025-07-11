@@ -1,122 +1,193 @@
 #!/bin/bash
 
-# WebSSH Update Script
-# This script updates the WebSSH application while preserving user data
+# MuxTerm Update Script
+# This script updates MuxTerm to the latest version while preserving user data
 
-echo "WebSSH Update Script"
-echo "==================="
-echo ""
+set -e
 
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then 
-   echo "Please do not run this script as root"
-   exit 1
-fi
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# Save current directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+# Configuration
+REPO="tecnologicachile/muxterm"
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_NAME="muxterm"
+BACKUP_DIR="/tmp/muxterm-backup-$(date +%Y%m%d%H%M%S)"
 
-# Check if git repo
-if [ ! -d ".git" ]; then
-    echo "Error: This directory is not a git repository"
-    echo "Please run this script from the WebSSH installation directory"
-    exit 1
-fi
+# Function to print colored output
+print_color() {
+    echo -e "${2}${1}${NC}"
+}
 
-# Create backup of important files
-echo "Creating backup of configuration..."
-BACKUP_DIR="backup_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
+# Function to check dependencies
+check_dependencies() {
+    local deps=("curl" "git" "npm")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            print_color "Error: $dep is not installed" "$RED"
+            exit 1
+        fi
+    done
+}
 
-# Backup database if exists
-if [ -f "data/webssh.db" ]; then
-    echo "Backing up database..."
-    cp -p "data/webssh.db" "$BACKUP_DIR/"
-fi
+# Function to get latest version
+get_latest_version() {
+    local latest=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ -z "$latest" ]; then
+        print_color "Failed to fetch latest version" "$RED"
+        exit 1
+    fi
+    echo "$latest"
+}
 
-# Backup .env if exists
-if [ -f ".env" ]; then
-    echo "Backing up environment configuration..."
-    cp -p ".env" "$BACKUP_DIR/"
-fi
+# Function to get current version
+get_current_version() {
+    if [ -f "package.json" ]; then
+        local version=$(grep '"version":' "package.json" | sed -E 's/.*"([^"]+)".*/\1/')
+        echo "v$version"
+    else
+        echo "unknown"
+    fi
+}
 
-# Backup tmux config if exists
-if [ -f ".tmux.webssh.conf" ]; then
-    echo "Backing up tmux configuration..."
-    cp -p ".tmux.webssh.conf" "$BACKUP_DIR/"
-fi
+# Function to check if systemd service exists
+service_exists() {
+    systemctl list-unit-files | grep -q "^$SERVICE_NAME.service"
+}
 
-# Show current version
-echo ""
-echo "Current version:"
-git log -1 --oneline
-
-# Fetch latest changes
-echo ""
-echo "Fetching latest changes..."
-git fetch origin
-
-# Show what will be updated
-echo ""
-echo "Changes to be applied:"
-git log HEAD..origin/main --oneline
-
-# Ask for confirmation
-echo ""
-read -p "Do you want to proceed with the update? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Update cancelled."
-    exit 1
-fi
-
-# Stash any local changes
-echo ""
-echo "Stashing local changes..."
-git stash
-
-# Pull latest changes
-echo "Pulling latest changes..."
-git pull origin main
-
-# Install/update dependencies
-echo ""
-echo "Updating dependencies..."
-npm install
-
-# Build client
-echo ""
-echo "Building client..."
-cd client
-npm install
-npm run build
-cd ..
-
-# Apply stashed changes if any
-if git stash list | grep -q "stash@{0}"; then
+# Main update process
+main() {
+    print_color "MuxTerm Update Script" "$BLUE"
+    echo "===================="
+    
+    # Check requirements
+    check_dependencies
+    
+    # Get versions
+    print_color "\nChecking versions..." "$YELLOW"
+    CURRENT_VERSION=$(get_current_version)
+    LATEST_VERSION=$(get_latest_version)
+    
+    print_color "Current version: $CURRENT_VERSION" "$BLUE"
+    print_color "Latest version: $LATEST_VERSION" "$BLUE"
+    
+    # Check if update needed
+    if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+        print_color "\nMuxTerm is already up to date!" "$GREEN"
+        exit 0
+    fi
+    
+    # Confirm update
     echo ""
-    echo "Attempting to reapply local changes..."
-    git stash pop || echo "Warning: Could not automatically reapply local changes. Please check manually."
-fi
+    read -p "Do you want to update MuxTerm? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_color "Update cancelled" "$YELLOW"
+        exit 0
+    fi
+    
+    # Create backup
+    print_color "\nCreating backup..." "$YELLOW"
+    mkdir -p "$BACKUP_DIR"
+    
+    # Backup database
+    if [ -f "data/webssh.db" ]; then
+        cp -p "data/webssh.db" "$BACKUP_DIR/"
+        print_color "Database backed up" "$GREEN"
+    fi
+    
+    # Backup .env
+    if [ -f ".env" ]; then
+        cp -p ".env" "$BACKUP_DIR/"
+        print_color "Environment config backed up" "$GREEN"
+    fi
+    
+    # Backup tmux config
+    if [ -f ".tmux.webssh.conf" ]; then
+        cp -p ".tmux.webssh.conf" "$BACKUP_DIR/"
+        print_color "Tmux config backed up" "$GREEN"
+    fi
+    
+    # Stop service if running
+    if service_exists; then
+        print_color "\nStopping MuxTerm service..." "$YELLOW"
+        sudo systemctl stop "$SERVICE_NAME" || true
+    fi
+    
+    # Stash local changes
+    if [ -d ".git" ]; then
+        print_color "\nStashing local changes..." "$YELLOW"
+        git stash || true
+    fi
+    
+    # Update via git
+    print_color "\nUpdating MuxTerm..." "$YELLOW"
+    if [ -d ".git" ]; then
+        git fetch --tags
+        git checkout "$LATEST_VERSION"
+    else
+        # If not a git repo, download the release
+        print_color "Downloading latest release..." "$YELLOW"
+        curl -L "https://github.com/$REPO/archive/refs/tags/$LATEST_VERSION.tar.gz" -o "/tmp/muxterm-$LATEST_VERSION.tar.gz"
+        tar -xzf "/tmp/muxterm-$LATEST_VERSION.tar.gz" -C /tmp
+        rsync -av --exclude='data' --exclude='.env' --exclude='node_modules' --exclude='client/node_modules' \
+              "/tmp/muxterm-${LATEST_VERSION#v}/" "$INSTALL_DIR/"
+        rm -rf "/tmp/muxterm-$LATEST_VERSION.tar.gz" "/tmp/muxterm-${LATEST_VERSION#v}"
+    fi
+    
+    # Install dependencies
+    print_color "\nInstalling dependencies..." "$YELLOW"
+    npm install --production
+    
+    # Build client
+    print_color "\nBuilding client..." "$YELLOW"
+    cd client
+    npm install
+    npm run build
+    cd ..
+    
+    # Restore data
+    print_color "\nRestoring data..." "$YELLOW"
+    if [ -f "$BACKUP_DIR/webssh.db" ] && [ ! -f "data/webssh.db" ]; then
+        mkdir -p data
+        cp -p "$BACKUP_DIR/webssh.db" "data/"
+    fi
+    if [ -f "$BACKUP_DIR/.env" ] && [ ! -f ".env" ]; then
+        cp -p "$BACKUP_DIR/.env" .
+    fi
+    if [ -f "$BACKUP_DIR/.tmux.webssh.conf" ] && [ ! -f ".tmux.webssh.conf" ]; then
+        cp -p "$BACKUP_DIR/.tmux.webssh.conf" .
+    fi
+    
+    # Start service if it was running
+    if service_exists; then
+        print_color "\nStarting MuxTerm service..." "$YELLOW"
+        sudo systemctl start "$SERVICE_NAME"
+        
+        # Verify service
+        sleep 2
+        if systemctl is-active --quiet "$SERVICE_NAME"; then
+            print_color "Service is running" "$GREEN"
+        else
+            print_color "Service failed to start" "$RED"
+            print_color "Check logs: journalctl -u $SERVICE_NAME -n 50" "$YELLOW"
+        fi
+    fi
+    
+    print_color "\n✓ MuxTerm updated successfully to $LATEST_VERSION!" "$GREEN"
+    print_color "\nBackup location: $BACKUP_DIR" "$BLUE"
+    
+    if ! service_exists; then
+        print_color "\nTo start MuxTerm manually:" "$YELLOW"
+        print_color "  npm start" "$BLUE"
+    fi
+    
+    print_color "\nActive tmux sessions have been preserved." "$GREEN"
+}
 
-# Check if database migration is needed
-if [ -f "db/migrate.js" ]; then
-    echo ""
-    echo "Running database migrations..."
-    node db/migrate.js
-fi
-
-# Restart instructions
-echo ""
-echo "Update complete!"
-echo ""
-echo "To restart the server:"
-echo "1. Stop the current server (Ctrl+C or kill the process)"
-echo "2. Start the server: npm start"
-echo ""
-echo "Your data has been preserved in:"
-echo "- Database: data/webssh.db"
-echo "- Backup: $BACKUP_DIR/"
-echo ""
-echo "Active tmux sessions have been preserved and will reconnect automatically."
+# Run main function
+main "$@"

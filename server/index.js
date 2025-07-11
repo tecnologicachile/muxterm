@@ -12,6 +12,7 @@ const sessionManager = require('./session');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
 const logger = require('./utils/logger');
+const updateChecker = require('./update-checker');
 
 const app = express();
 const server = http.createServer(app);
@@ -46,6 +47,12 @@ app.use(session({
 }));
 
 app.use('/api/auth', authRoutes);
+
+// Update check endpoint
+app.get('/api/update-check', async (req, res) => {
+  const updateInfo = await updateChecker.checkForUpdates();
+  res.json({ update: updateInfo });
+});
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client/dist')));

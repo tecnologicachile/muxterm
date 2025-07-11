@@ -380,6 +380,16 @@ EOF
     
     # Create data directories
     mkdir -p data logs sessions
+    
+    # Install muxterm command globally
+    echo -e "${BLUE}Installing muxterm command...${NC}"
+    if [ -f scripts/muxterm ]; then
+        $USE_SUDO cp scripts/muxterm /usr/local/bin/muxterm
+        $USE_SUDO chmod +x /usr/local/bin/muxterm
+        echo -e "${GREEN}muxterm command installed${NC}"
+    else
+        echo -e "${YELLOW}muxterm command script not found${NC}"
+    fi
 }
 
 create_systemd_service() {
@@ -624,7 +634,7 @@ print_success() {
         echo "  Start:   cd ~/muxterm && npm start"
         echo "  Service: sudo systemctl start muxterm"
     fi
-    echo "  Update:  cd ~/muxterm && ./update.sh"
+    echo "  Update:  muxterm update"
     echo
     if [ -f muxterm.pid ]; then
         echo "Manual stop: kill \$(cat muxterm.pid)"

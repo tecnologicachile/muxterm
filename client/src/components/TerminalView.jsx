@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import Terminal from './Terminal';
 import PanelManager from './PanelManager';
+import UpdateNotification from './UpdateNotification';
 import { useSocket } from '../utils/SocketContext';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger';
@@ -279,6 +280,7 @@ function TerminalView() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <UpdateNotification />
       <AppBar position="static" className="toolbar">
         <Toolbar variant="dense">
           <IconButton 
