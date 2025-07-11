@@ -158,6 +158,21 @@ class SessionManager {
     
     return true;
   }
+  
+  updateSessionName(userId, sessionId, newName) {
+    if (!userId || !sessionId || !newName) {
+      return false;
+    }
+    
+    // Verify session belongs to user
+    const session = database.getSession(sessionId);
+    if (!session || session.user_id !== userId) {
+      return false;
+    }
+    
+    // Update in database
+    return database.updateSessionName(sessionId, newName);
+  }
 }
 
 module.exports = new SessionManager();

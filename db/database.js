@@ -61,6 +61,7 @@ const statements = {
   // Sessions
   createSession: db.prepare('INSERT INTO sessions (id, user_id, name, tmux_session) VALUES (?, ?, ?, ?)'),
   updateSessionAccess: db.prepare('UPDATE sessions SET last_accessed = CURRENT_TIMESTAMP WHERE id = ?'),
+  updateSessionName: db.prepare('UPDATE sessions SET name = ? WHERE id = ?'),
   findSessionById: db.prepare('SELECT * FROM sessions WHERE id = ?'),
   findSessionsByUserId: db.prepare('SELECT * FROM sessions WHERE user_id = ? ORDER BY last_accessed DESC'),
   deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
@@ -111,6 +112,11 @@ const dbHelpers = {
 
   updateSessionAccess(sessionId) {
     statements.updateSessionAccess.run(sessionId);
+  },
+  
+  updateSessionName(sessionId, newName) {
+    const result = statements.updateSessionName.run(newName, sessionId);
+    return result.changes > 0;
   },
 
   findSessionById(sessionId) {
