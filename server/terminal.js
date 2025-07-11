@@ -82,7 +82,8 @@ class TerminalManager {
             SHELL: '/bin/bash',
             LANG: process.env.LANG || 'en_US.UTF-8',
             LC_ALL: process.env.LC_ALL || 'en_US.UTF-8',
-            LC_CTYPE: 'en_US.UTF-8'
+            LC_CTYPE: 'en_US.UTF-8',
+            TMUX_CONF: tmuxConfigPath // Some tmux versions respect this
           }
         });
 
@@ -108,13 +109,22 @@ class TerminalManager {
             isFirstOutput = false;
             // Esperar un poco para que tmux se estabilice
             if (!isRestore) {
+              // Primer intento: asegurar que la barra esté oculta
+              setTimeout(() => {
+                ptyProcess.write('tmux set-option status off\r');
+                setTimeout(() => {
+                  ptyProcess.write('\x0c'); // Clear screen
+                }, 50);
+              }, 200);
+              
+              // Segundo intento: limpiar pantalla después de más tiempo
               setTimeout(() => {
                 // Enviar un clear para limpiar la pantalla
                 ptyProcess.write('\x0c');
                 
-                // Si no se usó el archivo de configuración, enviar comandos para deshabilitar la barra
+                // Si no se usó el archivo de configuración, enviar comandos adicionales
                 if (!fs.existsSync(tmuxConfigPath)) {
-                  // Enviar comando tmux para deshabilitar la barra de estado
+                  // Enviar comando tmux para deshabilitar la barra de estado globalmente
                   ptyProcess.write('tmux set-option -g status off\r');
                   setTimeout(() => {
                     // Limpiar la pantalla de nuevo

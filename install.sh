@@ -370,6 +370,11 @@ EOF
 
     $USE_SUDO systemctl daemon-reload
     echo -e "${GREEN}Systemd service created${NC}"
+    
+    # Create global tmux config as fallback for production environments
+    echo -e "${BLUE}Creating global tmux configuration...${NC}"
+    echo "set -g status off" | $USE_SUDO tee /etc/tmux.conf > /dev/null
+    echo -e "${GREEN}Global tmux config created${NC}"
 }
 
 setup_nginx() {
