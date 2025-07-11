@@ -13,18 +13,35 @@ MuxTerm is a web-based terminal multiplexer that provides persistent SSH session
 - 🤖 **Auto-Yes for Claude CLI** - Automatically respond "Yes" to Claude CLI confirmation prompts
 - 🗂️ **Session Management** - Name, organize, and manage your sessions
 
+## System Requirements
+
+- **OS**: Ubuntu/Debian 20.04+, Fedora, CentOS, Arch Linux, or WSL
+- **Memory**: Minimum 1GB RAM (2GB recommended for building)
+- **Node.js**: 16+ (installer will handle this)
+- **tmux**: For session persistence (installer will handle this)
+
 ## Quick Start
 
 ### One-Line Install (Linux/WSL)
 
-**Using curl:**
+**Option 1 - Using curl:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
 
-**Using wget:**
+**Option 2 - Using wget:**
 ```bash
 wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
+```
+
+**Option 3 - For minimal containers (no curl/wget):**
+```bash
+apt update && apt install -y curl && curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
+```
+
+**Option 4 - For systems with <1GB RAM (minimal install):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --minimal
 ```
 
 **Note**: MuxTerm will start automatically after installation.

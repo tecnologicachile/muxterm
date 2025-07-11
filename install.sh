@@ -16,12 +16,17 @@ NC='\033[0m'
 IS_ROOT=false
 USE_SUDO=""
 NON_INTERACTIVE=false
+MINIMAL_INSTALL=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --yes|-y)
             NON_INTERACTIVE=true
+            shift
+            ;;
+        --minimal)
+            MINIMAL_INSTALL=true
             shift
             ;;
         *)
@@ -55,14 +60,8 @@ check_root() {
     if [ "$EUID" -eq 0 ]; then 
         IS_ROOT=true
         echo -e "${YELLOW}Running as root user${NC}"
-        if [ "$NON_INTERACTIVE" = false ]; then
-            echo -e "${YELLOW}Note: It's recommended to run as regular user.${NC}"
-            read -p "Continue anyway? (y/N) " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                exit 1
-            fi
-        fi
+        # Don't use sudo when running as root
+        USE_SUDO=""
     else
         # Check if sudo is available
         if command -v sudo &> /dev/null; then
@@ -71,6 +70,71 @@ check_root() {
             echo -e "${RED}Error: 'sudo' command not found${NC}"
             echo "Please install sudo or run this script as root"
             exit 1
+        fi
+    fi
+}
+
+check_basic_deps() {
+    echo -e "${BLUE}Checking basic dependencies...${NC}"
+    
+    # Check for curl/wget
+    if ! command -v curl &> /dev/null && ! command -v wget &> /dev/null; then
+        echo -e "${YELLOW}Installing curl...${NC}"
+        case $OS in
+            ubuntu|debian)
+                $USE_SUDO apt-get update -qq
+                $USE_SUDO apt-get install -y curl
+                ;;
+            fedora|centos|rhel)
+                $USE_SUDO yum install -y curl
+                ;;
+            arch|manjaro)
+                $USE_SUDO pacman -Sy --noconfirm curl
+                ;;
+        esac
+    fi
+}
+
+configure_locales() {
+    echo -e "${BLUE}Configuring system locales...${NC}"
+    
+    # Only for Debian-based systems
+    if [[ "$OS" =~ ^(ubuntu|debian)$ ]]; then
+        export DEBIAN_FRONTEND=noninteractive
+        
+        # Check if locales package is installed
+        if ! dpkg -l locales &> /dev/null; then
+            $USE_SUDO apt-get update -qq
+            $USE_SUDO apt-get install -y locales
+        fi
+        
+        # Generate en_US.UTF-8 locale
+        if ! locale -a | grep -q "en_US.utf8"; then
+            $USE_SUDO locale-gen en_US.UTF-8
+        fi
+        
+        export LANG=en_US.UTF-8
+        export LC_ALL=en_US.UTF-8
+    fi
+}
+
+check_memory() {
+    if [ -f /proc/meminfo ]; then
+        TOTAL_MEM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        TOTAL_MEM_MB=$((TOTAL_MEM / 1024))
+        
+        if [ "$TOTAL_MEM_MB" -lt 1024 ]; then
+            echo -e "${YELLOW}⚠️  WARNING: System has only ${TOTAL_MEM_MB}MB RAM${NC}"
+            echo -e "${YELLOW}Minimum 1GB recommended for building the client${NC}"
+            echo -e "${YELLOW}Consider using --minimal flag or increasing memory${NC}"
+            
+            if [ "$NON_INTERACTIVE" = false ]; then
+                read -p "Continue anyway? (y/N) " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    exit 1
+                fi
+            fi
         fi
     fi
 }
@@ -103,39 +167,23 @@ install_dependencies() {
 configure_locales() {
     echo -e "${BLUE}Configuring system locales...${NC}"
     
-    # Check if locale command exists
-    if ! command -v locale &> /dev/null; then
-        echo -e "${YELLOW}locale command not found, skipping locale configuration${NC}"
-        return
-    fi
-    
-    # Check if UTF-8 locale is already configured
-    if locale -a 2>/dev/null | grep -qE "(en_US|C)\.utf8|UTF-8"; then
-        echo -e "${GREEN}UTF-8 locale already configured${NC}"
-        return
-    fi
-    
-    echo -e "${BLUE}Configuring UTF-8 locales...${NC}"
-    
-    case $OS in
-        ubuntu|debian)
-            # Generate locales
-            if [ -f /etc/locale.gen ]; then
-                $USE_SUDO sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
-                $USE_SUDO locale-gen
-            fi
-            ;;
-        fedora|centos|rhel)
-            # These usually have UTF-8 locales pre-installed
-            if ! locale -a | grep -q "en_US.utf8"; then
-                echo -e "${YELLOW}UTF-8 locale not found, please install glibc-langpack-en${NC}"
-            fi
-            ;;
-    esac
-    
-    # Set default locale
-    if [ -f /etc/default/locale ]; then
-        $USE_SUDO sh -c 'echo "LANG=en_US.UTF-8" > /etc/default/locale'
+    # Only for Debian-based systems
+    if [[ "$OS" =~ ^(ubuntu|debian)$ ]]; then
+        export DEBIAN_FRONTEND=noninteractive
+        
+        # Check if locales package is installed
+        if ! dpkg -l locales &> /dev/null; then
+            $USE_SUDO apt-get update -qq
+            $USE_SUDO apt-get install -y locales
+        fi
+        
+        # Generate en_US.UTF-8 locale
+        if ! locale -a 2>/dev/null | grep -q "en_US.utf8"; then
+            $USE_SUDO locale-gen en_US.UTF-8
+        fi
+        
+        export LANG=en_US.UTF-8
+        export LC_ALL=en_US.UTF-8
     fi
 }
 
@@ -218,31 +266,39 @@ setup_muxterm() {
     echo "Installing server dependencies..."
     npm ci --production || npm install --production
     
-    # Check for pre-built client
-    echo -e "${BLUE}Checking for pre-built client...${NC}"
-    RELEASE_URL="https://api.github.com/repos/tecnologicachile/muxterm/releases/latest"
-    
-    if command -v curl &> /dev/null; then
-        RELEASE_INFO=$(curl -s $RELEASE_URL 2>/dev/null || echo "")
-        DOWNLOAD_URL=$(echo $RELEASE_INFO | grep -o '"browser_download_url": "[^"]*client-dist.tar.gz"' | cut -d'"' -f4 || true)
+    # Handle client build/download
+    if [ "$MINIMAL_INSTALL" = true ]; then
+        echo -e "${YELLOW}Minimal install mode - skipping client build${NC}"
+        echo -e "${YELLOW}You can build the client later with: cd client && npm install && npm run build${NC}"
+        mkdir -p client/dist
+        echo "<html><body><h1>MuxTerm Client Not Built</h1><p>Run 'npm install && npm run build' in the client directory</p></body></html>" > client/dist/index.html
     else
-        DOWNLOAD_URL=""
-    fi
-    
-    if [ -n "$DOWNLOAD_URL" ]; then
-        echo -e "${GREEN}Found pre-built client! Downloading...${NC}"
-        curl -L -o client-dist.tar.gz "$DOWNLOAD_URL"
-        mkdir -p client
-        tar -xzf client-dist.tar.gz -C client/
-        rm client-dist.tar.gz
-        echo -e "${GREEN}Client downloaded successfully!${NC}"
-    else
-        echo -e "${YELLOW}No pre-built client found. Building from source...${NC}"
-        echo -e "${YELLOW}This may take 3-5 minutes...${NC}"
-        cd client
-        npm ci --silent || npm install --silent
-        npm run build
-        cd ..
+        # Check for pre-built client
+        echo -e "${BLUE}Checking for pre-built client...${NC}"
+        RELEASE_URL="https://api.github.com/repos/tecnologicachile/muxterm/releases/latest"
+        
+        if command -v curl &> /dev/null; then
+            RELEASE_INFO=$(curl -s $RELEASE_URL 2>/dev/null || echo "")
+            DOWNLOAD_URL=$(echo $RELEASE_INFO | grep -o '"browser_download_url": "[^"]*client-dist.tar.gz"' | cut -d'"' -f4 || true)
+        else
+            DOWNLOAD_URL=""
+        fi
+        
+        if [ -n "$DOWNLOAD_URL" ]; then
+            echo -e "${GREEN}Found pre-built client! Downloading...${NC}"
+            curl -L -o client-dist.tar.gz "$DOWNLOAD_URL"
+            mkdir -p client
+            tar -xzf client-dist.tar.gz -C client/
+            rm client-dist.tar.gz
+            echo -e "${GREEN}Client downloaded successfully!${NC}"
+        else
+            echo -e "${YELLOW}No pre-built client found. Building from source...${NC}"
+            echo -e "${YELLOW}This may take 3-5 minutes...${NC}"
+            cd client
+            npm ci --silent || npm install --silent
+            npm run build
+            cd ..
+        fi
     fi
     
     # Check if openssl is available
@@ -497,8 +553,12 @@ main() {
     echo -e "${BLUE}Detected OS: $OS $VER${NC}"
     echo
     
-    install_dependencies
+    # New checks before installing
+    check_basic_deps
     configure_locales
+    check_memory
+    
+    install_dependencies
     install_nodejs
     clone_repository
     setup_muxterm
