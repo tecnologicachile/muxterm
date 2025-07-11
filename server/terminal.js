@@ -25,22 +25,52 @@ class TerminalManager {
         // Configurar tmux para ser completamente invisible
         const tmuxConfigPath = path.join(__dirname, '..', '.tmux.webssh.conf');
         
+        // Verificar si el archivo de configuración existe
+        const fs = require('fs');
+        if (!fs.existsSync(tmuxConfigPath)) {
+          logger.error(`tmux config file not found at: ${tmuxConfigPath}`);
+          logger.error('tmux will use default settings (with status bar visible)');
+        }
+        
         // Para restauración, solo hacer attach, no crear nueva sesión
-        const tmuxArgs = isRestore ? [
-          '-f', tmuxConfigPath,
-          'attach-session',
-          '-t', tmuxSessionName,
-          '-x', cols.toString(),
-          '-y', rows.toString()
-        ] : [
-          '-f', tmuxConfigPath,      // Usar nuestro archivo de configuración
-          'new-session',
-          '-A',                      // Attach si existe, crear si no
-          '-s', tmuxSessionName,     // Nombre de sesión único
-          '-x', cols.toString(),     // Ancho
-          '-y', rows.toString(),     // Alto
-          '-c', process.env.HOME     // Directorio inicial
-        ];
+        let tmuxArgs;
+        
+        if (fs.existsSync(tmuxConfigPath)) {
+          // Usar archivo de configuración si existe
+          tmuxArgs = isRestore ? [
+            '-f', tmuxConfigPath,
+            'attach-session',
+            '-t', tmuxSessionName,
+            '-x', cols.toString(),
+            '-y', rows.toString()
+          ] : [
+            '-f', tmuxConfigPath,      // Usar nuestro archivo de configuración
+            'new-session',
+            '-A',                      // Attach si existe, crear si no
+            '-s', tmuxSessionName,     // Nombre de sesión único
+            '-x', cols.toString(),     // Ancho
+            '-y', rows.toString(),     // Alto
+            '-c', process.env.HOME     // Directorio inicial
+          ];
+        } else {
+          // Fallback: usar comandos directos si no hay archivo de configuración
+          tmuxArgs = isRestore ? [
+            'attach-session',
+            '-t', tmuxSessionName,
+            '-x', cols.toString(),
+            '-y', rows.toString()
+          ] : [
+            'new-session',
+            '-A',                      // Attach si existe, crear si no
+            '-s', tmuxSessionName,     // Nombre de sesión único
+            '-x', cols.toString(),     // Ancho
+            '-y', rows.toString(),     // Alto
+            '-c', process.env.HOME,    // Directorio inicial
+            ';',
+            'set-option', '-g', 'status', 'off', ';',  // Deshabilitar barra de estado
+            'set-option', '-g', 'prefix', 'None'        // Deshabilitar prefix
+          ];
+        }
         
         const ptyProcess = pty.spawn('tmux', tmuxArgs, {
           name: 'xterm-256color',
@@ -84,6 +114,16 @@ class TerminalManager {
               setTimeout(() => {
                 // Enviar un clear para limpiar la pantalla
                 ptyProcess.write('\x0c');
+                
+                // Si no se usó el archivo de configuración, enviar comandos para deshabilitar la barra
+                if (!fs.existsSync(tmuxConfigPath)) {
+                  // Enviar comando tmux para deshabilitar la barra de estado
+                  ptyProcess.write('tmux set-option -g status off\r');
+                  setTimeout(() => {
+                    // Limpiar la pantalla de nuevo
+                    ptyProcess.write('\x0c');
+                  }, 50);
+                }
               }, 100);
             }
           }
