@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useRef } from 'react';
+import logger from './logger';
 
 const TerminalContext = createContext();
 
@@ -11,12 +12,12 @@ export function TerminalProvider({ children }) {
   };
   
   const setTerminal = (panelId, terminal) => {
-    console.log(`[TerminalContext] Storing terminal for panel ${panelId}`);
+    logger.debug(`[TerminalContext] Storing terminal for panel ${panelId}`);
     terminalsRef.current[panelId] = terminal;
   };
   
   const removeTerminal = (panelId) => {
-    console.log(`[TerminalContext] Removing terminal for panel ${panelId}`);
+    logger.debug(`[TerminalContext] Removing terminal for panel ${panelId}`);
     const terminal = terminalsRef.current[panelId];
     if (terminal) {
       terminal.dispose();

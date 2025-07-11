@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import { 
   Edit as EditIcon, 
@@ -8,16 +8,22 @@ import {
 } from '@mui/icons-material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
+import logger from '../utils/logger';
 
 function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, sessionId, onAutoYesLog }) {
   // Track auto-yes state for each panel
   const [autoYesStates, setAutoYesStates] = useState({});
+  
+  // Debug autoYesStates
+  useEffect(() => {
+    logger.debug('[PanelManager] autoYesStates:', autoYesStates);
+  }, [autoYesStates]);
   // For simplicity, we'll use a 2x2 grid layout
   // This allows up to 4 terminals in a grid pattern
   
   const renderTerminal = (panel) => {
     const isActive = panel.id === activePanel;
-    console.log(`[PanelManager] Rendering terminal for panel ${panel.id}, terminalId: ${panel.terminalId}, active: ${isActive}`);
+    logger.debug(`[PanelManager] Rendering terminal for panel ${panel.id}, terminalId: ${panel.terminalId}, active: ${isActive}`);
     
     return (
       <Box
@@ -58,7 +64,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <Tooltip title={autoYesStates[panel.id] ? "Auto-Yes ON" : "Auto-Yes OFF"}>
+            <Tooltip title={autoYesStates[panel.id] ? "Auto-Yes ON (Claude CLI)" : "Auto-Yes OFF - Click to enable for Claude CLI"}>
               <IconButton
                 size="small"
                 onClick={(e) => {

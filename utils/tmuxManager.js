@@ -1,5 +1,6 @@
 const { spawn, exec } = require('child_process');
 const { promisify } = require('util');
+const logger = require('./logger');
 
 const execAsync = promisify(exec);
 
@@ -19,7 +20,7 @@ class TmuxManager {
       await execAsync('which tmux');
       return true;
     } catch {
-      console.error('tmux is not installed. Please install tmux to enable persistent sessions.');
+      logger.error('tmux is not installed. Please install tmux to enable persistent sessions.');
       return false;
     }
   }
@@ -44,10 +45,10 @@ class TmuxManager {
     try {
       // Create detached tmux session with initial window
       await execAsync(`tmux new-session -d -s ${sessionName} -n main`);
-      console.log(`Created tmux session: ${sessionName}`);
+      logger.debug(`Created tmux session: ${sessionName}`);
       return sessionName;
     } catch (error) {
-      console.error('Failed to create tmux session:', error);
+      logger.error('Failed to create tmux session:', error);
       throw error;
     }
   }
@@ -70,7 +71,7 @@ class TmuxManager {
       );
       return parseInt(stdout.trim());
     } catch (error) {
-      console.error('Failed to create tmux window:', error);
+      logger.error('Failed to create tmux window:', error);
       throw error;
     }
   }
@@ -83,7 +84,7 @@ class TmuxManager {
       );
       return stdout.trim();
     } catch (error) {
-      console.error('Failed to create tmux pane:', error);
+      logger.error('Failed to create tmux pane:', error);
       throw error;
     }
   }
@@ -93,7 +94,7 @@ class TmuxManager {
     try {
       await execAsync(`tmux kill-pane -t ${sessionName}:${paneId}`);
     } catch (error) {
-      console.error('Failed to kill tmux pane:', error);
+      logger.error('Failed to kill tmux pane:', error);
     }
   }
 
@@ -101,9 +102,9 @@ class TmuxManager {
   async killSession(sessionName) {
     try {
       await execAsync(`tmux kill-session -t ${sessionName}`);
-      console.log(`Killed tmux session: ${sessionName}`);
+      logger.debug(`Killed tmux session: ${sessionName}`);
     } catch (error) {
-      console.error('Failed to kill tmux session:', error);
+      logger.error('Failed to kill tmux session:', error);
     }
   }
 
@@ -121,7 +122,7 @@ class TmuxManager {
 
       return { sessionName, windows: windowList };
     } catch (error) {
-      console.error('Failed to get session info:', error);
+      logger.error('Failed to get session info:', error);
       return null;
     }
   }
@@ -137,7 +138,7 @@ class TmuxManager {
     const sendInput = (data) => {
       exec(`tmux send-keys -t ${target} "${data.replace(/"/g, '\\"')}"`, (error) => {
         if (error) {
-          console.error('Failed to send input to tmux:', error);
+          logger.error('Failed to send input to tmux:', error);
         }
       });
     };

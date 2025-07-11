@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const database = require('../db/database');
+const logger = require('./utils/logger');
 const router = express.Router();
 
 // Set default JWT_SECRET if not provided
@@ -42,7 +43,7 @@ router.post('/register', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
   }
 });
@@ -74,7 +75,7 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
   }
 });

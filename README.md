@@ -10,7 +10,7 @@ MuxTerm is a web-based terminal multiplexer that provides persistent SSH session
 - 👥 **Multi-User Support** - Each user has independent sessions
 - 📱 **Mobile Friendly** - Responsive design works on all devices
 - ⚡ **Real-time Sync** - See updates across all connected clients
-- 🤖 **Auto-Yes Feature** - Automatically respond to CLI prompts
+- 🤖 **Auto-Yes for Claude CLI** - Automatically respond "Yes" to Claude CLI confirmation prompts
 - 🗂️ **Session Management** - Name, organize, and manage your sessions
 
 ## Quick Start
@@ -114,12 +114,15 @@ MuxTerm uses:
 - **Rename**: Click rename button to give panels custom names
 - **Auto-Yes**: Toggle per-terminal automatic confirmations
 
-### Auto-Yes Feature
-Enable Auto-Yes on any terminal to automatically respond to CLI prompts from tools like:
-- Claude CLI
-- GitHub Copilot CLI
-- npm/yarn confirmations
-- Other interactive CLIs
+### Auto-Yes Feature (Claude CLI)
+The Auto-Yes feature is specifically designed for Claude CLI to automatically respond "Yes" when prompted "Do you want to proceed?". 
+
+To enable:
+1. Click the green checkmark icon (✓) in the terminal header
+2. The icon turns green and shows "AUTO-YES: CLAUDE CLI" badge in the terminal
+3. Claude CLI prompts will be answered automatically
+
+**Note**: This feature is optimized for Claude CLI and may not work with other tools.
 
 ## Updating
 

@@ -34,6 +34,7 @@ import Terminal from './Terminal';
 import PanelManager from './PanelManager';
 import { useSocket } from '../utils/SocketContext';
 import { v4 as uuidv4 } from 'uuid';
+import logger from '../utils/logger';
 
 function TerminalView() {
   const { sessionId } = useParams();
@@ -82,14 +83,14 @@ function TerminalView() {
   // Load session layout on mount
   useEffect(() => {
     if (socket && sessionId) {
-      console.log('Loading session layout for:', sessionId);
+      logger.debug('Loading session layout for:', sessionId);
       
       let layoutReceived = false;
       
       // Set a timeout to create initial panel if no response
       const timeoutId = setTimeout(() => {
         if (!layoutReceived && panels.length === 0) {
-          console.log('No layout received, creating initial panel');
+          logger.debug('No layout received, creating initial panel');
           const initialPanel = {
             id: uuidv4(),
             terminalId: null,
@@ -105,7 +106,7 @@ function TerminalView() {
         if (data.sessionId === sessionId) {
           layoutReceived = true;
           clearTimeout(timeoutId);
-          console.log('Received session layout:', data.layout);
+          logger.debug('Received session layout:', data.layout);
           // Restore panels from layout
           if (data.layout && data.layout.panels && data.layout.panels.length > 0) {
             setPanels(data.layout.panels);
@@ -146,7 +147,7 @@ function TerminalView() {
   // Save layout whenever panels change
   useEffect(() => {
     if (socket && sessionId && panels.length > 0) {
-      console.log('Saving session layout:', panels);
+      logger.debug('Saving session layout:', panels);
       const layout = {
         panels: panels,
         activePanel: activePanel,
@@ -167,7 +168,7 @@ function TerminalView() {
       alert('Maximum 8 panels supported');
       return;
     }
-    console.log('[TerminalView] Current panels before split:', panels);
+    logger.debug('[TerminalView] Current panels before split:', panels);
     const newPanel = {
       id: uuidv4(),
       terminalId: null,
@@ -175,7 +176,7 @@ function TerminalView() {
       name: `Terminal ${panels.length + 1}`
     };
     const updatedPanels = [...panels, newPanel];
-    console.log('[TerminalView] Panels after split:', updatedPanels);
+    logger.debug('[TerminalView] Panels after split:', updatedPanels);
     setPanels(updatedPanels);
     setActivePanel(newPanel.id);
     setSplitMenuAnchor(null);

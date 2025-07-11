@@ -11,6 +11,7 @@ const terminalManager = require('./terminal');
 const sessionManager = require('./session');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
+const logger = require('./utils/logger');
 
 const app = express();
 const server = http.createServer(app);
@@ -72,7 +73,7 @@ const authenticateSocket = async (socket, next) => {
 io.use(authenticateSocket);
 
 io.on('connection', (socket) => {
-  console.log(`User ${socket.username} connected`);
+  logger.info(`User ${socket.username} connected`);
   
   // Store terminal data listeners for cleanup
   socket.terminalListeners = new Map();
@@ -82,7 +83,7 @@ io.on('connection', (socket) => {
   
   // If user has sessions, emit them. Otherwise check for default session
   if (userSessions.length > 0) {
-    console.log(`Sending ${userSessions.length} existing sessions for user ${socket.username}`);
+    logger.debug(`Sending ${userSessions.length} existing sessions for user ${socket.username}`);
     socket.emit('sessions', userSessions);
   } else {
     // Check if we should send the last active session layout
@@ -90,13 +91,13 @@ io.on('connection', (socket) => {
       sessionManager.getSession(socket.userId, socket.handshake.query.sessionId) : null;
       
     if (lastLayout) {
-      console.log('Sending session layout:', lastLayout.layout);
+      logger.debug('Sending session layout:', lastLayout.layout);
       socket.emit('session-layout', {
         sessionId: lastLayout.id,
         layout: lastLayout.layout
       });
     } else {
-      console.log('Sending session layout:', { type: 'single', panels: [], activePanel: null });
+      logger.debug('Sending session layout:', { type: 'single', panels: [], activePanel: null });
       socket.emit('session-layout', {
         sessionId: null,
         layout: { type: 'single', panels: [], activePanel: null }
@@ -107,7 +108,7 @@ io.on('connection', (socket) => {
   // Handle get-sessions request
   socket.on('get-sessions', () => {
     const sessions = sessionManager.getUserSessions(socket.userId);
-    console.log(`get-sessions requested, returning ${sessions.length} sessions`);
+    logger.debug(`get-sessions requested, returning ${sessions.length} sessions`);
     socket.emit('sessions', sessions);
   });
 
@@ -131,13 +132,14 @@ io.on('connection', (socket) => {
       });
       socket.terminalListeners.set(terminal.id, removeListener);
 
-      console.log('Terminal created:', terminal.id, 'for session:', data.sessionId);
+      logger.debug('Terminal created:', terminal.id, 'for session:', data.sessionId);
       socket.emit('terminal-created', {
         terminalId: terminal.id,
         sessionId: data.sessionId
       });
-
-      await sessionManager.saveSession(socket.userId, data.sessionId, terminal.id);
+      
+      // Terminal is already saved in terminalManager.createTerminal
+      logger.debug('Terminal successfully created and saved');
     } catch (error) {
       socket.emit('terminal-error', {
         message: 'Failed to create terminal',
@@ -148,12 +150,12 @@ io.on('connection', (socket) => {
 
   socket.on('restore-terminal', async (data) => {
     try {
-      console.log('Restoring terminal:', data.terminalId);
+      logger.debug('Restoring terminal:', data.terminalId);
       let terminal = terminalManager.getTerminal(data.terminalId);
       
       // Si no existe el terminal, intentar restaurarlo desde tmux
       if (!terminal) {
-        console.log('Terminal not found, attempting to restore from tmux...');
+        logger.debug('Terminal not found, attempting to restore from tmux...');
         const cols = data.cols || 80;
         const rows = data.rows || 24;
         terminal = await terminalManager.restoreTerminal(data.terminalId, socket.userId, data.sessionId, rows, cols);
@@ -184,21 +186,21 @@ io.on('connection', (socket) => {
           sessionId: data.sessionId
         });
         
-        console.log('Terminal restored successfully:', data.terminalId);
+        logger.debug('Terminal restored successfully:', data.terminalId);
         
         // Forzar un resize para actualizar el contenido
         if (data.cols && data.rows) {
           terminal.resize(data.cols, data.rows);
         }
       } else {
-        console.log('Terminal not found and could not be restored:', data.terminalId);
+        logger.info('Terminal not found and could not be restored:', data.terminalId);
         socket.emit('terminal-error', {
           message: 'Terminal not found',
           terminalId: data.terminalId
         });
       }
     } catch (error) {
-      console.error('Error restoring terminal:', error);
+      logger.error('Error restoring terminal:', error);
       socket.emit('terminal-error', {
         message: 'Failed to restore terminal',
         error: error.message
@@ -207,17 +209,21 @@ io.on('connection', (socket) => {
   });
 
   socket.on('terminal-input', async (data) => {
-    console.log('Received terminal input:', data.terminalId, 'input:', data.input);
+    logger.debug('Received terminal input:', data.terminalId, 'input:', data.input);
+    // Debug auto-yes inputs
+    if (data.input === '1\r' || data.input === '\r' || data.input === '1') {
+      logger.debug(`[Auto-Yes Debug] Received auto-yes input: "${data.input}" for terminal: ${data.terminalId}`);
+    }
     try {
       const terminal = terminalManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId) {
-        console.log('Writing to terminal:', data.terminalId);
+        logger.debug('Writing to terminal:', data.terminalId);
         terminal.write(data.input);
       } else {
-        console.log('Terminal not found or user mismatch:', data.terminalId, socket.userId);
+        logger.debug('Terminal not found or user mismatch:', data.terminalId, socket.userId);
       }
     } catch (error) {
-      console.error('Error writing to terminal:', error);
+      logger.error('Error writing to terminal:', error);
       socket.emit('terminal-error', {
         message: 'Failed to write to terminal',
         error: error.message
@@ -287,24 +293,24 @@ io.on('connection', (socket) => {
     try {
       const session = await sessionManager.getSession(socket.userId, data.sessionId);
       if (session) {
-        console.log('Sending session layout:', session.layout);
+        logger.debug('Sending session layout:', session.layout);
         socket.emit('session-layout', {
           sessionId: data.sessionId,
           layout: session.layout
         });
       }
     } catch (error) {
-      console.error('Failed to get session layout:', error);
+      logger.error('Failed to get session layout:', error);
     }
   });
 
   // Handle layout updates
   socket.on('update-session-layout', async (data) => {
     try {
-      console.log('Updating session layout:', data.sessionId, data.layout);
+      logger.debug('Updating session layout:', data.sessionId, data.layout);
       await sessionManager.updateSessionLayout(socket.userId, data.sessionId, data.layout);
     } catch (error) {
-      console.error('Failed to update session layout:', error);
+      logger.error('Failed to update session layout:', error);
     }
   });
   
@@ -318,7 +324,7 @@ io.on('connection', (socket) => {
         socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
       }
     } catch (error) {
-      console.error('Failed to update session name:', error);
+      logger.error('Failed to update session name:', error);
     }
   });
   
@@ -331,7 +337,7 @@ io.on('connection', (socket) => {
         socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
       }
     } catch (error) {
-      console.error('Failed to delete session:', error);
+      logger.error('Failed to delete session:', error);
     }
   });
   
@@ -342,26 +348,32 @@ io.on('connection', (socket) => {
       socket.emit('all-sessions-deleted', { count });
       socket.emit('sessions', []);
     } catch (error) {
-      console.error('Failed to delete all sessions:', error);
+      logger.error('Failed to delete all sessions:', error);
     }
   });
   
   // Create session with name
   socket.on('create-session', async (data) => {
+    logger.debug('Received create-session request:', data);
     try {
       const session = await sessionManager.createSession(socket.userId, data.name);
+      logger.debug('Session created:', session);
       socket.emit('session-created', { 
         sessionId: session.id, 
         name: session.name 
       });
       socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
     } catch (error) {
-      console.error('Failed to create session:', error);
+      logger.error('Failed to create session:', error);
+      socket.emit('session-error', { 
+        message: 'Failed to create session', 
+        error: error.message 
+      });
     }
   });
 
   socket.on('disconnect', () => {
-    console.log(`User ${socket.username} disconnected`);
+    logger.info(`User ${socket.username} disconnected`);
     
     // Clean up all terminal listeners
     if (socket.terminalListeners) {
@@ -377,12 +389,12 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3002;
 server.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.info(`Server running on port ${PORT}`);
   
   // Initialize tmux
   const hasTmux = await tmuxManager.checkTmux();
   if (!hasTmux) {
-    console.warn('WARNING: tmux not installed. Sessions will not persist!');
+    logger.error('WARNING: tmux not installed. Sessions will not persist!');
   }
   
   // Create default user if no users exist
@@ -392,8 +404,8 @@ server.listen(PORT, async () => {
     const hashedPassword = bcrypt.hashSync('test123', 10);
     const user = database.createUser('test', hashedPassword);
     if (user) {
-      console.log('Default user created: username=test, password=test123');
-      console.log('⚠️  IMPORTANT: Change the default password or create a new user!');
+      logger.info('Default user created: username=test, password=test123');
+      logger.info('⚠️  IMPORTANT: Change the default password or create a new user!');
     }
   } else if (process.env.NODE_ENV !== 'production') {
     // In development, always ensure test user exists

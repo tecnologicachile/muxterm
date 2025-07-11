@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
+const logger = require('./utils/logger');
 
 class SessionManager {
   constructor() {
@@ -19,32 +20,48 @@ class SessionManager {
   }
 
   async createSession(userId, name) {
+    logger.debug('[SessionManager] createSession called with userId:', userId, 'name:', name);
+    
+    if (!userId) {
+      throw new Error('userId is required');
+    }
+    
     const sessionId = uuidv4();
+    logger.debug('[SessionManager] Generated sessionId:', sessionId);
     
     // Create tmux session
     let tmuxSession = null;
     try {
       tmuxSession = await tmuxManager.createSession(sessionId);
+      logger.debug('[SessionManager] Tmux session created:', tmuxSession);
     } catch (error) {
-      console.error('Failed to create tmux session:', error);
+      logger.error('[SessionManager] Failed to create tmux session:', error);
+      // Continue even if tmux fails
     }
     
-    // Save to database
-    database.createSession(sessionId, userId, name, tmuxSession);
-    
-    // Update access time
-    database.updateSessionAccess(sessionId);
-    
-    // Cache it
-    this.activeSessionsCache.set(sessionId, {
-      id: sessionId,
-      userId,
-      name,
-      tmuxSession,
-      createdAt: new Date()
-    });
-    
-    return { id: sessionId, name };
+    try {
+      // Save to database
+      database.createSession(sessionId, userId, name, tmuxSession);
+      logger.debug('[SessionManager] Session saved to database');
+      
+      // Update access time
+      database.updateSessionAccess(sessionId);
+      
+      // Cache it
+      this.activeSessionsCache.set(sessionId, {
+        id: sessionId,
+        userId,
+        name,
+        tmuxSession,
+        createdAt: new Date()
+      });
+      
+      logger.debug('[SessionManager] Session created successfully');
+      return { id: sessionId, name };
+    } catch (error) {
+      logger.error('[SessionManager] Database error:', error);
+      throw error;
+    }
   }
 
   getSession(userId, sessionId) {

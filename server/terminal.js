@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
+const logger = require('./utils/logger');
 
 class TerminalManager {
   constructor() {
@@ -134,7 +135,7 @@ class TerminalManager {
           // También matar la sesión tmux
           const { exec } = require('child_process');
           exec(`tmux kill-session -t ${tmuxSessionName}`, (error) => {
-            if (error) console.log(`Error killing tmux session: ${error.message}`);
+            if (error) logger.debug(`Error killing tmux session: ${error.message}`);
           });
           // Remove from database
           database.deleteTerminal(terminalId);
@@ -142,11 +143,11 @@ class TerminalManager {
         };
 
         ptyProcess.onExit((exitCode, signal) => {
-          console.log(`Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`);
+          logger.debug(`Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`);
           const sessionManager = require('./session');
           for (const [sessionId, session] of sessionManager.sessions) {
             if (session.terminals && session.terminals.includes(terminalId)) {
-              console.log(`Removing terminal ${terminalId} from session ${sessionId}`);
+              logger.debug(`Removing terminal ${terminalId} from session ${sessionId}`);
               sessionManager.removeTerminalFromSession(session.userId, sessionId, terminalId);
               break;
             }
@@ -217,16 +218,16 @@ class TerminalManager {
     try {
       const tmuxSessions = execSync('tmux ls 2>/dev/null || true', { encoding: 'utf8' });
       if (tmuxSessions.includes(tmuxSessionName)) {
-        console.log(`Tmux session ${tmuxSessionName} exists, reattaching...`);
+        logger.debug(`Tmux session ${tmuxSessionName} exists, reattaching...`);
         // La sesión existe, reconectar con flag de restauración
         return await this.createTerminal(userId, sessionId, rows, cols, terminalId, true);
       } else {
-        console.log(`Tmux session ${tmuxSessionName} not found, creating new...`);
+        logger.debug(`Tmux session ${tmuxSessionName} not found, creating new...`);
         // La sesión no existe, crear una nueva
         return await this.createTerminal(userId, sessionId, rows, cols, terminalId, false);
       }
     } catch (error) {
-      console.log('Error checking tmux sessions:', error.message);
+      logger.debug('Error checking tmux sessions:', error.message);
       // En caso de error, crear una nueva sesión
       return await this.createTerminal(userId, sessionId, rows, cols, terminalId, false);
     }
@@ -241,7 +242,7 @@ class TerminalManager {
     for (const [id, terminal] of this.terminals) {
       const inactiveTime = now - terminal.lastActivity;
       if (inactiveTime > maxInactiveMs) {
-        console.log(`Cleaning up inactive terminal ${id}`);
+        logger.debug(`Cleaning up inactive terminal ${id}`);
         this.closeTerminal(id);
       }
     }

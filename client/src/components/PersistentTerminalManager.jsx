@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Box } from '@mui/material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
+import logger from '../utils/logger';
 
 function PersistentTerminalManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, sessionId }) {
   // Keep track of which terminals have been created
@@ -12,7 +13,7 @@ function PersistentTerminalManager({ panels, activePanel, onPanelSelect, onPanel
   useEffect(() => {
     panels.forEach(panel => {
       if (!terminalsRef.current.has(panel.id)) {
-        console.log(`[PersistentTerminalManager] New panel detected: ${panel.id}`);
+        logger.debug(`[PersistentTerminalManager] New panel detected: ${panel.id}`);
         terminalsRef.current.add(panel.id);
       }
     });
@@ -21,7 +22,7 @@ function PersistentTerminalManager({ panels, activePanel, onPanelSelect, onPanel
     const currentPanelIds = new Set(panels.map(p => p.id));
     terminalsRef.current.forEach(id => {
       if (!currentPanelIds.has(id)) {
-        console.log(`[PersistentTerminalManager] Removing terminal: ${id}`);
+        logger.debug(`[PersistentTerminalManager] Removing terminal: ${id}`);
         terminalsRef.current.delete(id);
       }
     });

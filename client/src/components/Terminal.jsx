@@ -4,6 +4,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 import 'xterm/css/xterm.css';
 import { useSocket } from '../utils/SocketContext';
+import logger from '../utils/logger';
 
 function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive, autoYes: autoYesProp = false, onAutoYesLog, panelId }) {
   const containerRef = useRef(null);
@@ -19,7 +20,12 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
   const [isMobile, setIsMobile] = useState(false);
   const lastOutputRef = useRef('');
   
-  console.log(`[Terminal Component] Render - terminalId prop: ${terminalId}, localTerminalId: ${localTerminalId}, mounted: ${mountedRef.current}`);
+  // Debug auto-yes prop
+  useEffect(() => {
+    logger.debug(`[Terminal ${panelId}] autoYesProp changed:`, autoYesProp);
+  }, [autoYesProp, panelId]);
+  
+  logger.debug(`[Terminal Component] Render - terminalId prop: ${terminalId}, localTerminalId: ${localTerminalId}, mounted: ${mountedRef.current}`);
 
   // Detect mobile device
   useEffect(() => {
@@ -36,31 +42,31 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
 
   // Initialize terminal
   useLayoutEffect(() => {
-    console.log('[Terminal] useLayoutEffect triggered, mounted:', mountedRef.current, 'isInitialized:', isInitialized, 'terminalId:', terminalId, 'localTerminalId:', localTerminalId);
-    console.log('[Terminal] Container dimensions:', containerRef.current?.offsetWidth, 'x', containerRef.current?.offsetHeight);
+    logger.debug('[Terminal] useLayoutEffect triggered, mounted:', mountedRef.current, 'isInitialized:', isInitialized, 'terminalId:', terminalId, 'localTerminalId:', localTerminalId);
+    logger.debug('[Terminal] Container dimensions:', containerRef.current?.offsetWidth, 'x', containerRef.current?.offsetHeight);
     
     if (!containerRef.current || !socket) {
-      console.log('[Terminal] Missing dependencies - container:', !!containerRef.current, 'socket:', !!socket);
+      logger.debug('[Terminal] Missing dependencies - container:', !!containerRef.current, 'socket:', !!socket);
       return;
     }
     
     // Mark as mounted
     if (!mountedRef.current) {
       mountedRef.current = true;
-      console.log('[Terminal] First mount detected');
+      logger.debug('[Terminal] First mount detected');
     }
     
     if (isInitialized && terminalRef.current) {
-      console.log('[Terminal] Already initialized with terminal instance, skipping');
+      logger.debug('[Terminal] Already initialized with terminal instance, skipping');
       return;
     }
     
     // If we already have a terminalId but no terminal instance, we need to restore
     if ((terminalId || localTerminalId) && !terminalRef.current) {
-      console.log('[Terminal] Have terminalId but no instance, will restore');
+      logger.debug('[Terminal] Have terminalId but no instance, will restore');
     }
 
-    console.log('[Terminal Init] Starting initialization - Session:', sessionId);
+    logger.debug('[Terminal Init] Starting initialization - Session:', sessionId);
     setIsInitialized(true);
 
     const term = new XTerm({
@@ -96,16 +102,16 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
     try {
       fitAddon.fit();
     } catch (e) {
-      console.warn('Initial fit failed:', e);
+      logger.debug('Initial fit failed:', e);
     }
     
     // Request terminal creation/restoration
     const existingId = localTerminalId || terminalId;
     if (!existingId) {
-      console.log('[Terminal] Requesting NEW terminal creation');
+      logger.debug('[Terminal] Requesting NEW terminal creation');
       socket.emit('create-terminal', { sessionId });
     } else {
-      console.log('[Terminal] Restoring existing terminal:', existingId);
+      logger.debug('[Terminal] Restoring existing terminal:', existingId);
       const terminalElement = containerRef.current;
       const cols = terminalElement ? Math.floor(terminalElement.offsetWidth / 9) : 80;
       const rows = terminalElement ? Math.floor(terminalElement.offsetHeight / 17) : 24;
@@ -118,7 +124,7 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
     }
 
     return () => {
-      console.log('Cleaning up terminal - terminalId:', localTerminalId);
+      logger.debug('Cleaning up terminal - terminalId:', localTerminalId);
       
       setIsInitialized(false);
       if (dataHandlerRef.current) {
@@ -140,7 +146,7 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
   useEffect(() => {
     if (!terminalRef.current || !localTerminalId || !socket) return;
 
-    console.log('Setting up data handler for:', localTerminalId);
+      logger.debug('Setting up data handler for:', localTerminalId);
     
     // Remove old handler
     if (dataHandlerRef.current) {
@@ -149,7 +155,7 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
 
     // Add new handler
     dataHandlerRef.current = terminalRef.current.onData(data => {
-      console.log('Input:', localTerminalId, 'data:', data);
+      logger.debug('Input:', localTerminalId, 'data:', data);
       socket.emit('terminal-input', { terminalId: localTerminalId, input: data });
     });
 
@@ -171,9 +177,17 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
         
         // Store last output for pattern detection
         lastOutputRef.current += data.data;
-        // Keep only last 500 chars to avoid memory issues
-        if (lastOutputRef.current.length > 500) {
-          lastOutputRef.current = lastOutputRef.current.slice(-500);
+        // Keep only last 1000 chars to avoid memory issues (increased for Claude CLI)
+        if (lastOutputRef.current.length > 1000) {
+          lastOutputRef.current = lastOutputRef.current.slice(-1000);
+        }
+        
+        // Debug logging for auto-yes
+        if (data.data.includes('Do you want to proceed')) {
+          logger.debug('[Auto-Yes Debug] Found "Do you want to proceed" in output');
+          logger.debug('[Auto-Yes Debug] autoYesProp:', autoYesProp);
+          logger.debug('[Auto-Yes Debug] Raw data:', data.data);
+          logger.debug('[Auto-Yes Debug] Buffer content:', lastOutputRef.current.slice(-500));
         }
         
         // Auto-yes detection - focused on Claude CLI
@@ -181,12 +195,77 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Clean the output for better pattern matching
           const cleanOutput = lastOutputRef.current.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
           
-          // Claude CLI specific detection
-          const claudePattern = /Do you want to proceed\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/;
+          logger.debug('[Auto-Yes] Full detection check started');
+          logger.debug('[Auto-Yes] Buffer length:', lastOutputRef.current.length);
+          logger.debug('[Auto-Yes] Clean output length:', cleanOutput.length);
           
-          if (claudePattern.test(cleanOutput)) {
-            console.log('[Auto-Yes] CLAUDE CLI DETECTED! Sending response...');
-            console.log('[Auto-Yes] Clean output:', cleanOutput);
+          // Claude CLI specific patterns
+          const patterns = [
+            {
+              name: 'Claude CLI',
+              regex: /Do you want to proceed\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/,
+              response: '1'
+            },
+            {
+              name: 'Claude CLI (lscpu)',
+              regex: /Bash command[\s\S]*?lscpu[\s\S]*?Do you want to proceed\?[\s\S]*?❯/,
+              response: '1'
+            }
+          ];
+          
+          // Additional check for broken pattern due to ANSI codes
+          const hasPrompt = cleanOutput.includes('Do you want to proceed?');
+          const hasOption = cleanOutput.includes('1.') && cleanOutput.includes('Yes');
+          const hasPointer = cleanOutput.includes('❯');
+          
+          logger.debug('[Auto-Yes] Pattern check - hasPrompt:', hasPrompt, 'hasOption:', hasOption, 'hasPointer:', hasPointer);
+          
+          // Check for specific Claude CLI pattern parts
+          const hasOneYes = cleanOutput.includes('1. Yes');
+          const hasTwoNo = cleanOutput.includes('2. No');
+          const hasArrow = cleanOutput.includes('→') || cleanOutput.includes('❯');
+          
+          logger.debug('[Auto-Yes] Alternative check - hasOneYes:', hasOneYes, 'hasTwoNo:', hasTwoNo, 'hasArrow:', hasArrow);
+          
+          // Debug: show last 300 chars of clean output if we have the prompt
+          if (hasPrompt) {
+            logger.debug('[Auto-Yes] Last 300 chars of clean output:', cleanOutput.slice(-300));
+          }
+          
+          // Show the full buffer if we have any of the key components
+          if (hasPointer || hasOption) {
+            logger.debug('[Auto-Yes] Full clean buffer (for debugging):', cleanOutput);
+          }
+          
+          // Try multiple detection methods
+          const method1 = hasPrompt && hasOption && hasPointer;
+          const method2 = hasPrompt && hasOneYes && hasTwoNo;
+          const method3 = cleanOutput.includes('Do you want to proceed?') && 
+                         cleanOutput.includes('1. Yes') && 
+                         cleanOutput.includes('2. No');
+          
+          // Check for partial matches (might be split across buffers)
+          const hasDoYouWant = cleanOutput.includes('Do you want');
+          const hasProceed = cleanOutput.includes('proceed?');
+          const hasYesOption = cleanOutput.includes('Yes');
+          const hasNumberOne = cleanOutput.includes('1.');
+          
+          logger.debug('[Auto-Yes] Detection methods - method1:', method1, 'method2:', method2, 'method3:', method3);
+          logger.debug('[Auto-Yes] Partial checks - hasDoYouWant:', hasDoYouWant, 'hasProceed:', hasProceed, 
+                     'hasYesOption:', hasYesOption, 'hasNumberOne:', hasNumberOne);
+          
+          // Method 4: Check if we have the key Claude CLI elements even without full prompt
+          const method4 = hasPointer && hasNumberOne && hasYesOption && 
+                         (cleanOutput.includes('Yes, and don\'t ask again') || 
+                          cleanOutput.includes('No, and tell Claude'));
+          
+          logger.debug('[Auto-Yes] Method 4 (partial Claude CLI):', method4);
+          
+          // Try simpler detection if any method works
+          if (method1 || method2 || method3 || method4) {
+            logger.info('[Auto-Yes] Claude CLI pattern DETECTED via method:', 
+                       method1 ? '1' : (method2 ? '2' : (method3 ? '3' : '4')));
+            logger.info('[Auto-Yes] Sending response "1" now...');
             
             // Log the auto-yes action
             if (onAutoYesLog && panelId) {
@@ -194,23 +273,62 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
             }
             
             // Send the response immediately
-            console.log('[Auto-Yes] Emitting terminal-input with "1"');
+            logger.debug('[Auto-Yes] About to send response to terminal:', localTerminalId);
             socket.emit('terminal-input', { 
               terminalId: localTerminalId, 
               input: '1\r' 
             });
             
+            logger.debug('[Auto-Yes] Response sent! Clearing buffer...');
+            
+            // Also try sending just '1' without enter
+            setTimeout(() => {
+              logger.debug('[Auto-Yes] Sending follow-up Enter key...');
+              socket.emit('terminal-input', { 
+                terminalId: localTerminalId, 
+                input: '\r' 
+              });
+            }, 100);
+            
             // Clear the buffer
             lastOutputRef.current = '';
+            return; // Exit early
+          }
+          
+          // Original pattern matching (kept as fallback)
+          for (const pattern of patterns) {
+            if (pattern.regex.test(cleanOutput)) {
+              logger.info(`[Auto-Yes] ${pattern.name} DETECTED via regex!`);
+              logger.debug('[Auto-Yes] Pattern matched:', pattern.regex);
+              
+              // Log the auto-yes action
+              if (onAutoYesLog && panelId) {
+                onAutoYesLog(panelId, cleanOutput, pattern.response);
+              }
+              
+              // Send the response immediately
+              logger.info(`[Auto-Yes] Sending response: "${pattern.response}"`);
+              socket.emit('terminal-input', { 
+                terminalId: localTerminalId, 
+                input: pattern.response + '\r' 
+              });
+              
+              // Clear the buffer after a short delay to avoid duplicate responses
+              setTimeout(() => {
+                lastOutputRef.current = '';
+              }, 500);
+              
+              break;
+            }
           }
         }
       }
     };
 
     const handleTerminalCreated = (data) => {
-      console.log('Terminal created event:', data);
+      logger.debug('Terminal created event:', data);
       if (data.sessionId === sessionId && !localTerminalId) {
-        console.log('Accepting terminal ID:', data.terminalId);
+        logger.debug('Accepting terminal ID:', data.terminalId);
         setLocalTerminalId(data.terminalId);
         if (onTerminalCreated) {
           onTerminalCreated(data.terminalId);
@@ -220,13 +338,13 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
 
     const handleTerminalRestored = (data) => {
       if (data.terminalId === localTerminalId) {
-        console.log('Terminal restored:', data.terminalId);
+        logger.debug('Terminal restored:', data.terminalId);
         socket.emit('get-terminal-buffer', { terminalId: localTerminalId });
       }
     };
 
     const handleTerminalError = (data) => {
-      console.error('Terminal error:', data);
+      logger.error('Terminal error:', data);
     };
 
     socket.on('terminal-output', handleTerminalOutput);
@@ -255,11 +373,11 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Don't fit if container is too small (avoid clearing terminal)
           const rect = containerRef.current.getBoundingClientRect();
           if (rect.width < 50 || rect.height < 50) {
-            console.log('[Terminal] Container too small, skipping resize:', rect.width, 'x', rect.height);
+            logger.debug('[Terminal] Container too small, skipping resize:', rect.width, 'x', rect.height);
             return;
           }
           
-          console.log('[Terminal] Handling resize for terminal:', localTerminalId, 'size:', rect.width, 'x', rect.height);
+          logger.debug('[Terminal] Handling resize for terminal:', localTerminalId, 'size:', rect.width, 'x', rect.height);
           fitAddonRef.current.fit();
           const { cols, rows } = terminalRef.current;
           socket.emit('resize-terminal', { terminalId: localTerminalId, cols, rows });
@@ -267,7 +385,7 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Force xterm to refresh/redraw
           terminalRef.current.refresh(0, terminalRef.current.rows - 1);
         } catch (error) {
-          console.warn('Resize error:', error);
+          logger.debug('Resize error:', error);
         }
       }
     };
@@ -359,6 +477,26 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
         minWidth: '100px'
       }} 
     >
+      {autoYesProp && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '4px',
+            right: '4px',
+            backgroundColor: '#00ff00',
+            color: '#000',
+            padding: '2px 6px',
+            borderRadius: '3px',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            zIndex: 10,
+            fontFamily: 'monospace'
+          }}
+          title="Auto-Yes is ON for Claude CLI prompts"
+        >
+          AUTO-YES: CLAUDE CLI
+        </div>
+      )}
       {isMobile && (
         <input
           ref={mobileInputRef}

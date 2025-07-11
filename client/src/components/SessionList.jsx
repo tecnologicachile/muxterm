@@ -31,6 +31,7 @@ import {
 import { useAuth } from '../utils/AuthContext';
 import { useSocket } from '../utils/SocketContext';
 import { v4 as uuidv4 } from 'uuid';
+import logger from '../utils/logger';
 
 function SessionList() {
   const navigate = useNavigate();
@@ -61,14 +62,26 @@ function SessionList() {
   }, [socket]);
 
   const handleCreateSession = () => {
+    logger.debug('Creating session, socket:', socket);
     if (socket) {
       const name = sessionName || `Session ${new Date().toLocaleDateString()}`;
+      logger.debug('Emitting create-session with name:', name);
       socket.emit('create-session', { name });
+      
       socket.once('session-created', (data) => {
+        logger.debug('Session created:', data);
         setCreateDialogOpen(false);
         setSessionName('');
         navigate(`/terminal/${data.sessionId}`);
       });
+      
+      socket.once('session-error', (error) => {
+        logger.error('Session creation error:', error);
+        alert('Failed to create session: ' + error.message);
+      });
+    } else {
+      logger.error('Socket not connected!');
+      alert('Socket not connected. Please refresh the page.');
     }
   };
 
