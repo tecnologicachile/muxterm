@@ -31,6 +31,7 @@ function VersionIndicator() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [lastCheck, setLastCheck] = useState(null);
+  const [checkMessage, setCheckMessage] = useState('');
 
   useEffect(() => {
     // Check on mount
@@ -41,21 +42,34 @@ function VersionIndicator() {
     return () => clearInterval(interval);
   }, []);
 
-  const checkForUpdates = async () => {
+  const checkForUpdates = async (isManual = false) => {
     setChecking(true);
+    setCheckMessage('');
     try {
       const response = await axios.get('/api/update-check');
       if (response.data.update) {
         setUpdateInfo(response.data.update);
         logger.info('Update available:', response.data.update);
+        if (isManual) {
+          setCheckMessage(`¡Nueva versión ${response.data.update.latest} disponible!`);
+        }
       } else {
         setUpdateInfo(null);
+        if (isManual) {
+          setCheckMessage('MuxTerm está actualizado ✓');
+        }
       }
       setLastCheck(new Date());
     } catch (error) {
       logger.error('Failed to check for updates:', error);
+      if (isManual) {
+        setCheckMessage('Error al verificar actualizaciones');
+      }
     } finally {
       setChecking(false);
+      if (isManual) {
+        setTimeout(() => setCheckMessage(''), 3000);
+      }
     }
   };
 
@@ -156,9 +170,33 @@ function VersionIndicator() {
                 Última verificación: {lastCheck.toLocaleTimeString()}
               </Typography>
             )}
+            
+            {checkMessage && (
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  mt: 1, 
+                  p: 1, 
+                  bgcolor: checkMessage.includes('Error') ? 'error.main' : 
+                           checkMessage.includes('actualizado') ? 'success.main' : 'warning.main',
+                  color: 'white',
+                  borderRadius: 1,
+                  textAlign: 'center'
+                }}
+              >
+                {checkMessage}
+              </Typography>
+            )}
           </Paper>
         </DialogContent>
         <DialogActions>
+          <Button 
+            onClick={() => checkForUpdates(true)}
+            disabled={checking}
+            startIcon={checking ? <CircularProgress size={16} /> : <UpdateIcon />}
+          >
+            {checking ? 'Verificando...' : 'Buscar Actualizaciones'}
+          </Button>
           <Button onClick={() => setDialogOpen(false)}>
             Cerrar
           </Button>
