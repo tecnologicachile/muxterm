@@ -744,7 +744,195 @@ main() {
     
     setup_nginx
     check_tmux
+    
+    # Offer Windows autostart configuration for WSL users
+    configure_windows_autostart
+    
     print_success
+}
+
+configure_windows_autostart() {
+    # Only proceed if we're in WSL and systemd is available
+    if [[ -z "$WSL_DISTRO_NAME" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
+        return
+    fi
+    
+    # Check if systemd is available
+    if ! command -v systemctl &> /dev/null; then
+        return
+    fi
+    
+    # Check if we can execute commands from Windows
+    if ! command -v wsl.exe &> /dev/null || ! command -v powershell.exe &> /dev/null; then
+        return
+    fi
+    
+    echo
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${YELLOW}WSL Windows Integration${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    
+    if [ "$NON_INTERACTIVE" = "true" ]; then
+        echo -e "${YELLOW}Skipping Windows autostart configuration (non-interactive mode)${NC}"
+        return
+    fi
+    
+    echo -e "${YELLOW}Would you like MuxTerm to start automatically when Windows boots?${NC}"
+    echo -e "This will create a Windows scheduled task to start WSL and MuxTerm"
+    echo
+    read -p "Configure Windows autostart? (y/N): " -n 1 -r
+    echo
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        setup_windows_task
+    else
+        echo -e "${YELLOW}Skipping Windows autostart configuration${NC}"
+        echo -e "You can run 'muxterm configure-windows-autostart' later to set this up"
+    fi
+}
+
+setup_windows_task() {
+    echo -e "${BLUE}Setting up Windows autostart...${NC}"
+    
+    # Get WSL distribution name
+    WSL_DISTRO="${WSL_DISTRO_NAME:-$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')}"
+    
+    # Verify we can run systemctl from Windows
+    echo -e "${BLUE}Verifying WSL integration...${NC}"
+    if ! wsl.exe -d "$WSL_DISTRO" -u root bash -c "systemctl --version" &>/dev/null; then
+        echo -e "${RED}Cannot execute systemctl from Windows${NC}"
+        echo -e "${YELLOW}This might be due to WSL1 or systemd not being enabled${NC}"
+        create_startup_batch
+        return
+    fi
+    
+    # Create PowerShell script
+    cat > /tmp/muxterm-autostart.ps1 << EOF
+\$ErrorActionPreference = "Stop"
+\$taskName = "MuxTerm-AutoStart"
+\$wslDistro = "$WSL_DISTRO"
+
+Write-Host "Creating MuxTerm autostart task..." -ForegroundColor Blue
+
+try {
+    # Check if running as administrator
+    \$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    \$isAdmin = \$currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    
+    # Remove existing task if present
+    \$existingTask = Get-ScheduledTask -TaskName \$taskName -ErrorAction SilentlyContinue
+    if (\$existingTask) {
+        Write-Host "Removing existing task..." -ForegroundColor Yellow
+        Unregister-ScheduledTask -TaskName \$taskName -Confirm:\$false
+    }
+    
+    # Create the action
+    \$action = New-ScheduledTaskAction -Execute "wsl.exe" \`
+        -Argument "-d \$wslDistro -u root -- systemctl start muxterm"
+    
+    # Create trigger for Windows startup
+    \$trigger = New-ScheduledTaskTrigger -AtStartup
+    
+    # Create settings
+    \$settings = New-ScheduledTaskSettingsSet \`
+        -AllowStartIfOnBatteries \`
+        -DontStopIfGoingOnBatteries \`
+        -StartWhenAvailable \`
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 5) \`
+        -RestartCount 3 \`
+        -RestartInterval (New-TimeSpan -Minutes 1)
+    
+    if (\$isAdmin) {
+        # If admin, create with highest privileges
+        \$principal = New-ScheduledTaskPrincipal \`
+            -UserId "\$env:USERNAME" \`
+            -LogonType ServiceAccount \`
+            -RunLevel Highest
+    } else {
+        # If not admin, create with limited privileges
+        \$principal = New-ScheduledTaskPrincipal \`
+            -UserId "\$env:USERNAME" \`
+            -LogonType InteractiveToken
+    }
+    
+    # Register the task
+    \$task = Register-ScheduledTask \`
+        -TaskName \$taskName \`
+        -Action \$action \`
+        -Trigger \$trigger \`
+        -Settings \$settings \`
+        -Principal \$principal \`
+        -Description "Starts MuxTerm service in WSL on Windows startup"
+    
+    Write-Host "MuxTerm autostart task created successfully!" -ForegroundColor Green
+    Write-Host "The task will run at next Windows startup" -ForegroundColor Green
+    
+} catch {
+    Write-Host "Failed to create scheduled task: \$_" -ForegroundColor Red
+    exit 1
+}
+EOF
+    
+    # Execute PowerShell script
+    if powershell.exe -ExecutionPolicy Bypass -File "\\\\wsl\$\\$WSL_DISTRO\\tmp\\muxterm-autostart.ps1" 2>/dev/null; then
+        echo -e "${GREEN}✓ Windows scheduled task created successfully!${NC}"
+        echo -e "${GREEN}✓ MuxTerm will start automatically when Windows boots${NC}"
+        echo
+        echo -e "${YELLOW}To remove this task later, run:${NC}"
+        echo -e "  powershell.exe -Command \"Unregister-ScheduledTask -TaskName 'MuxTerm-AutoStart' -Confirm:\\\$false\""
+        echo
+    else
+        echo -e "${YELLOW}Could not create scheduled task with current permissions${NC}"
+        echo -e "${YELLOW}Trying alternative method...${NC}"
+        create_startup_batch
+    fi
+    
+    # Clean up
+    rm -f /tmp/muxterm-autostart.ps1
+}
+
+create_startup_batch() {
+    echo -e "${BLUE}Creating startup batch file...${NC}"
+    
+    # Get Windows startup folder
+    local startup_folder
+    startup_folder=$(powershell.exe -Command 'echo $env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup' 2>/dev/null | tr -d '\r\n')
+    
+    if [ -z "$startup_folder" ]; then
+        echo -e "${RED}Could not determine Windows startup folder${NC}"
+        return 1
+    fi
+    
+    # Convert to WSL path
+    local wsl_startup
+    wsl_startup=$(wslpath "$startup_folder" 2>/dev/null)
+    
+    if [ ! -d "$wsl_startup" ]; then
+        echo -e "${RED}Cannot access Windows startup folder from WSL${NC}"
+        return 1
+    fi
+    
+    # Create batch file
+    local batch_file="$wsl_startup/MuxTerm-Start.bat"
+    cat > "$batch_file" << EOF
+@echo off
+title Starting MuxTerm...
+wsl -d ${WSL_DISTRO_NAME} -u root -- bash -c "systemctl start muxterm 2>/dev/null || echo MuxTerm service not found"
+exit
+EOF
+    
+    if [ -f "$batch_file" ]; then
+        echo -e "${GREEN}✓ Startup batch file created successfully!${NC}"
+        echo -e "${GREEN}✓ MuxTerm will start when you log into Windows${NC}"
+        echo -e "${YELLOW}Note: A console window will appear briefly at startup${NC}"
+        echo
+        echo -e "${YELLOW}To remove autostart later, delete:${NC}"
+        echo -e "  $batch_file"
+        echo
+    else
+        echo -e "${RED}Failed to create startup batch file${NC}"
+        return 1
+    fi
 }
 
 # Run main with all arguments

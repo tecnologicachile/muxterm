@@ -68,15 +68,40 @@ case "$1" in
         fi
         ;;
         
+    configure-windows-autostart)
+        # Check if we're in WSL
+        if [[ -z "$WSL_DISTRO_NAME" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
+            print_color "Error: This command is only available in WSL" "$RED"
+            exit 1
+        fi
+        
+        MUXTERM_DIR=$(find_muxterm_dir)
+        if [ -z "$MUXTERM_DIR" ]; then
+            print_color "Error: MuxTerm installation not found" "$RED"
+            exit 1
+        fi
+        
+        # Source the installer functions
+        if [ -f "$MUXTERM_DIR/install.sh" ]; then
+            # Extract just the functions we need
+            source <(sed -n '/^configure_windows_autostart()/,/^}/p; /^setup_windows_task()/,/^}/p; /^create_startup_batch()/,/^}/p' "$MUXTERM_DIR/install.sh")
+            configure_windows_autostart
+        else
+            print_color "Error: Configuration script not found" "$RED"
+            exit 1
+        fi
+        ;;
+        
     help|--help|-h|"")
         print_color "MuxTerm - Web-based Terminal Multiplexer" "$BLUE"
         echo ""
         echo "Usage: muxterm [command]"
         echo ""
         echo "Commands:"
-        echo "  update     Check for updates and install if available"
-        echo "  version    Show current MuxTerm version"
-        echo "  help       Show this help message"
+        echo "  update                      Check for updates and install if available"
+        echo "  version                     Show current MuxTerm version"
+        echo "  configure-windows-autostart Configure Windows autostart (WSL only)"
+        echo "  help                        Show this help message"
         echo ""
         echo "For more information, visit: https://github.com/tecnologicachile/muxterm"
         ;;
