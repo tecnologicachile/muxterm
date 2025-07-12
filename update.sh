@@ -25,13 +25,20 @@ print_color() {
 
 # Function to check dependencies
 check_dependencies() {
-    local deps=("curl" "git" "npm")
+    local deps=("curl" "git" "npm" "node")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             print_color "Error: $dep is not installed" "$RED"
             exit 1
         fi
     done
+    
+    # Check Node.js version
+    local node_version=$(node -v | cut -d'v' -f2)
+    local major_version=$(echo "$node_version" | cut -d'.' -f1)
+    if [ "$major_version" -lt 14 ]; then
+        print_color "Warning: Node.js version is $node_version. Version 14+ recommended" "$YELLOW"
+    fi
 }
 
 # Function to get latest version
@@ -139,15 +146,38 @@ main() {
         rm -rf "/tmp/muxterm-$LATEST_VERSION.tar.gz" "/tmp/muxterm-${LATEST_VERSION#v}"
     fi
     
-    # Install dependencies
-    print_color "\nInstalling dependencies..." "$YELLOW"
+    # Install backend dependencies
+    print_color "\nInstalling backend dependencies..." "$YELLOW"
     npm install --production
     
     # Build client
     print_color "\nBuilding client..." "$YELLOW"
     cd client
-    npm install
+    
+    # Check if node_modules exists and if package.json has changed
+    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
+        print_color "Installing client dependencies..." "$BLUE"
+        npm install
+    fi
+    
+    # Always rebuild to ensure latest version
+    print_color "Compiling frontend..." "$BLUE"
     npm run build
+    
+    if [ $? -eq 0 ]; then
+        print_color "✓ Frontend compiled successfully" "$GREEN"
+        
+        # Verify dist directory was created
+        if [ -d "dist" ] && [ -f "dist/index.html" ]; then
+            print_color "✓ Frontend files verified" "$GREEN"
+        else
+            print_color "⚠ Warning: dist directory may be incomplete" "$YELLOW"
+        fi
+    else
+        print_color "✗ Frontend compilation failed" "$RED"
+        print_color "You may need to compile manually: cd client && npm run build" "$YELLOW"
+    fi
+    
     cd ..
     
     # Restore data

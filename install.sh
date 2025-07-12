@@ -411,38 +411,91 @@ EOF
         
         # Method 2: Add to /etc/profile.d (for login shells)
         if [ -d /etc/profile.d ]; then
-            echo 'export PATH="/usr/local/bin:$PATH"' | $USE_SUDO tee /etc/profile.d/muxterm-path.sh > /dev/null
+            cat > /tmp/muxterm-path.sh << 'EOF'
+#!/bin/sh
+# MuxTerm PATH configuration
+if [ -z "${PATH##*/usr/local/bin*}" ]; then
+    :  # /usr/local/bin is already in PATH
+else
+    export PATH="/usr/local/bin:$PATH"
+fi
+EOF
+            $USE_SUDO cp /tmp/muxterm-path.sh /etc/profile.d/muxterm-path.sh
             $USE_SUDO chmod +x /etc/profile.d/muxterm-path.sh
+            rm -f /tmp/muxterm-path.sh
             echo -e "${GREEN}Created /etc/profile.d/muxterm-path.sh${NC}"
         fi
         
         # Method 3: Add to /etc/bash.bashrc (for non-login shells in containers)
         if [ -f /etc/bash.bashrc ]; then
-            if ! grep -q "/usr/local/bin" /etc/bash.bashrc 2>/dev/null; then
+            if ! grep -q "PATH=.*\/usr\/local\/bin" /etc/bash.bashrc 2>/dev/null; then
+                echo '' | $USE_SUDO tee -a /etc/bash.bashrc > /dev/null
+                echo '# MuxTerm PATH configuration' | $USE_SUDO tee -a /etc/bash.bashrc > /dev/null
                 echo 'export PATH="/usr/local/bin:$PATH"' | $USE_SUDO tee -a /etc/bash.bashrc > /dev/null
                 echo -e "${GREEN}Updated /etc/bash.bashrc${NC}"
             fi
         fi
         
-        # Method 4: Add to root's bashrc (for direct root login)
+        # Method 4: Add to /etc/profile (fallback for systems without profile.d)
+        if [ -f /etc/profile ] && [ ! -d /etc/profile.d ]; then
+            if ! grep -q "PATH=.*\/usr\/local\/bin" /etc/profile 2>/dev/null; then
+                echo '' | $USE_SUDO tee -a /etc/profile > /dev/null
+                echo '# MuxTerm PATH configuration' | $USE_SUDO tee -a /etc/profile > /dev/null
+                echo 'export PATH="/usr/local/bin:$PATH"' | $USE_SUDO tee -a /etc/profile > /dev/null
+                echo -e "${GREEN}Updated /etc/profile${NC}"
+            fi
+        fi
+        
+        # Method 5: Add to root's bashrc (for direct root login)
         if [ "$EUID" -eq 0 ] || [ "$USER" = "root" ]; then
-            if ! grep -q "/usr/local/bin" /root/.bashrc 2>/dev/null; then
+            # Ensure root's .bashrc exists
+            [ ! -f /root/.bashrc ] && touch /root/.bashrc
+            if ! grep -q "PATH=.*\/usr\/local\/bin" /root/.bashrc 2>/dev/null; then
+                echo '' >> /root/.bashrc
+                echo '# MuxTerm PATH configuration' >> /root/.bashrc
                 echo 'export PATH="/usr/local/bin:$PATH"' >> /root/.bashrc
                 echo -e "${GREEN}Updated /root/.bashrc${NC}"
             fi
         fi
         
-        # Method 5: Add to current user's bashrc
-        if [ -n "$HOME" ] && [ "$HOME" != "/" ]; then
-            if ! grep -q "/usr/local/bin" "$HOME/.bashrc" 2>/dev/null; then
+        # Method 6: Add to root's .profile (for sh login shells)
+        if [ "$EUID" -eq 0 ] || [ "$USER" = "root" ]; then
+            if [ -f /root/.profile ] && ! grep -q "PATH=.*\/usr\/local\/bin" /root/.profile 2>/dev/null; then
+                echo '' >> /root/.profile
+                echo '# MuxTerm PATH configuration' >> /root/.profile
+                echo 'export PATH="/usr/local/bin:$PATH"' >> /root/.profile
+                echo -e "${GREEN}Updated /root/.profile${NC}"
+            fi
+        fi
+        
+        # Method 7: Add to current user's bashrc
+        if [ -n "$HOME" ] && [ "$HOME" != "/" ] && [ "$HOME" != "/root" ]; then
+            if [ -f "$HOME/.bashrc" ] && ! grep -q "PATH=.*\/usr\/local\/bin" "$HOME/.bashrc" 2>/dev/null; then
+                echo '' >> "$HOME/.bashrc"
+                echo '# MuxTerm PATH configuration' >> "$HOME/.bashrc"
                 echo 'export PATH="/usr/local/bin:$PATH"' >> "$HOME/.bashrc"
                 echo -e "${GREEN}Updated $HOME/.bashrc${NC}"
             fi
         fi
         
+        # Method 8: Create /etc/bashrc symlink if needed (some systems use this)
+        if [ ! -f /etc/bashrc ] && [ -f /etc/bash.bashrc ]; then
+            $USE_SUDO ln -sf /etc/bash.bashrc /etc/bashrc 2>/dev/null || true
+        fi
+        
         # Export for current session
         export PATH="/usr/local/bin:$PATH"
         echo -e "${GREEN}PATH updated for current session${NC}"
+        
+        # Force reload bash configuration for root in containers
+        if [ "$IS_DOCKER" = true ] || [ "$IS_LXC" = true ]; then
+            if [ -f /root/.bashrc ]; then
+                # Source it without errors
+                set +e
+                source /root/.bashrc 2>/dev/null || true
+                set -e
+            fi
+        fi
     else
         echo -e "${YELLOW}muxterm command script not found${NC}"
     fi
@@ -725,24 +778,42 @@ print_success() {
     fi
     # Check if muxterm is in PATH
     if ! command -v muxterm &> /dev/null; then
-        echo "  Update:  /usr/local/bin/muxterm update"
-        echo
-        echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}⚠  IMPORTANT: 'muxterm' command is not yet in your PATH${NC}"
-        echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
-        echo
-        echo -e "${YELLOW}Run ONE of these commands to fix:${NC}"
-        echo
-        echo -e "${GREEN}1. Source bashrc (recommended):${NC}"
-        echo -e "   source ~/.bashrc"
-        echo
-        echo -e "${GREEN}2. Export PATH (temporary):${NC}"
-        echo -e "   export PATH=\"/usr/local/bin:\$PATH\""
-        echo
-        echo -e "${GREEN}3. Start new shell:${NC}"
-        echo -e "   exec bash"
-        echo
-        echo -e "${YELLOW}Then you can use: ${GREEN}muxterm update${NC}"
+        # Try to make it available immediately
+        export PATH="/usr/local/bin:$PATH"
+        
+        # Check again
+        if ! command -v muxterm &> /dev/null; then
+            echo "  Update:  /usr/local/bin/muxterm update"
+            echo
+            echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+            echo -e "${YELLOW}⚠  IMPORTANT: 'muxterm' command is not yet in your PATH${NC}"
+            echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+            echo
+            echo -e "${YELLOW}The PATH has been configured in multiple locations:${NC}"
+            echo -e "  - /etc/environment"
+            echo -e "  - /etc/profile.d/muxterm-path.sh"
+            echo -e "  - /etc/bash.bashrc"
+            echo -e "  - ~/.bashrc"
+            echo
+            echo -e "${YELLOW}To activate it, run ONE of these commands:${NC}"
+            echo
+            echo -e "${GREEN}Option 1 - Reload shell configuration:${NC}"
+            echo -e "   source ~/.bashrc"
+            echo
+            echo -e "${GREEN}Option 2 - Start a new shell session:${NC}"
+            echo -e "   exec bash"
+            echo
+            echo -e "${GREEN}Option 3 - For immediate use only:${NC}"
+            echo -e "   export PATH=\"/usr/local/bin:\$PATH\""
+            echo
+            echo -e "${YELLOW}After that, you can use: ${GREEN}muxterm update${NC}"
+            echo
+            echo -e "${BLUE}Note: In containers, you may need to logout and login again${NC}"
+        else
+            echo "  Update:  muxterm update"
+            echo
+            echo -e "${GREEN}✓ PATH configured successfully!${NC}"
+        fi
     else
         echo "  Update:  muxterm update"
     fi

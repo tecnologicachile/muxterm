@@ -30,13 +30,36 @@ print_color "Log file: $LOG_FILE" "$YELLOW"
 cd "$SCRIPT_DIR"
 
 # Run the update script with auto-yes
-echo "y" | bash update.sh > "$LOG_FILE" 2>&1
+echo "y" | bash update.sh > "$LOG_FILE" 2>&1 &
+UPDATE_PID=$!
+
+# Show progress
+print_color "Update in progress..." "$YELLOW"
+while kill -0 $UPDATE_PID 2>/dev/null; do
+    echo -n "."
+    sleep 2
+done
+echo
+
+# Wait for process to complete and get exit code
+wait $UPDATE_PID
+UPDATE_EXIT_CODE=$?
 
 # Check if update was successful
-if [ $? -eq 0 ]; then
+if [ $UPDATE_EXIT_CODE -eq 0 ]; then
     print_color "✓ Update completed successfully!" "$GREEN"
     print_color "The service will restart automatically." "$YELLOW"
+    
+    # Show key log entries
+    if grep -q "Frontend compiled successfully" "$LOG_FILE"; then
+        print_color "✓ Frontend compiled" "$GREEN"
+    elif grep -q "Frontend compilation failed" "$LOG_FILE"; then
+        print_color "⚠ Frontend compilation failed - check log" "$RED"
+    fi
 else
     print_color "✗ Update failed. Check log file: $LOG_FILE" "$RED"
+    # Show last few error lines
+    print_color "\nLast errors:" "$YELLOW"
+    tail -n 10 "$LOG_FILE" | grep -E "(Error|Failed|Warning)" || tail -n 5 "$LOG_FILE"
     exit 1
 fi
