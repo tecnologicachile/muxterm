@@ -283,6 +283,14 @@ function TerminalView() {
       [panelId]: (prev[panelId] || 0) + 1
     }));
   };
+  
+  const handleAutoYesReset = (panelId) => {
+    // Reset counter for this panel
+    setAutoYesCounts(prev => ({
+      ...prev,
+      [panelId]: 0
+    }));
+  };
 
 
   return (
@@ -382,6 +390,7 @@ function TerminalView() {
               ));
             }}
             onAutoYesLog={handleAutoYesLog}
+            onAutoYesReset={handleAutoYesReset}
             autoYesCounts={autoYesCounts}
           />
         ) : null}

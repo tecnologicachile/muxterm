@@ -10,6 +10,7 @@ export const useSocket = () => useContext(SocketContext);
 export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [isReconnected, setIsReconnected] = useState(false);
   const { token } = useAuth();
 
   useEffect(() => {
@@ -18,13 +19,21 @@ export const SocketProvider = ({ children }) => {
         auth: { token },
         transports: ['websocket'],
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
       });
 
       newSocket.on('connect', () => {
         logger.debug('Socket connected');
         setConnected(true);
+      });
+
+      newSocket.on('reconnect', () => {
+        logger.info('Socket reconnected after connection loss');
+        setIsReconnected(true);
+        // Reset the flag after a short delay to trigger restoration
+        setTimeout(() => setIsReconnected(false), 100);
       });
 
       newSocket.on('disconnect', () => {
@@ -51,7 +60,8 @@ export const SocketProvider = ({ children }) => {
 
   const value = {
     socket,
-    connected
+    connected,
+    isReconnected
   };
 
   return (

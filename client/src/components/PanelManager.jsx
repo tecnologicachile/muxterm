@@ -10,7 +10,7 @@ import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, sessionId, onAutoYesLog, autoYesCounts }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, sessionId, onAutoYesLog, onAutoYesReset, autoYesCounts }) {
   // Track auto-yes state for each panel
   const [autoYesStates, setAutoYesStates] = useState({});
   
@@ -69,10 +69,15 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();
+                  const newState = !autoYesStates[panel.id];
                   setAutoYesStates(prev => ({
                     ...prev,
-                    [panel.id]: !prev[panel.id]
+                    [panel.id]: newState
                   }));
+                  // Reset counter when deactivating
+                  if (!newState && onAutoYesReset) {
+                    onAutoYesReset(panel.id);
+                  }
                 }}
                 sx={{ 
                   padding: '2px',

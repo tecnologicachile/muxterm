@@ -11,7 +11,7 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
   const containerRef = useRef(null);
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
-  const { socket } = useSocket();
+  const { socket, isReconnected } = useSocket();
   const [localTerminalId, setLocalTerminalId] = useState(terminalId);
   const [isInitialized, setIsInitialized] = useState(false);
   const dataHandlerRef = useRef(null);
@@ -177,6 +177,28 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
     };
   }, [socket, localTerminalId]);
 
+  // Handle reconnection
+  useEffect(() => {
+    if (isReconnected && localTerminalId && socket && terminalRef.current) {
+      logger.info(`[Terminal] Detected reconnection, restoring terminal ${localTerminalId}`);
+      
+      // Get current terminal dimensions
+      const terminalElement = containerRef.current;
+      const cols = terminalElement ? Math.floor(terminalElement.offsetWidth / 9) : 80;
+      const rows = terminalElement ? Math.floor(terminalElement.offsetHeight / 17) : 24;
+      
+      // Emit restore-terminal event to reconnect to existing tmux session
+      socket.emit('restore-terminal', { 
+        terminalId: localTerminalId, 
+        sessionId,
+        cols,
+        rows
+      });
+      
+      logger.debug(`[Terminal] Emitted restore-terminal for ${localTerminalId}`);
+    }
+  }, [isReconnected, localTerminalId, socket, sessionId]);
+
   // Socket event handlers
   useEffect(() => {
     if (!socket) return;
@@ -293,28 +315,33 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           if (method1 || method2 || method3 || method4 || method5) {
             logger.info('[Auto-Yes] Claude CLI pattern DETECTED via method:', 
                        method1 ? '1' : (method2 ? '2' : (method3 ? '3' : (method4 ? '4' : '5'))));
-            logger.info('[Auto-Yes] Sending response "1" now...');
+            logger.info('[Auto-Yes] Waiting 1 second before sending response...');
             
-            // Log the auto-yes action
-            if (onAutoYesLog && panelId) {
-              onAutoYesLog(panelId, cleanOutput, '1');
-            }
+            // Wait 1 second before responding
+            setTimeout(() => {
+              logger.info('[Auto-Yes] Sending response "1" now...');
+              
+              // Log the auto-yes action
+              if (onAutoYesLog && panelId) {
+                onAutoYesLog(panelId, cleanOutput, '1');
+              }
+              
+              // Send the response
+              logger.debug('[Auto-Yes] About to send response to terminal:', localTerminalId);
+              socket.emit('terminal-input', { 
+                terminalId: localTerminalId, 
+                input: '1\r' 
+              });
+            }, 1000);
             
-            // Send the response immediately
-            logger.debug('[Auto-Yes] About to send response to terminal:', localTerminalId);
-            socket.emit('terminal-input', { 
-              terminalId: localTerminalId, 
-              input: '1\r' 
-            });
-            
-            // Send an additional Enter after a short delay (as it was working before)
+            // Send an additional Enter after the main response
             setTimeout(() => {
               logger.debug('[Auto-Yes] Sending additional Enter key');
               socket.emit('terminal-input', { 
                 terminalId: localTerminalId, 
                 input: '\r' 
               });
-            }, 100);
+            }, 1100); // 100ms after the main response
             
             logger.debug('[Auto-Yes] Response sent! Clearing buffer...');
             
@@ -329,26 +356,31 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
               logger.info(`[Auto-Yes] ${pattern.name} DETECTED via regex!`);
               logger.debug('[Auto-Yes] Pattern matched:', pattern.regex);
               
-              // Log the auto-yes action
-              if (onAutoYesLog && panelId) {
-                onAutoYesLog(panelId, cleanOutput, pattern.response);
-              }
+              logger.info(`[Auto-Yes] Waiting 1 second before sending response...`);
               
-              // Send the response immediately
-              logger.info(`[Auto-Yes] Sending response: "${pattern.response}"`);
-              socket.emit('terminal-input', { 
-                terminalId: localTerminalId, 
-                input: pattern.response + '\r' 
-              });
+              // Wait 1 second before responding
+              setTimeout(() => {
+                // Log the auto-yes action
+                if (onAutoYesLog && panelId) {
+                  onAutoYesLog(panelId, cleanOutput, pattern.response);
+                }
+                
+                // Send the response
+                logger.info(`[Auto-Yes] Sending response: "${pattern.response}"`);
+                socket.emit('terminal-input', { 
+                  terminalId: localTerminalId, 
+                  input: pattern.response + '\r' 
+                });
+              }, 1000);
               
-              // Send an additional Enter after a short delay
+              // Send an additional Enter after the main response
               setTimeout(() => {
                 logger.debug('[Auto-Yes] Sending additional Enter key (regex method)');
                 socket.emit('terminal-input', { 
                   terminalId: localTerminalId, 
                   input: '\r' 
                 });
-              }, 100);
+              }, 1100); // 100ms after the main response
               
               // Clear the buffer after a short delay to avoid duplicate responses
               setTimeout(() => {

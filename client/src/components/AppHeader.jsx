@@ -5,15 +5,19 @@ import {
   Typography, 
   Box,
   IconButton,
-  Divider
+  Divider,
+  Chip
 } from '@mui/material';
 import { 
   Terminal as TerminalIcon,
   ArrowBack as BackIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  WifiOff as WifiOffIcon,
+  Wifi as WifiIcon
 } from '@mui/icons-material';
 import VersionIndicator from './VersionIndicator';
 import GitHubStars from './GitHubStars';
+import { useSocket } from '../utils/SocketContext';
 
 function AppHeader({ 
   mode = 'sessions', // 'sessions' | 'terminal'
@@ -25,6 +29,7 @@ function AppHeader({
   centerContent,
   rightContent
 }) {
+  const { connected } = useSocket();
   return (
     <AppBar position="static" elevation={2}>
       <Toolbar variant="dense" sx={{ minHeight: 48, px: 2 }}>
@@ -106,6 +111,21 @@ function AppHeader({
           justifyContent: 'flex-end'
         }}>
           {rightContent}
+          
+          {/* Connection Status */}
+          <Chip
+            icon={connected ? <WifiIcon /> : <WifiOffIcon />}
+            label={connected ? "Connected" : "Reconnecting..."}
+            size="small"
+            color={connected ? "success" : "warning"}
+            sx={{ 
+              height: 24,
+              fontSize: '0.75rem',
+              '& .MuiChip-icon': {
+                fontSize: 16
+              }
+            }}
+          />
           
           <GitHubStars />
           
