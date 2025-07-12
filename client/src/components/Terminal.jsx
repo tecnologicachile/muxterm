@@ -223,18 +223,8 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Claude CLI specific patterns
           const patterns = [
             {
-              name: 'Claude CLI - General',
-              regex: /Do you want to (?:proceed|make this edit[^?]*)\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/,
-              response: '1'
-            },
-            {
-              name: 'Claude CLI - File Edit',
-              regex: /Do you want to make this edit to [^?]+\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/,
-              response: '1'
-            },
-            {
-              name: 'Claude CLI (lscpu)',
-              regex: /Bash command[\s\S]*?lscpu[\s\S]*?Do you want to proceed\?[\s\S]*?❯/,
+              name: 'Claude CLI - Universal',
+              regex: /Do you want[\s\S]*?❯[\s\S]*?1\. Yes/,
               response: '1'
             }
           ];
@@ -248,7 +238,8 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Specific Claude CLI indicators
           const hasClaudeOptions = cleanOutput.includes('1. Yes') && 
                                   (cleanOutput.includes('2. No') || 
-                                   cleanOutput.includes("2. Yes, and don't ask again"));
+                                   cleanOutput.includes("2. Yes, and don't ask again") ||
+                                   cleanOutput.includes("and don't ask again for"));
           
           logger.debug('[Auto-Yes] Pattern check - hasPrompt:', hasPrompt, 'hasOption:', hasOption, 'hasPointer:', hasPointer);
           
@@ -293,7 +284,8 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Method 5: Check if we have the key Claude CLI elements even without full prompt
           const method5 = hasPointer && hasNumberOne && hasYesOption && 
                          (cleanOutput.includes('Yes, and don\'t ask again') || 
-                          cleanOutput.includes('No, and tell Claude'));
+                          cleanOutput.includes('No, and tell Claude') ||
+                          cleanOutput.includes('and don\'t ask again for'));
           
           logger.debug('[Auto-Yes] Method 5 (partial Claude CLI):', method5);
           
