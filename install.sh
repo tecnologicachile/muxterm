@@ -387,6 +387,25 @@ EOF
         $USE_SUDO cp scripts/muxterm /usr/local/bin/muxterm
         $USE_SUDO chmod +x /usr/local/bin/muxterm
         echo -e "${GREEN}muxterm command installed${NC}"
+        
+        # Ensure /usr/local/bin is in PATH
+        if ! echo "$PATH" | grep -q "/usr/local/bin"; then
+            echo -e "${YELLOW}Adding /usr/local/bin to PATH...${NC}"
+            
+            # Add to system-wide profile for all users
+            if [ -f /etc/profile ]; then
+                echo 'export PATH=$PATH:/usr/local/bin' | $USE_SUDO tee -a /etc/profile > /dev/null
+            fi
+            
+            # Add to root's bashrc if we're in a container
+            if [ "$IS_DOCKER" = true ] || [ "$IS_LXC" = true ]; then
+                echo 'export PATH=$PATH:/usr/local/bin' | $USE_SUDO tee -a /root/.bashrc > /dev/null
+            fi
+            
+            # Export for current session
+            export PATH=$PATH:/usr/local/bin
+            echo -e "${GREEN}PATH updated${NC}"
+        fi
     else
         echo -e "${YELLOW}muxterm command script not found${NC}"
     fi

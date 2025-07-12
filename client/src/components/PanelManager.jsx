@@ -10,7 +10,7 @@ import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, sessionId, onAutoYesLog }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, sessionId, onAutoYesLog, autoYesCounts }) {
   // Track auto-yes state for each panel
   const [autoYesStates, setAutoYesStates] = useState({});
   
@@ -64,7 +64,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <Tooltip title={autoYesStates[panel.id] ? "Auto-Yes ON (Claude CLI)" : "Auto-Yes OFF - Click to enable for Claude CLI"}>
+            <Tooltip title={autoYesStates[panel.id] ? `Auto-Yes ON (${autoYesCounts?.[panel.id] || 0} responses)` : "Auto-Yes OFF - Click to enable for Claude CLI"}>
               <IconButton
                 size="small"
                 onClick={(e) => {
@@ -77,10 +77,33 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 sx={{ 
                   padding: '2px',
                   color: autoYesStates[panel.id] ? '#00ff00' : '#666',
-                  '&:hover': { color: autoYesStates[panel.id] ? '#00ff00' : '#fff' }
+                  '&:hover': { color: autoYesStates[panel.id] ? '#00ff00' : '#fff' },
+                  position: 'relative'
                 }}
               >
                 <CheckCircleIcon sx={{ fontSize: 14 }} />
+                {autoYesCounts?.[panel.id] > 0 && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: -4,
+                      right: -4,
+                      backgroundColor: '#00ff00',
+                      color: '#000',
+                      borderRadius: '50%',
+                      minWidth: 14,
+                      height: 14,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 9,
+                      fontWeight: 'bold',
+                      padding: '0 2px'
+                    }}
+                  >
+                    {autoYesCounts[panel.id]}
+                  </Box>
+                )}
               </IconButton>
             </Tooltip>
             {onMinimizePanel && (

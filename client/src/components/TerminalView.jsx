@@ -14,10 +14,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  List,
-  ListItem,
-  ListItemText
+  TextField
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -27,8 +24,7 @@ import {
   KeyboardArrowDown,
   Keyboard as KeyboardIcon,
   Terminal as TerminalIcon,
-  OpenInNew as RestoreIcon,
-  History as HistoryIcon
+  OpenInNew as RestoreIcon
 } from '@mui/icons-material';
 import Terminal from './Terminal';
 import PanelManager from './PanelManager';
@@ -54,8 +50,7 @@ function TerminalView() {
   const [renamingPanel, setRenamingPanel] = useState(null);
   const [newPanelName, setNewPanelName] = useState('');
   const [minimizedPanels, setMinimizedPanels] = useState([]);
-  const [autoYesLog, setAutoYesLog] = useState([]);
-  const [showAutoYesLog, setShowAutoYesLog] = useState(false);
+  const [autoYesCounts, setAutoYesCounts] = useState({});
   
   // Detect mobile
   useEffect(() => {
@@ -282,15 +277,11 @@ function TerminalView() {
   };
 
   const handleAutoYesLog = (panelId, prompt, response) => {
-    const panel = panels.find(p => p.id === panelId);
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      panelName: panel?.name || 'Unknown',
-      panelId,
-      prompt: prompt.substring(0, 100), // First 100 chars of prompt
-      response
-    };
-    setAutoYesLog(prev => [...prev, logEntry]);
+    // Update counter for this panel
+    setAutoYesCounts(prev => ({
+      ...prev,
+      [panelId]: (prev[panelId] || 0) + 1
+    }));
   };
 
 
@@ -353,18 +344,6 @@ function TerminalView() {
               </IconButton>
             )}
 
-            <IconButton 
-              color="inherit" 
-              onClick={() => setShowAutoYesLog(!showAutoYesLog)}
-              size="small"
-              sx={{ 
-                ml: 1,
-                color: autoYesLog.length > 0 ? '#00ff00' : 'inherit'
-              }}
-              title={`Auto-Yes Log (${autoYesLog.length})`}
-            >
-              <HistoryIcon />
-            </IconButton>
           </>
         }
       />
@@ -403,6 +382,7 @@ function TerminalView() {
               ));
             }}
             onAutoYesLog={handleAutoYesLog}
+            autoYesCounts={autoYesCounts}
           />
         ) : null}
       </Box>
@@ -509,54 +489,6 @@ function TerminalView() {
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={showAutoYesLog}
-        onClose={() => setShowAutoYesLog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Auto-Yes Log ({autoYesLog.length} entries)</DialogTitle>
-        <DialogContent>
-          {autoYesLog.length === 0 ? (
-            <Typography variant="body2" sx={{ color: '#666', textAlign: 'center', py: 2 }}>
-              No auto-confirmations yet
-            </Typography>
-          ) : (
-            <List dense>
-              {autoYesLog.slice().reverse().map((entry, index) => (
-                <ListItem key={index} sx={{ borderBottom: '1px solid #333', py: 1 }}>
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {entry.panelName}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: '#888' }}>
-                          {new Date(entry.timestamp).toLocaleTimeString()}
-                        </Typography>
-                      </Box>
-                    }
-                    secondary={
-                      <Box sx={{ mt: 0.5 }}>
-                        <Typography variant="caption" sx={{ color: '#aaa', fontFamily: 'monospace' }}>
-                          Prompt: {entry.prompt}...
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: '#0f0', display: 'block', mt: 0.5 }}>
-                          Response: {entry.response}
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAutoYesLog([])}>Clear Log</Button>
-          <Button onClick={() => setShowAutoYesLog(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
