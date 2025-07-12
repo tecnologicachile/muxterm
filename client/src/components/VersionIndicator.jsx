@@ -24,8 +24,9 @@ import StarIcon from '@mui/icons-material/Star';
 import axios from '../utils/axios';
 import logger from '../utils/logger';
 
-// Version actual del cliente
-const CURRENT_VERSION = '1.0.2';
+// Version actual del cliente (leída desde package.json)
+import packageJson from '../../package.json';
+const CURRENT_VERSION = packageJson.version;
 
 function VersionIndicator() {
   const [updateInfo, setUpdateInfo] = useState(null);
