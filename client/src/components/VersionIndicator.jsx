@@ -23,7 +23,7 @@ import axios from '../utils/axios';
 import logger from '../utils/logger';
 
 // Version actual del cliente
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.0.1';
 
 function VersionIndicator() {
   const [updateInfo, setUpdateInfo] = useState(null);
