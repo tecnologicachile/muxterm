@@ -207,25 +207,43 @@ install_dependencies() {
 }
 
 configure_locales() {
-    echo -e "${BLUE}Configuring system locales...${NC}"
-    
     # Only for Debian-based systems
     if [[ "$OS" =~ ^(ubuntu|debian)$ ]]; then
+        echo -e "${BLUE}Configuring system locales...${NC}"
+        
         export DEBIAN_FRONTEND=noninteractive
+        
+        # Set locale environment variables immediately
+        export LANG=en_US.UTF-8
+        export LC_ALL=en_US.UTF-8
+        export LANGUAGE=en_US.UTF-8
+        export LC_CTYPE=en_US.UTF-8
+        export LC_MESSAGES=en_US.UTF-8
         
         # Check if locales package is installed
         if ! dpkg -l locales &> /dev/null; then
-            $USE_SUDO apt-get update -qq
-            $USE_SUDO apt-get install -y locales
+            echo -e "${YELLOW}Installing locales package...${NC}"
+            $USE_SUDO apt-get update -qq > /dev/null 2>&1
+            $USE_SUDO apt-get install -y -qq locales > /dev/null 2>&1
         fi
+        
+        # Configure locale settings
+        echo "en_US.UTF-8 UTF-8" | $USE_SUDO tee /etc/locale.gen > /dev/null
         
         # Generate en_US.UTF-8 locale
         if ! locale -a 2>/dev/null | grep -q "en_US.utf8"; then
-            $USE_SUDO locale-gen en_US.UTF-8
+            echo -e "${YELLOW}Generating en_US.UTF-8 locale...${NC}"
+            $USE_SUDO locale-gen en_US.UTF-8 > /dev/null 2>&1
+            $USE_SUDO update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 > /dev/null 2>&1
         fi
         
-        export LANG=en_US.UTF-8
-        export LC_ALL=en_US.UTF-8
+        # Update default locale file
+        if [ -f /etc/default/locale ]; then
+            echo "LANG=en_US.UTF-8" | $USE_SUDO tee /etc/default/locale > /dev/null
+            echo "LC_ALL=en_US.UTF-8" | $USE_SUDO tee -a /etc/default/locale > /dev/null
+        fi
+        
+        echo -e "${GREEN}✓ Locales configured${NC}"
     fi
 }
 
@@ -884,7 +902,10 @@ main() {
     
     # Pre-installation checks
     check_basic_deps
+    
+    # Configure locales early to avoid perl warnings during installation
     configure_locales
+    
     check_memory
     
     # Installation phase
