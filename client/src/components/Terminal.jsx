@@ -302,15 +302,6 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
             
             logger.debug('[Auto-Yes] Response sent! Clearing buffer...');
             
-            // Also try sending just '1' without enter
-            setTimeout(() => {
-              logger.debug('[Auto-Yes] Sending follow-up Enter key...');
-              socket.emit('terminal-input', { 
-                terminalId: localTerminalId, 
-                input: '\r' 
-              });
-            }, 100);
-            
             // Clear the buffer
             lastOutputRef.current = '';
             return; // Exit early
@@ -509,26 +500,6 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
         minWidth: '100px'
       }} 
     >
-      {autoYesProp && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '4px',
-            right: '4px',
-            backgroundColor: '#00ff00',
-            color: '#000',
-            padding: '2px 6px',
-            borderRadius: '3px',
-            fontSize: '10px',
-            fontWeight: 'bold',
-            zIndex: 10,
-            fontFamily: 'monospace'
-          }}
-          title="Auto-Yes is ON for Claude CLI prompts"
-        >
-          AUTO-YES: CLAUDE CLI
-        </div>
-      )}
       {isMobile && (
         <textarea
           ref={mobileInputRef}
