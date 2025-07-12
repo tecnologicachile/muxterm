@@ -421,12 +421,34 @@ create_systemd_service() {
         return
     fi
     
-    if [ -f /etc/systemd/system/muxterm.service ]; then
-        echo -e "${YELLOW}Service already exists${NC}"
-        return
+    # Get the actual installation directory
+    INSTALL_DIR=$(pwd)
+    
+    # Verify we're not in Windows filesystem
+    if [[ "$INSTALL_DIR" == /mnt/* ]]; then
+        echo -e "${RED}ERROR: Installation directory is still in Windows filesystem${NC}"
+        echo -e "${RED}This will cause permission and service issues${NC}"
+        echo -e "${YELLOW}Please run the installer from your home directory:${NC}"
+        echo -e "${YELLOW}cd ~ && curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash${NC}"
+        exit 1
     fi
     
-    INSTALL_DIR=$(pwd)
+    # Check if service exists with wrong path
+    if [ -f /etc/systemd/system/muxterm.service ]; then
+        EXISTING_PATH=$(grep "WorkingDirectory=" /etc/systemd/system/muxterm.service | cut -d'=' -f2)
+        if [[ "$EXISTING_PATH" == /mnt/* ]]; then
+            echo -e "${YELLOW}Found existing service with Windows filesystem path${NC}"
+            echo -e "${YELLOW}Removing and recreating service...${NC}"
+            $USE_SUDO systemctl stop muxterm 2>/dev/null || true
+            $USE_SUDO systemctl disable muxterm 2>/dev/null || true
+            $USE_SUDO rm -f /etc/systemd/system/muxterm.service
+            $USE_SUDO systemctl daemon-reload
+        else
+            echo -e "${YELLOW}Service already exists${NC}"
+            return
+        fi
+    fi
+    
     USER=$(whoami)
     
     $USE_SUDO tee /etc/systemd/system/muxterm.service > /dev/null << EOF
@@ -555,6 +577,12 @@ start_service() {
     # Try to start with systemd
     if command -v systemctl &> /dev/null && [ -f /etc/systemd/system/muxterm.service ]; then
         $USE_SUDO systemctl daemon-reload
+        
+        # Enable service for automatic startup
+        echo -e "${BLUE}Enabling service for automatic startup...${NC}"
+        $USE_SUDO systemctl enable muxterm
+        
+        # Start the service
         $USE_SUDO systemctl start muxterm
         
         # Wait for service to start
@@ -562,6 +590,9 @@ start_service() {
         
         if systemctl is-active --quiet muxterm; then
             echo -e "${GREEN}MuxTerm service started successfully!${NC}"
+            if systemctl is-enabled --quiet muxterm; then
+                echo -e "${GREEN}Service enabled for automatic startup${NC}"
+            fi
             STARTED_WITH_SYSTEMD=true
         else
             echo -e "${YELLOW}Systemd service failed to start. Starting manually...${NC}"
@@ -648,7 +679,9 @@ print_success() {
     if [ "$MUXTERM_RUNNING" = true ]; then
         echo "  Stop:    sudo systemctl stop muxterm"
         echo "  Restart: sudo systemctl restart muxterm"
+        echo "  Status:  sudo systemctl status muxterm"
         echo "  Logs:    journalctl -u muxterm -f"
+        echo "  Disable: sudo systemctl disable muxterm"
     else
         echo "  Start:   cd ~/muxterm && npm start"
         echo "  Service: sudo systemctl start muxterm"
@@ -676,6 +709,21 @@ main() {
     if [ "$IS_LXC" = true ]; then echo -e "  Environment: LXC"; fi
     if [ "$IS_CI" = true ]; then echo -e "  Environment: CI/CD"; fi
     echo
+    
+    # Check if we're starting from Windows filesystem
+    if [[ "$PWD" == /mnt/* ]]; then
+        echo -e "${YELLOW}Warning: Script started from Windows filesystem (/mnt/*)${NC}"
+        echo -e "${YELLOW}This can cause permission and service issues${NC}"
+        echo -e "${GREEN}Recommendation: Run from your home directory:${NC}"
+        echo -e "${GREEN}cd ~ && curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash${NC}"
+        echo
+        read -p "Continue anyway? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Installation cancelled${NC}"
+            exit 0
+        fi
+    fi
     
     # Pre-installation checks
     check_basic_deps
