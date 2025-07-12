@@ -187,6 +187,11 @@ main() {
     fi
     
     print_color "\nActive tmux sessions have been preserved." "$GREEN"
+    
+    # Star on GitHub reminder
+    echo
+    print_color "⭐ Enjoying the new features? Star us on GitHub!" "$YELLOW"
+    print_color "   https://github.com/tecnologicachile/muxterm" "$BLUE"
 }
 
 # Run main function

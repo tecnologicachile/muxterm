@@ -692,6 +692,14 @@ print_success() {
         echo "Manual stop: kill \$(cat muxterm.pid)"
     fi
     echo
+    
+    # Star on GitHub message
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${YELLOW}⭐ Enjoying MuxTerm? Star us on GitHub!${NC}"
+    echo -e "   It helps others discover the project and motivates development"
+    echo -e "   ${GREEN}https://github.com/tecnologicachile/muxterm${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    echo
 }
 
 # Main installation flow

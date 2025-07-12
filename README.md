@@ -1,6 +1,15 @@
 # MuxTerm - Web-based Terminal Multiplexer
 
+[![GitHub stars](https://img.shields.io/github/stars/tecnologicachile/muxterm?style=social)](https://github.com/tecnologicachile/muxterm)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 MuxTerm is a web-based terminal multiplexer that provides persistent SSH sessions with tmux-like features. Access your terminals from anywhere with full session persistence.
+
+## ⭐ Support the Project
+
+If you find MuxTerm useful, please consider giving it a star on GitHub! It helps others discover the project and motivates us to keep improving.
+
+[![Star on GitHub](https://img.shields.io/badge/Star%20on-GitHub-yellow?style=for-the-badge&logo=github)](https://github.com/tecnologicachile/muxterm)
 
 ## Features
 

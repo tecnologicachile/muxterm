@@ -19,6 +19,8 @@ import {
 import UpdateIcon from '@mui/icons-material/SystemUpdate';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import InfoIcon from '@mui/icons-material/Info';
+import GitHubIcon from '@mui/icons-material/GitHub';
+import StarIcon from '@mui/icons-material/Star';
 import axios from '../utils/axios';
 import logger from '../utils/logger';
 
@@ -190,6 +192,36 @@ function VersionIndicator() {
               </Typography>
             )}
           </Paper>
+          
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'primary.dark', borderRadius: 1 }}>
+            <Box display="flex" alignItems="center" gap={1} mb={1}>
+              <StarIcon sx={{ color: 'warning.main' }} />
+              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                ¿Te gusta MuxTerm?
+              </Typography>
+            </Box>
+            <Typography variant="body2" sx={{ mb: 1.5 }}>
+              Ayúdanos dándole una estrella en GitHub. ¡Tu apoyo nos motiva a seguir mejorando!
+            </Typography>
+            <Button
+              fullWidth
+              variant="contained"
+              color="warning"
+              startIcon={<GitHubIcon />}
+              href="https://github.com/tecnologicachile/muxterm"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                bgcolor: 'warning.main',
+                color: 'warning.contrastText',
+                '&:hover': {
+                  bgcolor: 'warning.dark'
+                }
+              }}
+            >
+              ⭐ Star en GitHub
+            </Button>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button 
