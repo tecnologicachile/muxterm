@@ -43,7 +43,7 @@ function Login() {
     <Container maxWidth="sm" className="auth-container">
       <Paper elevation={3} className="auth-form">
         <Typography variant="h4" align="center" gutterBottom>
-          WebSSH Terminal
+          MuxTerm
         </Typography>
         
         <Tabs 

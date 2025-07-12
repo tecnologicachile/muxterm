@@ -12,6 +12,7 @@ const sessionManager = require('./session');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
 const logger = require('./utils/logger');
+const tracer = require('./utils/persistenceTracer');
 const updateChecker = require('./update-checker');
 
 const app = express();
@@ -158,15 +159,11 @@ io.on('connection', (socket) => {
   socket.on('restore-terminal', async (data) => {
     try {
       logger.debug('Restoring terminal:', data.terminalId);
-      let terminal = terminalManager.getTerminal(data.terminalId);
       
-      // Si no existe el terminal, intentar restaurarlo desde tmux
-      if (!terminal) {
-        logger.debug('Terminal not found, attempting to restore from tmux...');
-        const cols = data.cols || 80;
-        const rows = data.rows || 24;
-        terminal = await terminalManager.restoreTerminal(data.terminalId, socket.userId, data.sessionId, rows, cols);
-      }
+      // SIEMPRE llamar a restoreTerminal para manejar la captura de buffer
+      const cols = data.cols || 80;
+      const rows = data.rows || 24;
+      const terminal = await terminalManager.restoreTerminal(data.terminalId, socket.userId, data.sessionId, rows, cols);
       
       if (terminal && terminal.userId === socket.userId) {
         socket.join(`terminal-${terminal.id}`);
@@ -193,11 +190,27 @@ io.on('connection', (socket) => {
           sessionId: data.sessionId
         });
         
+        // Terminal restaurada - tmux ya está configurado desde el archivo .tmux.webssh.conf
+        tracer.trace('CLIENT', 'SESSION_RESTORED', {
+          terminalId: terminal.id,
+          sessionId: data.sessionId,
+          note: 'Terminal restored with tmux config'
+        });
+        
         logger.debug('Terminal restored successfully:', data.terminalId);
         
-        // Forzar un resize para actualizar el contenido
+        // Forzar un resize para actualizar el contenido y adaptarse al nuevo cliente
         if (data.cols && data.rows) {
+          // Primero hacer resize
           terminal.resize(data.cols, data.rows);
+          logger.debug(`Resized terminal to ${data.cols}x${data.rows}`);
+          
+          // Luego forzar un redraw completo
+          setTimeout(() => {
+            terminal.write('\x1b[2J\x1b[H'); // Clear and reset
+            terminal.write('\x0c'); // Form feed para refrescar
+            logger.debug('Forced redraw after resize');
+          }, 400);
         }
       } else {
         logger.info('Terminal not found and could not be restored:', data.terminalId);
@@ -416,7 +429,7 @@ server.listen(PORT, async () => {
     }
   } else if (process.env.NODE_ENV !== 'production') {
     // In development, always ensure test user exists
-    const testUser = database.getUserByUsername('test');
+    const testUser = database.findUserByUsername('test');
     if (!testUser) {
       const bcrypt = require('bcryptjs');
       const hashedPassword = bcrypt.hashSync('test123', 10);

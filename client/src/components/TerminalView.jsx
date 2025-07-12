@@ -33,6 +33,8 @@ import {
 import Terminal from './Terminal';
 import PanelManager from './PanelManager';
 import UpdateNotification from './UpdateNotification';
+import VersionIndicator from './VersionIndicator';
+import AppHeader from './AppHeader';
 import { useSocket } from '../utils/SocketContext';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger';
@@ -80,6 +82,11 @@ function TerminalView() {
       }
     }
   }, [socket, sessionId, sessionName, sessionCreated, searchParams]);
+
+  // Update page title
+  useEffect(() => {
+    document.title = `MuxTerm - ${sessionName}`;
+  }, [sessionName]);
   
   // Load session layout on mount
   useEffect(() => {
@@ -112,6 +119,10 @@ function TerminalView() {
           if (data.layout && data.layout.panels && data.layout.panels.length > 0) {
             setPanels(data.layout.panels);
             setActivePanel(data.layout.activePanel || data.layout.panels[0].id);
+            // Restaurar paneles minimizados si existen
+            if (data.layout.minimizedPanels && Array.isArray(data.layout.minimizedPanels)) {
+              setMinimizedPanels(data.layout.minimizedPanels);
+            }
           } else {
             // Create initial panel if no layout exists
             const initialPanel = {
@@ -133,7 +144,11 @@ function TerminalView() {
       socket.emit('get-sessions');
       socket.once('sessions', (sessions) => {
         const currentSession = sessions.find(s => s.id === sessionId);
+        logger.debug('Current session:', currentSession);
+        logger.debug('Session name from DB:', currentSession?.name);
+        logger.debug('Has name in URL:', searchParams.has('name'));
         if (currentSession && currentSession.name && !searchParams.has('name')) {
+          logger.debug('Setting session name to:', currentSession.name);
           setSessionName(currentSession.name);
         }
       });
@@ -158,11 +173,12 @@ function TerminalView() {
               panels.length === 4 ? 'grid-2x2' :
               panels.length === 5 ? 'grid-2+3' :
               panels.length === 6 ? 'grid-2x3' :
-              panels.length === 7 ? 'grid-2+2+3' : 'grid-2x4'
+              panels.length === 7 ? 'grid-2+2+3' : 'grid-2x4',
+        minimizedPanels: minimizedPanels // Guardar el estado de paneles minimizados
       };
       socket.emit('update-session-layout', { sessionId, layout });
     }
-  }, [panels, activePanel, sessionId, socket]);
+  }, [panels, activePanel, sessionId, socket, minimizedPanels]);
 
   const handleSplitHorizontal = () => {
     if (panels.length >= 8) {
@@ -281,89 +297,90 @@ function TerminalView() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <UpdateNotification />
-      <AppBar position="static" className="toolbar">
-        <Toolbar variant="dense">
-          <IconButton 
-            edge="start" 
-            color="inherit" 
-            onClick={handleBack}
-            size="small"
-            sx={{ mr: 1 }}
-          >
-            <BackIcon />
-          </IconButton>
-          
-          <Typography variant="body2" sx={{ flexGrow: 1 }}>
-            {isMobile ? `${panels.length}P` : `${sessionName} - ${panels.length}P`}
-          </Typography>
+      <AppHeader 
+        mode="terminal"
+        sessionName={sessionName}
+        panelCount={panels.length}
+        onBack={handleBack}
+        onLogout={() => navigate('/sessions')}
+        rightContent={
+          <>
+            {!isMobile ? (
+              <Button
+                color="inherit"
+                size="small"
+                startIcon={<SplitIcon />}
+                endIcon={<KeyboardArrowDown />}
+                onClick={(e) => setSplitMenuAnchor(e.currentTarget)}
+                sx={{ mr: 1 }}
+              >
+                Split
+              </Button>
+            ) : panels.length < 8 && (
+              <IconButton
+                color="inherit"
+                size="small"
+                onClick={(e) => setSplitMenuAnchor(e.currentTarget)}
+                sx={{ ml: 1 }}
+              >
+                <SplitIcon />
+              </IconButton>
+            )}
 
-          {!isMobile ? (
-            <Button
-              color="inherit"
-              size="small"
-              startIcon={<SplitIcon />}
-              endIcon={<KeyboardArrowDown />}
-              onClick={(e) => setSplitMenuAnchor(e.currentTarget)}
-              sx={{ mr: 1 }}
-            >
-              Split
-            </Button>
-          ) : panels.length < 8 && (
-            <IconButton
-              color="inherit"
-              size="small"
-              onClick={(e) => setSplitMenuAnchor(e.currentTarget)}
-              sx={{ ml: 1 }}
-            >
-              <SplitIcon />
-            </IconButton>
-          )}
+            {isMobile && (
+              <IconButton 
+                color="inherit" 
+                onClick={() => {
+                  // Force focus on active terminal's mobile input
+                  // First click on the terminal to ensure it's active
+                  const activeTerminal = document.querySelector(`[data-panel-id="${activePanel}"] .xterm`);
+                  if (activeTerminal) {
+                    activeTerminal.click();
+                  }
+                  // Then try to focus the hidden mobile textarea
+                  setTimeout(() => {
+                    const mobileInput = document.querySelector(`[data-panel-id="${activePanel}"] textarea`);
+                    if (mobileInput) {
+                      mobileInput.focus();
+                      mobileInput.click();
+                    }
+                  }, 100);
+                }}
+                size="small"
+                sx={{ ml: 1 }}
+              >
+                <KeyboardIcon />
+              </IconButton>
+            )}
 
-          <Menu
-            anchorEl={splitMenuAnchor}
-            open={Boolean(splitMenuAnchor)}
-            onClose={() => setSplitMenuAnchor(null)}
-          >
-            <MenuItem onClick={handleSplitHorizontal}>
-              Split Horizontal
-            </MenuItem>
-            <MenuItem onClick={handleSplitVertical}>
-              Split Vertical
-            </MenuItem>
-          </Menu>
-
-          {isMobile && (
             <IconButton 
               color="inherit" 
-              onClick={() => {
-                // Force focus on active terminal's mobile input
-                const activePanelElement = document.querySelector(`[data-panel-id="${activePanel}"] input[type="text"]`);
-                if (activePanelElement) {
-                  activePanelElement.focus();
-                }
-              }}
+              onClick={() => setShowAutoYesLog(!showAutoYesLog)}
               size="small"
-              sx={{ ml: 1 }}
+              sx={{ 
+                ml: 1,
+                color: autoYesLog.length > 0 ? '#00ff00' : 'inherit'
+              }}
+              title={`Auto-Yes Log (${autoYesLog.length})`}
             >
-              <KeyboardIcon />
+              <HistoryIcon />
             </IconButton>
-          )}
+          </>
+        }
+      />
 
-          <IconButton 
-            color="inherit" 
-            onClick={() => setShowAutoYesLog(!showAutoYesLog)}
-            size="small"
-            sx={{ 
-              ml: 1,
-              color: autoYesLog.length > 0 ? '#00ff00' : 'inherit'
-            }}
-            title={`Auto-Yes Log (${autoYesLog.length})`}
-          >
-            <HistoryIcon />
-          </IconButton>
-
-        </Toolbar>
-      </AppBar>
+      <Menu
+        anchorEl={splitMenuAnchor}
+        open={Boolean(splitMenuAnchor)}
+        onClose={() => setSplitMenuAnchor(null)}
+      >
+        <MenuItem onClick={handleSplitHorizontal}>
+          Split Horizontal
+        </MenuItem>
+        <MenuItem onClick={handleSplitVertical}>
+          Split Vertical
+        </MenuItem>
+      </Menu>
 
       <Box sx={{ 
         flexGrow: 1, 

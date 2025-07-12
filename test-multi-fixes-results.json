@@ -1,0 +1,152 @@
+{
+  "summary": {
+    "totalF5Passed": 0,
+    "totalF5Terminals": 0,
+    "totalLogoutPassed": 0,
+    "totalLogoutTerminals": 0,
+    "cyclesWithSuccess": 0,
+    "fixesApplied": 5
+  },
+  "results": [
+    {
+      "iteration": 1,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.waitForSelector: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.MuiCard-root') to be visible\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 2,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.waitForSelector: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.MuiCard-root') to be visible\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 3,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 4,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 5,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 6,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 7,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 8,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 9,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    },
+    {
+      "iteration": 10,
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "page.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"NEW SESSION\")')\u001b[22m\n"
+      ]
+    }
+  ]
+}

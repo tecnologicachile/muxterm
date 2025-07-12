@@ -1,0 +1,201 @@
+{
+  "summary": {
+    "totalF5Passed": 1,
+    "totalF5Tests": 4,
+    "totalIpSwitchPassed": 1,
+    "totalIpSwitchTests": 4,
+    "totalLogoutPassed": 0,
+    "totalLogoutTests": 1,
+    "cyclesWithSuccess": 1
+  },
+  "results": [
+    {
+      "iteration": 1,
+      "url": "LOCALHOST",
+      "f5Test": {
+        "total": 4,
+        "passed": 1
+      },
+      "logoutTest": {
+        "total": 1,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 4,
+        "passed": 1
+      },
+      "errors": []
+    },
+    {
+      "iteration": 2,
+      "url": "VPS_LAN",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 3,
+      "url": "LOCALHOST",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 4,
+      "url": "VPS_LAN",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 5,
+      "url": "LOCALHOST",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 6,
+      "url": "VPS_LAN",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 7,
+      "url": "LOCALHOST",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 8,
+      "url": "VPS_LAN",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 9,
+      "url": "LOCALHOST",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    },
+    {
+      "iteration": 10,
+      "url": "VPS_LAN",
+      "f5Test": {
+        "total": 0,
+        "passed": 0
+      },
+      "logoutTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "ipSwitchTest": {
+        "total": 0,
+        "passed": 0
+      },
+      "errors": [
+        "No se pudo crear ni usar sesión"
+      ]
+    }
+  ]
+}

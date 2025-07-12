@@ -32,6 +32,8 @@ import { useAuth } from '../utils/AuthContext';
 import { useSocket } from '../utils/SocketContext';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger';
+import VersionIndicator from './VersionIndicator';
+import AppHeader from './AppHeader';
 
 function SessionList() {
   const navigate = useNavigate();
@@ -141,17 +143,11 @@ function SessionList() {
 
   return (
     <>
-      <AppBar position="static">
-        <Toolbar variant="dense">
-          <TerminalIcon sx={{ mr: 1, fontSize: 18 }} />
-          <Typography variant="body2" sx={{ flexGrow: 1 }}>
-            WebSSH - {user?.username}
-          </Typography>
-          <IconButton color="inherit" onClick={handleLogout} size="small">
-            <LogoutIcon />
-          </IconButton>
-        </Toolbar>
-      </AppBar>
+      <AppHeader 
+        mode="sessions"
+        username={user?.username}
+        onLogout={handleLogout}
+      />
 
       <Container maxWidth="lg" className="session-list">
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

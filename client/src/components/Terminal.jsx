@@ -5,6 +5,7 @@ import { WebLinksAddon } from 'xterm-addon-web-links';
 import 'xterm/css/xterm.css';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
+import tracer from '../utils/persistenceTracer';
 
 function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive, autoYes: autoYesProp = false, onAutoYesLog, panelId }) {
   const containerRef = useRef(null);
@@ -109,12 +110,21 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
     const existingId = localTerminalId || terminalId;
     if (!existingId) {
       logger.debug('[Terminal] Requesting NEW terminal creation');
+      tracer.trace('INIT', 'CREATE_NEW_TERMINAL', { sessionId });
       socket.emit('create-terminal', { sessionId });
     } else {
       logger.debug('[Terminal] Restoring existing terminal:', existingId);
       const terminalElement = containerRef.current;
       const cols = terminalElement ? Math.floor(terminalElement.offsetWidth / 9) : 80;
       const rows = terminalElement ? Math.floor(terminalElement.offsetHeight / 17) : 24;
+      
+      tracer.trace('INIT', 'RESTORE_EXISTING_TERMINAL', {
+        terminalId: existingId,
+        sessionId,
+        cols,
+        rows
+      });
+      
       socket.emit('restore-terminal', { 
         terminalId: existingId, 
         sessionId,
@@ -172,8 +182,19 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
     if (!socket) return;
 
     const handleTerminalOutput = (data) => {
+      tracer.traceSocketEvent('terminal-output', data);
+      
       if (data.terminalId === localTerminalId && terminalRef.current) {
+        tracer.traceBuffer('RECEIVED_FROM_SERVER', data.data, {
+          terminalId: data.terminalId,
+          terminalReady: !!terminalRef.current
+        });
+        
         terminalRef.current.write(data.data);
+        tracer.trace('TERMINAL', 'DATA_WRITTEN', {
+          terminalId: data.terminalId,
+          dataLength: data.data.length
+        });
         
         // Store last output for pattern detection
         lastOutputRef.current += data.data;
@@ -337,9 +358,20 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
     };
 
     const handleTerminalRestored = (data) => {
+      tracer.traceSocketEvent('terminal-restored', data);
+      
       if (data.terminalId === localTerminalId) {
         logger.debug('Terminal restored:', data.terminalId);
+        tracer.trace('RESTORE', 'TERMINAL_RESTORED', {
+          terminalId: data.terminalId,
+          sessionId: data.sessionId,
+          terminalExists: !!terminalRef.current
+        });
+        
         socket.emit('get-terminal-buffer', { terminalId: localTerminalId });
+        tracer.trace('RESTORE', 'BUFFER_REQUESTED', {
+          terminalId: localTerminalId
+        });
       }
     };
 
@@ -498,13 +530,13 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
         </div>
       )}
       {isMobile && (
-        <input
+        <textarea
           ref={mobileInputRef}
-          type="text"
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck="false"
+          inputMode="none"
           onInput={handleMobileInput}
           onKeyDown={handleMobileKeyDown}
           style={{

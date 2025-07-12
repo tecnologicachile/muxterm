@@ -1,0 +1,142 @@
+[
+  {
+    "iteration": 1,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 2,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 3,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 4,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 5,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 6,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 7,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 8,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "page.waitForTimeout: Target page, context or browser has been closed"
+    ]
+  },
+  {
+    "iteration": 9,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  },
+  {
+    "iteration": 10,
+    "f5Test": {
+      "total": 0,
+      "passed": 0
+    },
+    "logoutTest": {
+      "total": 0,
+      "passed": 0
+    },
+    "errors": [
+      "No hay sesiones disponibles tras F5"
+    ]
+  }
+]

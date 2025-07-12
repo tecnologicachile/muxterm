@@ -1,0 +1,52 @@
+[
+  {
+    "iteration": 1,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 2,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 3,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 4,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 5,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 6,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 7,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 8,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 9,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  },
+  {
+    "iteration": 10,
+    "passed": false,
+    "error": "page.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"User menu\"]')\u001b[22m\n"
+  }
+]

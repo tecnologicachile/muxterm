@@ -1,0 +1,62 @@
+[
+  {
+    "iteration": 1,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 2,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 3,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 4,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 5,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 6,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 7,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 8,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 9,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  },
+  {
+    "iteration": 10,
+    "f5Test": true,
+    "logoutTest": true,
+    "errors": []
+  }
+]

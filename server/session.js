@@ -106,6 +106,7 @@ class SessionManager {
   }
 
   updateSessionLayout(userId, sessionId, layout) {
+    logger.debug(`[MULTI] Updating layout for ${sessionId} with ${layout.panels?.length || 0} panels`);
     const session = this.getSession(userId, sessionId);
     if (!session) return false;
     
@@ -165,7 +166,7 @@ class SessionManager {
     }
     
     // Verify session belongs to user
-    const session = database.getSession(sessionId);
+    const session = database.findSessionById(sessionId);
     if (!session || session.user_id !== userId) {
       return false;
     }

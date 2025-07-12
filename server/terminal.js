@@ -6,6 +6,7 @@ const fs = require('fs');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
 const logger = require('./utils/logger');
+const tracer = require('./utils/persistenceTracer');
 
 class TerminalManager {
   constructor() {
@@ -36,17 +37,12 @@ class TerminalManager {
         let tmuxArgs;
         
         if (fs.existsSync(tmuxConfigPath)) {
-          // Usar archivo de configuración si existe
-          tmuxArgs = isRestore ? [
-            '-f', tmuxConfigPath,
-            'attach-session',
-            '-t', tmuxSessionName,
-            '-x', cols.toString(),
-            '-y', rows.toString()
-          ] : [
+          // Siempre usar -A para attach-or-create
+          tmuxArgs = [
             '-f', tmuxConfigPath,      // Usar nuestro archivo de configuración
             'new-session',
             '-A',                      // Attach si existe, crear si no
+            '-d',                      // Detached inicialmente
             '-s', tmuxSessionName,     // Nombre de sesión único
             '-x', cols.toString(),     // Ancho
             '-y', rows.toString(),     // Alto
@@ -54,14 +50,10 @@ class TerminalManager {
           ];
         } else {
           // Fallback: usar comandos directos si no hay archivo de configuración
-          tmuxArgs = isRestore ? [
-            'attach-session',
-            '-t', tmuxSessionName,
-            '-x', cols.toString(),
-            '-y', rows.toString()
-          ] : [
+          tmuxArgs = [
             'new-session',
             '-A',                      // Attach si existe, crear si no
+            '-d',                      // Detached inicialmente
             '-s', tmuxSessionName,     // Nombre de sesión único
             '-x', cols.toString(),     // Ancho
             '-y', rows.toString(),     // Alto
@@ -69,7 +61,23 @@ class TerminalManager {
           ];
         }
         
-        const ptyProcess = pty.spawn('tmux', tmuxArgs, {
+        // Primero crear/verificar la sesión tmux
+        const { execSync } = require('child_process');
+        try {
+          execSync(`tmux ${tmuxArgs.join(' ')}`, { stdio: 'ignore' });
+        } catch (e) {
+          // Ignorar errores si la sesión ya existe
+        }
+        
+        // Ahora hacer attach a la sesión
+        const attachArgs = fs.existsSync(tmuxConfigPath) ? 
+          ['-f', tmuxConfigPath, 'attach-session', '-t', tmuxSessionName] :
+          ['attach-session', '-t', tmuxSessionName];
+        
+        logger.debug(`Attaching to tmux session with args: ${attachArgs.join(' ')}`);
+        logger.debug(`tmux config exists: ${fs.existsSync(tmuxConfigPath)}`);
+          
+        const ptyProcess = pty.spawn('tmux', attachArgs, {
           name: 'xterm-256color',
           cols: cols,
           rows: rows,
@@ -82,8 +90,7 @@ class TerminalManager {
             SHELL: '/bin/bash',
             LANG: process.env.LANG || 'en_US.UTF-8',
             LC_ALL: process.env.LC_ALL || 'en_US.UTF-8',
-            LC_CTYPE: 'en_US.UTF-8',
-            TMUX_CONF: tmuxConfigPath // Some tmux versions respect this
+            LC_CTYPE: 'en_US.UTF-8'
           }
         });
 
@@ -95,6 +102,7 @@ class TerminalManager {
           pty: ptyProcess,
           buffer: [],
           maxBufferSize: 1000,
+          lastSnapshot: '', // Almacenar último estado visual conocido
           createdAt: new Date(),
           lastActivity: new Date(),
           dataListeners: []
@@ -107,24 +115,15 @@ class TerminalManager {
           // En la primera salida, limpiar cualquier basura inicial
           if (isFirstOutput) {
             isFirstOutput = false;
-            // Esperar un poco para que tmux se estabilice
+            // Para restauración, no limpiar nada
             if (!isRestore) {
-              // Primer intento: asegurar que la barra esté oculta
-              setTimeout(() => {
-                ptyProcess.write('tmux set-option status off\r');
-                setTimeout(() => {
-                  ptyProcess.write('\x0c'); // Clear screen
-                }, 50);
-              }, 200);
-              
-              // Segundo intento: limpiar pantalla después de más tiempo
               setTimeout(() => {
                 // Enviar un clear para limpiar la pantalla
                 ptyProcess.write('\x0c');
                 
-                // Si no se usó el archivo de configuración, enviar comandos adicionales
+                // Si no se usó el archivo de configuración, enviar comandos para deshabilitar la barra
                 if (!fs.existsSync(tmuxConfigPath)) {
-                  // Enviar comando tmux para deshabilitar la barra de estado globalmente
+                  // Enviar comando tmux para deshabilitar la barra de estado
                   ptyProcess.write('tmux set-option -g status off\r');
                   setTimeout(() => {
                     // Limpiar la pantalla de nuevo
@@ -132,6 +131,9 @@ class TerminalManager {
                   }, 50);
                 }
               }, 300); // Aumentar delay para LXC
+            } else {
+              // Para restauración, tmux ya está configurado
+              logger.debug('Terminal restored, tmux config already applied');
             }
           }
           
@@ -149,6 +151,8 @@ class TerminalManager {
             while (terminal.buffer.length > terminal.maxBufferSize) {
               terminal.buffer.shift();
             }
+            
+            // No necesitamos almacenar contenido, tmux lo maneja
           }
           
           terminal.lastActivity = new Date();
@@ -191,14 +195,7 @@ class TerminalManager {
 
         ptyProcess.onExit((exitCode, signal) => {
           logger.debug(`Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`);
-          const sessionManager = require('./session');
-          for (const [sessionId, session] of sessionManager.sessions) {
-            if (session.terminals && session.terminals.includes(terminalId)) {
-              logger.debug(`Removing terminal ${terminalId} from session ${sessionId}`);
-              sessionManager.removeTerminalFromSession(session.userId, sessionId, terminalId);
-              break;
-            }
-          }
+          // Simply remove the terminal, session cleanup will be handled elsewhere
           this.terminals.delete(terminalId);
         });
 
@@ -242,11 +239,25 @@ class TerminalManager {
 
   getTerminalBuffer(terminalId) {
     const terminal = this.terminals.get(terminalId);
-    if (!terminal) return '';
-
-    // Con tmux, simplemente devolvemos el buffer
-    // No hay problemas de duplicación porque tmux mantiene el estado real
-    return terminal.buffer.join('');
+    if (!terminal) {
+      tracer.trace('BUFFER', 'GET_FAILED', { terminalId, reason: 'Terminal not found' });
+      return '';
+    }
+    
+    // Usar el output persistente que tiene todo el contenido
+    const persistentBuffer = terminal.persistentOutput || '';
+    
+    // Log para debug
+    logger.debug(`Persistent buffer length: ${persistentBuffer.length} chars`);
+    logger.debug(`Persistent buffer preview: ${persistentBuffer.substring(0, 200).replace(/\n/g, '\\n')}`);
+    
+    tracer.traceBuffer('RETURNING_PERSISTENT_BUFFER', persistentBuffer, {
+      terminalId,
+      source: 'terminal.persistentOutput',
+      length: persistentBuffer.length
+    });
+    
+    return persistentBuffer;
   }
   
   // Reconectar a una sesión tmux existente
@@ -254,6 +265,45 @@ class TerminalManager {
     // Verificar si el terminal ya existe
     const existingTerminal = this.terminals.get(terminalId);
     if (existingTerminal) {
+      tracer.trace('RESTORE', 'TERMINAL_EXISTS_IN_MEMORY', {
+        terminalId,
+        sessionId,
+        hasBuffer: existingTerminal.buffer.length > 0
+      });
+      
+      // Si existe pero no tiene buffer capturado, intentar capturar de tmux
+      if (!existingTerminal.capturedBuffer) {
+        const tmuxSessionName = `webssh_${sessionId}_${terminalId}`.replace(/-/g, '_');
+        const { execSync } = require('child_process');
+        
+        try {
+          // Capturar incluyendo el historial completo (scrollback)
+          const captureCmd = `tmux capture-pane -t ${tmuxSessionName} -p -S -10000 -E -`;
+          tracer.trace('RESTORE', 'CAPTURING_FROM_EXISTING_TERMINAL', {
+            terminalId,
+            tmuxSession: tmuxSessionName
+          });
+          
+          const capturedBuffer = execSync(captureCmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+          
+          if (capturedBuffer) {
+            existingTerminal.capturedBuffer = capturedBuffer;
+            existingTerminal.bufferCaptureTime = Date.now();
+            
+            tracer.traceBuffer('CAPTURED_FOR_EXISTING', capturedBuffer, {
+              terminalId,
+              sessionId,
+              tmuxSession: tmuxSessionName
+            });
+          }
+        } catch (error) {
+          tracer.trace('RESTORE', 'CAPTURE_FAILED_FOR_EXISTING', {
+            terminalId,
+            error: error.message
+          });
+        }
+      }
+      
       return existingTerminal;
     }
     
@@ -266,8 +316,49 @@ class TerminalManager {
       const tmuxSessions = execSync('tmux ls 2>/dev/null || true', { encoding: 'utf8' });
       if (tmuxSessions.includes(tmuxSessionName)) {
         logger.debug(`Tmux session ${tmuxSessionName} exists, reattaching...`);
-        // La sesión existe, reconectar con flag de restauración
-        return await this.createTerminal(userId, sessionId, rows, cols, terminalId, true);
+        
+        // Capturar el buffer completo de la sesión tmux antes de reconectar
+        const captureId = tracer.startCapture(terminalId, sessionId);
+        
+        try {
+          // Primero intentar capturar con el formato de escape sequences
+          const captureCmd = `tmux capture-pane -t ${tmuxSessionName} -p -e -S -100`;
+          logger.debug(`Executing capture command: ${captureCmd}`);
+          tracer.captureStep(captureId, 'TMUX_CAPTURE_START', { command: captureCmd });
+          
+          const capturedBuffer = execSync(captureCmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+          logger.debug(`Captured buffer length: ${capturedBuffer.length} characters`);
+          logger.debug(`Buffer full content: ${capturedBuffer}`);
+          
+          tracer.traceBuffer('CAPTURED_FROM_TMUX', capturedBuffer, {
+            terminalId,
+            sessionId,
+            tmuxSession: tmuxSessionName
+          });
+          
+          // Crear el terminal con flag de restauración
+          tracer.captureStep(captureId, 'CREATING_TERMINAL', { restore: true });
+          const terminal = await this.createTerminal(userId, sessionId, rows, cols, terminalId, true);
+          
+          // Almacenar el buffer capturado para envío posterior
+          if (capturedBuffer) {
+            terminal.capturedBuffer = capturedBuffer;
+            terminal.bufferCaptureTime = Date.now();
+            logger.debug('Stored captured buffer for later delivery');
+            
+            tracer.captureStep(captureId, 'BUFFER_STORED', {
+              bufferLength: capturedBuffer.length,
+              timestamp: terminal.bufferCaptureTime
+            });
+          }
+          
+          tracer.endCapture(captureId, true);
+          return terminal;
+        } catch (captureError) {
+          logger.error('Error capturing tmux buffer:', captureError);
+          // Si falla la captura, continuar con reconexión normal
+          return await this.createTerminal(userId, sessionId, rows, cols, terminalId, true);
+        }
       } else {
         logger.debug(`Tmux session ${tmuxSessionName} not found, creating new...`);
         // La sesión no existe, crear una nueva
