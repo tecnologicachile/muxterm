@@ -51,7 +51,9 @@ app.use('/api/auth', authRoutes);
 
 // Update check endpoint
 app.get('/api/update-check', async (req, res) => {
-  const updateInfo = await updateChecker.checkForUpdates();
+  // Force check if manual=true query param
+  const forceCheck = req.query.manual === 'true';
+  const updateInfo = await updateChecker.checkForUpdates(forceCheck);
   res.json({ update: updateInfo });
 });
 

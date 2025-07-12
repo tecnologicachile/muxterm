@@ -46,7 +46,9 @@ function VersionIndicator() {
     setChecking(true);
     setCheckMessage('');
     try {
-      const response = await axios.get('/api/update-check');
+      const response = await axios.get('/api/update-check', {
+        params: { manual: isManual ? 'true' : 'false' }
+      });
       if (response.data.update) {
         setUpdateInfo(response.data.update);
         logger.info('Update available:', response.data.update);

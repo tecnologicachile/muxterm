@@ -10,10 +10,10 @@ class UpdateChecker {
     this.currentVersion = require('../package.json').version;
   }
 
-  async checkForUpdates() {
+  async checkForUpdates(forceCheck = false) {
     try {
       // Check if we should skip based on last check time
-      if (this.shouldSkipCheck()) {
+      if (!forceCheck && this.shouldSkipCheck()) {
         logger.debug('Skipping update check - too soon since last check');
         return null;
       }
