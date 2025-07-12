@@ -80,16 +80,32 @@ function VersionIndicator() {
   const handleUpdate = async () => {
     setUpdating(true);
     
-    const updateCommand = `curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/update.sh | bash`;
-    
     try {
-      await navigator.clipboard.writeText(updateCommand);
-      alert('Comando de actualización copiado al portapapeles!\nPégalo y ejecútalo en cualquier terminal.');
-    } catch {
-      alert(`Ejecuta este comando en cualquier terminal:\n\n${updateCommand}`);
+      const response = await axios.post('/api/update-execute');
+      
+      if (response.data.success) {
+        alert(`¡Actualización iniciada!\n\nEl servicio se reiniciará automáticamente para aplicar la versión ${response.data.version}.\n\nLa página se recargará en unos segundos...`);
+        
+        // Esperar un poco y luego recargar la página
+        setTimeout(() => {
+          window.location.reload();
+        }, 5000);
+      } else {
+        alert('Error al iniciar la actualización. Por favor, intenta nuevamente.');
+      }
+    } catch (error) {
+      logger.error('Update execution failed:', error);
+      
+      if (error.response?.status === 401) {
+        alert('Tu sesión ha expirado. Por favor, vuelve a iniciar sesión.');
+        window.location.href = '/';
+      } else {
+        alert('Error al ejecutar la actualización. Por favor, usa el método manual:\n\nmuxterm update');
+      }
+    } finally {
+      setUpdating(false);
+      setDialogOpen(false);
     }
-    
-    setUpdating(false);
   };
 
   const hasUpdate = updateInfo !== null;

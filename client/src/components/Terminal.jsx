@@ -315,6 +315,15 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
               input: '1\r' 
             });
             
+            // Send an additional Enter after a short delay (as it was working before)
+            setTimeout(() => {
+              logger.debug('[Auto-Yes] Sending additional Enter key');
+              socket.emit('terminal-input', { 
+                terminalId: localTerminalId, 
+                input: '\r' 
+              });
+            }, 100);
+            
             logger.debug('[Auto-Yes] Response sent! Clearing buffer...');
             
             // Clear the buffer
@@ -339,6 +348,15 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
                 terminalId: localTerminalId, 
                 input: pattern.response + '\r' 
               });
+              
+              // Send an additional Enter after a short delay
+              setTimeout(() => {
+                logger.debug('[Auto-Yes] Sending additional Enter key (regex method)');
+                socket.emit('terminal-input', { 
+                  terminalId: localTerminalId, 
+                  input: '\r' 
+                });
+              }, 100);
               
               // Clear the buffer after a short delay to avoid duplicate responses
               setTimeout(() => {

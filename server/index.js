@@ -5,6 +5,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const session = require('express-session');
 const path = require('path');
+const fs = require('fs');
 
 const authRoutes = require('./auth');
 const terminalManager = require('./terminal');
@@ -48,6 +49,27 @@ app.use(session({
 }));
 
 app.use('/api/auth', authRoutes);
+
+// Simple auth middleware for update endpoint
+const authenticateToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = { 
+      id: decoded.id, 
+      username: decoded.username || 'unknown' 
+    };
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
 
 // Update check endpoint
 app.get('/api/update-check', async (req, res) => {
@@ -97,6 +119,63 @@ app.get('/api/github-stars', async (req, res) => {
     });
   } catch (error) {
     res.json({ stars: starsCache.count || 0 });
+  }
+});
+
+// Update execution endpoint (requires authentication)
+app.post('/api/update-execute', authenticateToken, async (req, res) => {
+  try {
+    // Check if auto-update script exists
+    const updateScriptPath = path.join(__dirname, '..', 'update-auto.sh');
+    if (!fs.existsSync(updateScriptPath)) {
+      return res.status(404).json({ error: 'Update script not found' });
+    }
+    
+    // Check if there's actually an update available
+    const updateInfo = await updateChecker.checkForUpdates(true);
+    if (!updateInfo) {
+      return res.status(400).json({ error: 'No update available' });
+    }
+    
+    logger.info(`Update initiated by user ${req.user.username} from ${updateInfo.current} to ${updateInfo.latest}`);
+    
+    // Execute update in background
+    const { spawn } = require('child_process');
+    const updateProcess = spawn('/bin/bash', [updateScriptPath], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, FORCE_COLOR: '0' } // Disable color output for logs
+    });
+    
+    // Collect output for logging
+    let output = '';
+    let errorOutput = '';
+    
+    updateProcess.stdout.on('data', (data) => {
+      output += data.toString();
+      logger.info('[Update]', data.toString().trim());
+    });
+    
+    updateProcess.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+      logger.error('[Update Error]', data.toString().trim());
+    });
+    
+    // Don't wait for process to complete
+    updateProcess.unref();
+    
+    // Send immediate response
+    res.json({ 
+      success: true, 
+      message: 'Update started. The service will restart automatically.',
+      version: updateInfo.latest
+    });
+    
+    // The update script will handle the service restart
+    
+  } catch (error) {
+    logger.error('Failed to execute update:', error);
+    res.status(500).json({ error: 'Failed to execute update' });
   }
 });
 
