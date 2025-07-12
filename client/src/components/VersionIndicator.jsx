@@ -258,7 +258,7 @@ function VersionIndicator() {
               disabled={updating}
               startIcon={updating ? <CircularProgress size={16} /> : <UpdateIcon />}
             >
-              {updating ? 'Copiando...' : 'Actualizar Ahora'}
+              {updating ? 'Actualizando...' : 'Actualizar Ahora'}
             </Button>
           )}
         </DialogActions>
