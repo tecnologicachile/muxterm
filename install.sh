@@ -321,39 +321,58 @@ setup_muxterm() {
     npm ci --production --silent || npm install --production --silent
     print_status "Server dependencies installed"
     
-    # Handle client build/download
+    # Handle client build
     if [ "$MINIMAL_INSTALL" = true ]; then
         echo -e "${YELLOW}Minimal install mode - skipping client build${NC}"
         echo -e "${YELLOW}You can build the client later with: cd client && npm install && npm run build${NC}"
         mkdir -p client/dist
         echo "<html><body><h1>MuxTerm Client Not Built</h1><p>Run 'npm install && npm run build' in the client directory</p></body></html>" > client/dist/index.html
     else
-        # Check for pre-built client
-        echo -e "${BLUE}Checking for pre-built client...${NC}"
-        RELEASE_URL="https://api.github.com/repos/tecnologicachile/muxterm/releases/latest"
+        # Always build from source for now (ensures latest version)
+        echo -e "${BLUE}Building client from source...${NC}"
+        echo -e "${YELLOW}This may take 3-5 minutes...${NC}"
         
-        if command -v curl &> /dev/null; then
-            RELEASE_INFO=$(curl -s $RELEASE_URL 2>/dev/null || echo "")
-            DOWNLOAD_URL=$(echo $RELEASE_INFO | grep -o '"browser_download_url": "[^"]*client-dist.tar.gz"' | cut -d'"' -f4 || true)
-        else
-            DOWNLOAD_URL=""
+        cd client
+        
+        # Check if package.json exists
+        if [ ! -f package.json ]; then
+            echo -e "${RED}Error: client/package.json not found${NC}"
+            exit 1
         fi
         
-        if [ -n "$DOWNLOAD_URL" ]; then
-            echo -e "${GREEN}Found pre-built client! Downloading...${NC}"
-            curl -L -o client-dist.tar.gz "$DOWNLOAD_URL"
-            mkdir -p client
-            tar -xzf client-dist.tar.gz -C client/
-            rm client-dist.tar.gz
-            echo -e "${GREEN}Client downloaded successfully!${NC}"
+        # Install dependencies
+        echo -e "${BLUE}Installing client dependencies...${NC}"
+        if command -v npm &> /dev/null; then
+            npm ci --silent 2>/dev/null || npm install --silent 2>/dev/null || {
+                echo -e "${YELLOW}Silent install failed, trying verbose...${NC}"
+                npm install
+            }
         else
-            echo -e "${YELLOW}No pre-built client found. Building from source...${NC}"
-            echo -e "${YELLOW}This may take 3-5 minutes...${NC}"
-            cd client
-            npm ci --silent || npm install --silent
+            echo -e "${RED}Error: npm not found${NC}"
+            exit 1
+        fi
+        
+        # Build the client
+        echo -e "${BLUE}Compiling frontend...${NC}"
+        npm run build
+        
+        # Verify build was successful
+        if [ -f dist/index.html ]; then
+            echo -e "${GREEN}✓ Client built successfully!${NC}"
+        else
+            echo -e "${RED}✗ Client build failed - dist/index.html not found${NC}"
+            echo -e "${YELLOW}Trying to build again with verbose output...${NC}"
             npm run build
-            cd ..
+            
+            if [ -f dist/index.html ]; then
+                echo -e "${GREEN}✓ Client built successfully on retry!${NC}"
+            else
+                echo -e "${RED}✗ Client build failed completely${NC}"
+                echo -e "${YELLOW}You may need to build manually: cd client && npm install && npm run build${NC}"
+            fi
         fi
+        
+        cd ..
     fi
     
     # Check if openssl is available
