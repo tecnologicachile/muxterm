@@ -405,6 +405,11 @@ EOF
             # Export for current session
             export PATH=$PATH:/usr/local/bin
             echo -e "${GREEN}PATH updated${NC}"
+            
+            # Additional notice for containers
+            if [ "$IS_DOCKER" = true ] || [ "$IS_LXC" = true ]; then
+                echo -e "${YELLOW}Note: You may need to run 'source /root/.bashrc' or logout/login for PATH changes to take effect${NC}"
+            fi
         fi
     else
         echo -e "${YELLOW}muxterm command script not found${NC}"
@@ -686,7 +691,16 @@ print_success() {
         echo "  Start:   cd ~/muxterm && npm start"
         echo "  Service: sudo systemctl start muxterm"
     fi
-    echo "  Update:  muxterm update"
+    # Check if muxterm is in PATH
+    if ! command -v muxterm &> /dev/null; then
+        echo "  Update:  /usr/local/bin/muxterm update"
+        echo
+        echo -e "${YELLOW}Note: 'muxterm' command not in PATH${NC}"
+        echo -e "Run this to fix: ${GREEN}export PATH=\$PATH:/usr/local/bin${NC}"
+        echo -e "Or add to ~/.bashrc: ${GREEN}echo 'export PATH=\$PATH:/usr/local/bin' >> ~/.bashrc${NC}"
+    else
+        echo "  Update:  muxterm update"
+    fi
     echo
     if [ -f muxterm.pid ]; then
         echo "Manual stop: kill \$(cat muxterm.pid)"

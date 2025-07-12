@@ -223,8 +223,13 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Claude CLI specific patterns
           const patterns = [
             {
-              name: 'Claude CLI',
-              regex: /Do you want to proceed\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/,
+              name: 'Claude CLI - General',
+              regex: /Do you want to (?:proceed|make this edit[^?]*)\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/,
+              response: '1'
+            },
+            {
+              name: 'Claude CLI - File Edit',
+              regex: /Do you want to make this edit to [^?]+\?[\s\S]*?❯[\s\S]*?1\.[\s\S]*?Yes/,
               response: '1'
             },
             {
@@ -235,9 +240,15 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           ];
           
           // Additional check for broken pattern due to ANSI codes
-          const hasPrompt = cleanOutput.includes('Do you want to proceed?');
+          // More flexible detection for Claude CLI questions
+          const hasPrompt = cleanOutput.includes('Do you want to') && cleanOutput.includes('?');
           const hasOption = cleanOutput.includes('1.') && cleanOutput.includes('Yes');
           const hasPointer = cleanOutput.includes('❯');
+          
+          // Specific Claude CLI indicators
+          const hasClaudeOptions = cleanOutput.includes('1. Yes') && 
+                                  (cleanOutput.includes('2. No') || 
+                                   cleanOutput.includes("2. Yes, and don't ask again"));
           
           logger.debug('[Auto-Yes] Pattern check - hasPrompt:', hasPrompt, 'hasOption:', hasOption, 'hasPointer:', hasPointer);
           
@@ -261,31 +272,35 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           // Try multiple detection methods
           const method1 = hasPrompt && hasOption && hasPointer;
           const method2 = hasPrompt && hasOneYes && hasTwoNo;
-          const method3 = cleanOutput.includes('Do you want to proceed?') && 
-                         cleanOutput.includes('1. Yes') && 
-                         cleanOutput.includes('2. No');
+          const method3 = hasPrompt && hasClaudeOptions && hasPointer;
+          
+          // Method for Claude's specific pattern with numbered options
+          const method4 = cleanOutput.includes('Do you want to') && 
+                         cleanOutput.includes('?') &&
+                         hasClaudeOptions &&
+                         hasPointer;
           
           // Check for partial matches (might be split across buffers)
           const hasDoYouWant = cleanOutput.includes('Do you want');
-          const hasProceed = cleanOutput.includes('proceed?');
+          const hasProceed = cleanOutput.includes('proceed?') || cleanOutput.includes('make this edit');
           const hasYesOption = cleanOutput.includes('Yes');
           const hasNumberOne = cleanOutput.includes('1.');
           
-          logger.debug('[Auto-Yes] Detection methods - method1:', method1, 'method2:', method2, 'method3:', method3);
+          logger.debug('[Auto-Yes] Detection methods - method1:', method1, 'method2:', method2, 'method3:', method3, 'method4:', method4);
           logger.debug('[Auto-Yes] Partial checks - hasDoYouWant:', hasDoYouWant, 'hasProceed:', hasProceed, 
                      'hasYesOption:', hasYesOption, 'hasNumberOne:', hasNumberOne);
           
-          // Method 4: Check if we have the key Claude CLI elements even without full prompt
-          const method4 = hasPointer && hasNumberOne && hasYesOption && 
+          // Method 5: Check if we have the key Claude CLI elements even without full prompt
+          const method5 = hasPointer && hasNumberOne && hasYesOption && 
                          (cleanOutput.includes('Yes, and don\'t ask again') || 
                           cleanOutput.includes('No, and tell Claude'));
           
-          logger.debug('[Auto-Yes] Method 4 (partial Claude CLI):', method4);
+          logger.debug('[Auto-Yes] Method 5 (partial Claude CLI):', method5);
           
           // Try simpler detection if any method works
-          if (method1 || method2 || method3 || method4) {
+          if (method1 || method2 || method3 || method4 || method5) {
             logger.info('[Auto-Yes] Claude CLI pattern DETECTED via method:', 
-                       method1 ? '1' : (method2 ? '2' : (method3 ? '3' : '4')));
+                       method1 ? '1' : (method2 ? '2' : (method3 ? '3' : (method4 ? '4' : '5'))));
             logger.info('[Auto-Yes] Sending response "1" now...');
             
             // Log the auto-yes action

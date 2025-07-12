@@ -13,6 +13,7 @@ import {
   Logout as LogoutIcon
 } from '@mui/icons-material';
 import VersionIndicator from './VersionIndicator';
+import GitHubStars from './GitHubStars';
 
 function AppHeader({ 
   mode = 'sessions', // 'sessions' | 'terminal'
@@ -105,6 +106,8 @@ function AppHeader({
           justifyContent: 'flex-end'
         }}>
           {rightContent}
+          
+          <GitHubStars />
           
           <VersionIndicator />
           

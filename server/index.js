@@ -57,6 +57,49 @@ app.get('/api/update-check', async (req, res) => {
   res.json({ update: updateInfo });
 });
 
+// GitHub stars endpoint (cached to avoid rate limits)
+let starsCache = { count: null, lastFetch: 0 };
+app.get('/api/github-stars', async (req, res) => {
+  const now = Date.now();
+  const cacheTime = 5 * 60 * 1000; // 5 minutes
+  
+  // Return cached value if still fresh
+  if (starsCache.count !== null && (now - starsCache.lastFetch) < cacheTime) {
+    return res.json({ stars: starsCache.count });
+  }
+  
+  try {
+    const https = require('https');
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/tecnologicachile/muxterm',
+      headers: {
+        'User-Agent': 'MuxTerm-Server',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    };
+    
+    https.get(options, (apiRes) => {
+      let data = '';
+      apiRes.on('data', chunk => data += chunk);
+      apiRes.on('end', () => {
+        try {
+          const repo = JSON.parse(data);
+          starsCache.count = repo.stargazers_count || 0;
+          starsCache.lastFetch = now;
+          res.json({ stars: starsCache.count });
+        } catch (e) {
+          res.json({ stars: starsCache.count || 0 });
+        }
+      });
+    }).on('error', () => {
+      res.json({ stars: starsCache.count || 0 });
+    });
+  } catch (error) {
+    res.json({ stars: starsCache.count || 0 });
+  }
+});
+
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('*', (req, res) => {
