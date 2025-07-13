@@ -201,7 +201,7 @@ function SessionList() {
                       </Typography>
                     </Box>
                     <Typography variant="body2" color="text.secondary">
-                      Layout: <strong>{session.layoutInfo || `${session.terminals} terminal(s)`}</strong>
+                      Layout: <strong>{session.layoutInfo || `${session.terminals || 0} terminal(s)`}</strong>
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Created: {formatDate(session.createdAt)}

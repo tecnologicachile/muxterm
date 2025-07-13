@@ -20,17 +20,21 @@ print_color() {
     echo -e "${2}${1}${NC}"
 }
 
-# Log file for the update process
-LOG_FILE="/tmp/muxterm-update-$(date +%Y%m%d%H%M%S).log"
+# Create logs directory if it doesn't exist
+LOG_DIR="$SCRIPT_DIR/logs/updates"
+mkdir -p "$LOG_DIR"
+
+# Log file for the update process (temporary, the main update.sh will create its own)
+TEMP_LOG_FILE="/tmp/muxterm-update-$(date +%Y%m%d%H%M%S).log"
 
 print_color "MuxTerm Auto-Update Started" "$BLUE"
-print_color "Log file: $LOG_FILE" "$YELLOW"
+print_color "Update logs will be saved in: $LOG_DIR" "$YELLOW"
 
 # Change to script directory
 cd "$SCRIPT_DIR"
 
 # Run the update script with auto-yes
-echo "y" | bash update.sh > "$LOG_FILE" 2>&1 &
+echo "y" | bash update.sh > "$TEMP_LOG_FILE" 2>&1 &
 UPDATE_PID=$!
 
 # Show progress
@@ -48,18 +52,28 @@ UPDATE_EXIT_CODE=$?
 # Check if update was successful
 if [ $UPDATE_EXIT_CODE -eq 0 ]; then
     print_color "✓ Update completed successfully!" "$GREEN"
+    # Find the most recent log file created by update.sh
+    LATEST_LOG=$(ls -t "$LOG_DIR"/update-*.log 2>/dev/null | head -1)
+    if [ -n "$LATEST_LOG" ]; then
+        print_color "Update log saved at: $LATEST_LOG" "$BLUE"
+    fi
     print_color "The service will restart automatically." "$YELLOW"
     
     # Show key log entries
-    if grep -q "Frontend compiled successfully" "$LOG_FILE"; then
+    if grep -q "Frontend compiled successfully" "$TEMP_LOG_FILE"; then
         print_color "✓ Frontend compiled" "$GREEN"
-    elif grep -q "Frontend compilation failed" "$LOG_FILE"; then
+    elif grep -q "Frontend compilation failed" "$TEMP_LOG_FILE"; then
         print_color "⚠ Frontend compilation failed - check log" "$RED"
     fi
 else
-    print_color "✗ Update failed. Check log file: $LOG_FILE" "$RED"
+    print_color "✗ Update failed. Check log file: $TEMP_LOG_FILE" "$RED"
+    # Also check for the detailed log from update.sh
+    LATEST_LOG=$(ls -t "$LOG_DIR"/update-*.log 2>/dev/null | head -1)
+    if [ -n "$LATEST_LOG" ]; then
+        print_color "Detailed log saved at: $LATEST_LOG" "$YELLOW"
+    fi
     # Show last few error lines
     print_color "\nLast errors:" "$YELLOW"
-    tail -n 10 "$LOG_FILE" | grep -E "(Error|Failed|Warning)" || tail -n 5 "$LOG_FILE"
+    tail -n 10 "$TEMP_LOG_FILE" | grep -E "(Error|Failed|Warning)" || tail -n 5 "$TEMP_LOG_FILE"
     exit 1
 fi

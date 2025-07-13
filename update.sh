@@ -17,10 +17,45 @@ REPO="tecnologicachile/muxterm"
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="muxterm"
 BACKUP_DIR="/tmp/muxterm-backup-$(date +%Y%m%d%H%M%S)"
+LOG_DIR="$INSTALL_DIR/logs/updates"
+LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M%S).log"
+
+# Create log directory if it doesn't exist
+mkdir -p "$LOG_DIR"
+
+# Function to log messages
+log() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] $1" | tee -a "$LOG_FILE"
+}
+
+# Function to log error and exit
+log_error() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] ERROR: $1" | tee -a "$LOG_FILE" >&2
+    echo "[$timestamp] Update failed. Check log at: $LOG_FILE" | tee -a "$LOG_FILE"
+    exit 1
+}
+
+# Function to execute and log commands
+exec_log() {
+    local cmd="$1"
+    local desc="$2"
+    log "Executing: $desc"
+    log "Command: $cmd"
+    if eval "$cmd" >> "$LOG_FILE" 2>&1; then
+        log "✓ Success: $desc"
+        return 0
+    else
+        log_error "Failed: $desc"
+        return 1
+    fi
+}
 
 # Function to print colored output
 print_color() {
     echo -e "${2}${1}${NC}"
+    log "$1"
 }
 
 # Function to check dependencies
@@ -70,6 +105,15 @@ service_exists() {
 main() {
     print_color "MuxTerm Update Script" "$BLUE"
     echo "===================="
+    
+    # Log system information
+    log "=== MuxTerm Update Started ==="
+    log "Date: $(date)"
+    log "User: $(whoami)"
+    log "Install Directory: $INSTALL_DIR"
+    log "Node Version: $(node -v)"
+    log "NPM Version: $(npm -v)"
+    log "OS: $(uname -a)"
     
     # Check requirements
     check_dependencies
@@ -122,20 +166,20 @@ main() {
     # Stop service if running
     if service_exists; then
         print_color "\nStopping MuxTerm service..." "$YELLOW"
-        sudo systemctl stop "$SERVICE_NAME" || true
+        exec_log "sudo systemctl stop $SERVICE_NAME || true" "Stopping MuxTerm service"
     fi
     
     # Stash local changes
     if [ -d ".git" ]; then
         print_color "\nStashing local changes..." "$YELLOW"
-        git stash || true
+        exec_log "git stash || true" "Stashing local changes"
     fi
     
     # Update via git
     print_color "\nUpdating MuxTerm..." "$YELLOW"
     if [ -d ".git" ]; then
-        git fetch --tags
-        git checkout "$LATEST_VERSION"
+        exec_log "git fetch --tags" "Fetching latest tags"
+        exec_log "git checkout $LATEST_VERSION" "Checking out version $LATEST_VERSION"
     else
         # If not a git repo, download the release
         print_color "Downloading latest release..." "$YELLOW"
@@ -148,7 +192,7 @@ main() {
     
     # Install backend dependencies
     print_color "\nInstalling backend dependencies..." "$YELLOW"
-    npm install --production
+    exec_log "npm install --production" "Installing backend dependencies"
     
     # Build client
     print_color "\nBuilding client..." "$YELLOW"
@@ -157,12 +201,12 @@ main() {
     # Check if node_modules exists and if package.json has changed
     if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
         print_color "Installing client dependencies..." "$BLUE"
-        npm install
+        exec_log "npm install" "Installing client dependencies"
     fi
     
     # Always rebuild to ensure latest version
     print_color "Compiling frontend..." "$BLUE"
-    npm run build
+    exec_log "npm run build" "Building client"
     
     if [ $? -eq 0 ]; then
         print_color "✓ Frontend compiled successfully" "$GREEN"
@@ -196,7 +240,7 @@ main() {
     # Start service if it was running
     if service_exists; then
         print_color "\nStarting MuxTerm service..." "$YELLOW"
-        sudo systemctl start "$SERVICE_NAME"
+        exec_log "sudo systemctl start $SERVICE_NAME" "Starting MuxTerm service"
         
         # Verify service
         sleep 2
@@ -211,6 +255,12 @@ main() {
     print_color "\n✓ MuxTerm updated successfully to $LATEST_VERSION!" "$GREEN"
     print_color "\nBackup location: $BACKUP_DIR" "$BLUE"
     
+    # Log summary
+    log "=== Update Completed Successfully ==="
+    log "Updated from: $CURRENT_VERSION to $LATEST_VERSION"
+    log "Backup location: $BACKUP_DIR"
+    log "Update log: $LOG_FILE"
+    
     if ! service_exists; then
         print_color "\nTo start MuxTerm manually:" "$YELLOW"
         print_color "  npm start" "$BLUE"
@@ -222,7 +272,14 @@ main() {
     echo
     print_color "⭐ Enjoying the new features? Star us on GitHub!" "$YELLOW"
     print_color "   https://github.com/tecnologicachile/muxterm" "$BLUE"
+    
+    # Show log location
+    echo
+    print_color "📄 Update log saved at: $LOG_FILE" "$BLUE"
 }
+
+# Trap errors to show log location
+trap 'echo -e "\n${RED}Error occurred during update. Check the log:${NC}\n${BLUE}$LOG_FILE${NC}"' ERR
 
 # Run main function
 main "$@"

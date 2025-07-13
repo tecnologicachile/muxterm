@@ -97,12 +97,24 @@ class SessionManager {
 
   getUserSessions(userId) {
     const sessions = database.findSessionsByUserId(userId);
-    return sessions.map(s => ({
-      id: s.id,
-      name: s.name,
-      createdAt: s.created_at,
-      lastAccessed: s.last_accessed
-    }));
+    return sessions.map(s => {
+      // Get the layout to count terminals
+      const layout = database.getLayout(s.id);
+      let terminalCount = 0;
+      
+      if (layout && layout.panels) {
+        terminalCount = layout.panels.length;
+      }
+      
+      return {
+        id: s.id,
+        name: s.name,
+        createdAt: s.created_at,
+        lastAccessed: s.last_accessed,
+        terminals: terminalCount,
+        layoutInfo: terminalCount > 1 ? `${terminalCount} panels` : null
+      };
+    });
   }
 
   updateSessionLayout(userId, sessionId, layout) {
