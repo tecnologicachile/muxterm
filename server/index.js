@@ -125,23 +125,31 @@ app.get('/api/github-stars', async (req, res) => {
 // Update execution endpoint (requires authentication)
 app.post('/api/update-execute', authenticateToken, async (req, res) => {
   try {
-    // Check if auto-update script exists
-    const updateScriptPath = path.join(__dirname, '..', 'update-auto.sh');
-    if (!fs.existsSync(updateScriptPath)) {
-      return res.status(404).json({ error: 'Update script not found' });
-    }
-    
     // Check if there's actually an update available
     const updateInfo = await updateChecker.checkForUpdates(true);
     if (!updateInfo) {
       return res.status(400).json({ error: 'No update available' });
     }
     
+    // Check if muxterm command exists
+    const muxTermCommand = '/usr/local/bin/muxterm';
+    if (!fs.existsSync(muxTermCommand)) {
+      logger.error('muxterm command not found at /usr/local/bin/muxterm');
+      return res.status(500).json({ error: 'muxterm command not found' });
+    }
+    
     logger.info(`Update initiated by user ${req.user.username} from ${updateInfo.current} to ${updateInfo.latest}`);
     
-    // Execute update in background
+    // Execute update in background using muxterm update command
     const { spawn } = require('child_process');
-    const updateProcess = spawn('/bin/bash', [updateScriptPath], {
+    
+    // Create a script to run muxterm update with auto-yes
+    // First cd to the muxterm directory to ensure we're in the right place
+    const muxTermDir = path.join(__dirname, '..');
+    const updateCommand = `cd "${muxTermDir}" && echo "y" | timeout 300 ${muxTermCommand} update`;
+    
+    // Execute the update command
+    const updateProcess = spawn('/bin/bash', ['-c', updateCommand], {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, FORCE_COLOR: '0' } // Disable color output for logs
