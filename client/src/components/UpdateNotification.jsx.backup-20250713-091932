@@ -44,28 +44,18 @@ function UpdateNotification() {
   const handleUpdate = async () => {
     setUpdating(true);
     
+    // Open update in new tab
+    const updateCommand = `curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/update.sh | bash`;
+    
+    // Copy command to clipboard
     try {
-      console.log('[UPDATE-CLIENT] Calling /api/update-execute');
-      const response = await axios.post('/api/update-execute');
-      console.log('[UPDATE-CLIENT] Response:', response.data);
-      
-      if (response.data.success) {
-        alert(`Update to v${response.data.version} started!\n\nThe service will restart automatically.\n\nThe page will reload in 30 seconds...`);
-        
-        // Wait and then reload
-        setTimeout(() => {
-          window.location.reload();
-        }, 30000);
-      } else {
-        alert('Error starting update: ' + (response.data.error || 'Unknown error'));
-        setUpdating(false);
-      }
-    } catch (error) {
-      console.error('[UPDATE-CLIENT] Error:', error);
-      logger.error('Failed to execute update:', error);
-      alert('Failed to start update. Please check the logs.');
-      setUpdating(false);
+      await navigator.clipboard.writeText(updateCommand);
+      alert('Update command copied to clipboard!\nPaste and run in any terminal.');
+    } catch {
+      alert(`Run this command in any terminal:\n\n${updateCommand}`);
     }
+    
+    setUpdating(false);
   };
 
   if (checking || !updateInfo) {
