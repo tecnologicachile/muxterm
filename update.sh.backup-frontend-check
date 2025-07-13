@@ -199,20 +199,6 @@ main() {
                 NEEDS_REBUILD=true
             fi
         fi
-        
-        # Check if the built frontend has the correct version
-        if [ -d "public/assets" ]; then
-            # Look for version string in compiled JS files
-            BUILT_VERSION=$(grep -h -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" public/assets/index-*.js 2>/dev/null  < /dev/null |  head -1)
-            if [ -n "$BUILT_VERSION" ] && [ "$BUILT_VERSION" \!= "$CURRENT_VERSION" ]; then
-                print_color "Frontend shows $BUILT_VERSION but should be $CURRENT_VERSION" "$YELLOW"
-                print_color "Frontend needs to be rebuilt..." "$YELLOW"
-                NEEDS_REBUILD=true
-            elif [ -z "$BUILT_VERSION" ]; then
-                print_color "Could not detect version in built frontend, will rebuild..." "$YELLOW"
-                NEEDS_REBUILD=true
-            fi
-        fi
     fi
     
     # Exit if nothing needs to be done
@@ -222,10 +208,6 @@ main() {
     fi
     
     # If only rebuild is needed, skip git operations
-        print_color "\nFrontend rebuild required. This may happen when:" "$YELLOW"
-        print_color "  - Source files were modified" "$YELLOW"
-        print_color "  - Frontend version doesn't match backend version" "$YELLOW"
-        print_color "  - Dependencies need updating" "$YELLOW"
     if [ "$NEEDS_UPDATE" = "false" ] && [ "$NEEDS_REBUILD" = "true" ]; then
         print_color "\nSkipping git operations, only rebuilding frontend..." "$BLUE"
         # Jump directly to frontend build section

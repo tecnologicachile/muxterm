@@ -1,3 +1,20 @@
+## [1.0.42] - 2025-07-13
+
+### Fixed
+- **Version Detection in Built Files** - Added check to verify frontend compiled files contain correct version
+- **Race Condition Fix** - Handles case where backend updates but frontend still shows old version
+- **Frontend Rebuild Detection** - Now examines actual content of compiled JS files, not just file existence
+
+### Added
+- Version string detection in compiled JavaScript files
+- Detailed logging when frontend rebuild is triggered
+- Fallback to rebuild if version cannot be detected in compiled files
+
+### Technical
+- Searches for version pattern in public/assets/index-*.js files
+- Compares detected version with package.json version
+- Forces rebuild if versions do not match or if version is undetectable
+
 ## [1.0.40] - 2025-07-13
 
 ### Fixed
