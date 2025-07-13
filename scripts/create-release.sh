@@ -33,15 +33,22 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🔧 Fix: Update Detection
-- Fixed update checker to properly detect v1.0.16 and future versions
-- Now finds the release with the highest version number instead of the most recent by date
-- Ensures proper version comparison regardless of release publication order
+### 🎯 Improved Session Card Interaction
+- Session cards are now fully clickable to open sessions
+- Click anywhere on the card except edit/delete icons
+- Added hover effects for better visual feedback
+- Edit and delete buttons maintain their specific functionality
 
-### 🐛 Bug Fixes
-- Update checker now correctly identifies the latest version
-- Skips draft and prerelease versions when checking for updates
-- Uses semantic version comparison for accurate results
+### 🚀 Enhanced Update Command
+- Added \`--yes\` or \`-y\` flag to \`muxterm update\` command
+- Allows automatic updates without confirmation prompt
+- Example: \`muxterm update --yes\`
+- UI now uses the cleaner \`--yes\` flag instead of piping echo
+
+### 📊 User Experience
+- More intuitive session list interaction
+- Faster access to sessions with single click
+- Professional command-line update options
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -55,7 +62,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Fix update detection",
+  "name": "$LATEST_TAG - Clickable session cards & update improvements",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false

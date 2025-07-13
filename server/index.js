@@ -146,7 +146,7 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
     // Create a script to run muxterm update with auto-yes
     // First cd to the muxterm directory to ensure we're in the right place
     const muxTermDir = path.join(__dirname, '..');
-    const updateCommand = `cd "${muxTermDir}" && echo "y" | timeout 300 ${muxTermCommand} update`;
+    const updateCommand = `cd "${muxTermDir}" && timeout 300 ${muxTermCommand} update --yes`;
     
     // Execute the update command
     const updateProcess = spawn('/bin/bash', ['-c', updateCommand], {

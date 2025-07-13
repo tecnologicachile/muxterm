@@ -45,7 +45,12 @@ case "$1" in
         
         if [ -f "$MUXTERM_DIR/update.sh" ]; then
             cd "$MUXTERM_DIR"
-            exec bash update.sh
+            # Check for --yes or -y flag
+            if [ "$2" = "--yes" ] || [ "$2" = "-y" ]; then
+                echo "y" | bash update.sh
+            else
+                exec bash update.sh
+            fi
         else
             print_color "Error: Update script not found" "$RED"
             exit 1
@@ -98,7 +103,8 @@ case "$1" in
         echo "Usage: muxterm [command]"
         echo ""
         echo "Commands:"
-        echo "  update                      Check for updates and install if available"
+        echo "  update [--yes|-y]           Check for updates and install if available"
+        echo "                              Use --yes or -y to skip confirmation prompt"
         echo "  version                     Show current MuxTerm version"
         echo "  configure-windows-autostart Configure Windows autostart (WSL only)"
         echo "  help                        Show this help message"
