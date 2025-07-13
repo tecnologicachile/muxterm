@@ -57,6 +57,20 @@ if [ $UPDATE_EXIT_CODE -eq 0 ]; then
     if [ -n "$LATEST_LOG" ]; then
         print_color "Update log saved at: $LATEST_LOG" "$BLUE"
     fi
+    
+    # Double-check that frontend was deployed
+    if [ ! -f "$SCRIPT_DIR/public/index.html" ]; then
+        print_color "⚠ Frontend not found in public/, attempting to fix..." "$YELLOW"
+        cd "$SCRIPT_DIR"
+        if [ -f "client/dist/index.html" ]; then
+            mkdir -p public
+            cp -r client/dist/* public/
+            print_color "✓ Frontend copied to public directory" "$GREEN"
+        else
+            print_color "✗ Frontend build not found! Manual intervention required." "$RED"
+        fi
+    fi
+    
     print_color "The service will restart automatically." "$YELLOW"
     
     # Show key log entries

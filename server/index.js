@@ -180,10 +180,21 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
 });
 
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-  });
+  // First try public directory, then fall back to client/dist
+  const publicPath = path.join(__dirname, '../public');
+  const distPath = path.join(__dirname, '../client/dist');
+  
+  if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'index.html'))) {
+    app.use(express.static(publicPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(publicPath, 'index.html'));
+    });
+  } else {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
 }
 
 const authenticateSocket = async (socket, next) => {

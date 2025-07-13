@@ -33,22 +33,20 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🔄 Auto-Reconnection
-- Terminals now automatically restore after WebSocket disconnection
-- Infinite reconnection attempts (was limited to 5)
-- Added connection status indicator in the UI
-
-### ⚡ Auto-Yes Improvements  
-- Added 1 second delay between Auto-Yes responses for more natural interaction
-- Auto-Yes counter now resets when the feature is deactivated
+### 📝 Update Process Improvements
+- Added comprehensive logging system for update process
+- All update operations now logged to logs/updates/ with timestamps
+- Detailed error capture and system information in logs
+- Both CLI and UI updates now generate detailed logs
 
 ### 🐛 Bug Fixes
-- Fixed terminal disconnection issues after MuxTerm updates
-- Terminals now properly reconnect to existing tmux sessions
+- Fixed \"undefined terminal(s)\" display in session list
+- Improved error handling during updates
 
-### 📊 UI Enhancements
-- New connection status chip shows \"Connected\" or \"Reconnecting...\"
-- Visual feedback for connection state with WiFi icons
+### 🔧 Technical Improvements
+- Added exec_log() function for command execution tracking
+- Better error reporting with log file locations
+- System information captured at update start
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"

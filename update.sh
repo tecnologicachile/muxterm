@@ -214,15 +214,28 @@ main() {
         # Verify dist directory was created
         if [ -d "dist" ] && [ -f "dist/index.html" ]; then
             print_color "✓ Frontend files verified" "$GREEN"
+            
+            # Copy to public directory
+            cd ..
+            print_color "Copying frontend files to public directory..." "$BLUE"
+            mkdir -p public
+            exec_log "cp -r client/dist/* public/" "Copying frontend to public directory"
+            
+            # Verify copy was successful
+            if [ -f "public/index.html" ]; then
+                print_color "✓ Frontend deployed to public directory" "$GREEN"
+            else
+                log_error "Failed to copy frontend files to public directory"
+            fi
         else
             print_color "⚠ Warning: dist directory may be incomplete" "$YELLOW"
+            cd ..
         fi
     else
         print_color "✗ Frontend compilation failed" "$RED"
         print_color "You may need to compile manually: cd client && npm run build" "$YELLOW"
+        cd ..
     fi
-    
-    cd ..
     
     # Restore data
     print_color "\nRestoring data..." "$YELLOW"
