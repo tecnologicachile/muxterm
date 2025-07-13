@@ -79,6 +79,28 @@ app.get('/api/update-check', async (req, res) => {
   res.json({ update: updateInfo });
 });
 
+// Debug endpoint for update system
+app.get('/api/update-debug', authenticateToken, async (req, res) => {
+  const debugInfo = {
+    currentVersion: require('../package.json').version,
+    nodeVersion: process.version,
+    platform: process.platform,
+    cwd: process.cwd(),
+    serverDir: __dirname,
+    muxTermDir: path.join(__dirname, '..'),
+    muxTermCommand: '/usr/local/bin/muxterm',
+    muxTermExists: fs.existsSync('/usr/local/bin/muxterm'),
+    updateScriptExists: fs.existsSync(path.join(__dirname, '..', 'update.sh')),
+    env: {
+      NODE_ENV: process.env.NODE_ENV,
+      PATH: process.env.PATH
+    }
+  };
+  
+  logger.info('Debug info requested:', debugInfo);
+  res.json(debugInfo);
+});
+
 // GitHub stars endpoint (cached to avoid rate limits)
 let starsCache = { count: null, lastFetch: 0 };
 app.get('/api/github-stars', async (req, res) => {
@@ -148,6 +170,9 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
     const muxTermDir = path.join(__dirname, '..');
     const updateCommand = `cd "${muxTermDir}" && timeout 300 ${muxTermCommand} update --yes`;
     
+    logger.info(`Update command: ${updateCommand}`);
+    logger.info(`Working directory: ${muxTermDir}`);
+    
     // Execute the update command
     const updateProcess = spawn('/bin/bash', ['-c', updateCommand], {
       detached: true,
@@ -167,6 +192,19 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
     updateProcess.stderr.on('data', (data) => {
       errorOutput += data.toString();
       logger.error('[Update Error]', data.toString().trim());
+    });
+    
+    updateProcess.on('error', (error) => {
+      logger.error('[Update Process Error]', error);
+    });
+    
+    updateProcess.on('exit', (code, signal) => {
+      logger.info(`[Update Process Exit] Code: ${code}, Signal: ${signal}`);
+      if (code !== 0) {
+        logger.error(`[Update Failed] Exit code: ${code}`);
+        logger.error(`[Update Output] ${output}`);
+        logger.error(`[Update Error Output] ${errorOutput}`);
+      }
     });
     
     // Don't wait for process to complete
