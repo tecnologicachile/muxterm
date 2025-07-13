@@ -33,21 +33,24 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🔧 Critical Fix: Update Compatibility
-- Added fallback mechanism for UI updates from older versions
-- UpdateProgress component now loads lazily to prevent errors
-- Fallback method uses simple alerts when new UI isn't available
-- 30-second delay in fallback mode to ensure service has time to restart
+### 🔧 Fix: Update Progress Stuck at 'Verifying Installation'
+- Fixed issue where update appeared stuck at the verification step
+- Adjusted progress timing to match actual update process (70s typical)
+- Polling now starts at 65s to align with service restart phase
 
-### 🛡️ Backward Compatibility
-- Updates from v1.0.11 or older will now work properly
-- Prevents \"component not found\" errors during updates
-- Graceful degradation when new features aren't available
+### ⏱️ Improved Update Timing
+- More realistic progress steps: 5s backup, 15s download, 25s install, 50s build, 70s restart
+- Verification step now shows briefly when service comes back online
+- Better synchronization between UI progress and actual update status
 
-### 📝 Technical Details
-- Lazy loading with React.Suspense for optional components
-- Try-catch fallback for update execution
-- Better error handling for missing components
+### 🐛 Bug Fixes
+- Fixed progress bar getting stuck at 'Verifying installation'
+- Added debug logging for polling attempts
+- Error states now properly mark the stuck step
+
+### 📊 User Experience
+- Clearer indication of which step failed if timeout occurs
+- More accurate progress representation during updates
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -61,7 +64,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Auto-reconnection and Auto-Yes improvements",
+  "name": "$LATEST_TAG - Fix update stuck at verification",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false
