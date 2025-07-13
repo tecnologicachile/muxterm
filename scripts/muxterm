@@ -58,12 +58,8 @@ case "$1" in
                 fi
             else
                 # Normal update
-                # Check for --yes or -y flag
-                if [ "$2" = "--yes" ] || [ "$2" = "-y" ]; then
-                    echo "y" | bash update.sh
-                else
-                    exec bash update.sh
-                fi
+                # Pass all arguments to update.sh
+                exec bash update.sh "$@"
             fi
         else
             print_color "Error: Update script not found" "$RED"

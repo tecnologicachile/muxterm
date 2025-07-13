@@ -20,7 +20,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash $UPDATE_SCRIPT
+ExecStart=/bin/bash $UPDATE_SCRIPT --yes
 WorkingDirectory=$MUXTERM_DIR
 StandardOutput=journal
 StandardError=journal

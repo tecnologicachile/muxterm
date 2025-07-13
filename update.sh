@@ -5,6 +5,29 @@
 
 set -e
 
+# Parse command line arguments
+AUTO_YES=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -y|--yes)
+            AUTO_YES=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [options]"
+            echo "Options:"
+            echo "  -y, --yes    Auto-confirm update (skip confirmation prompt)"
+            echo "  -h, --help   Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -125,6 +148,7 @@ main() {
     log "Node Version: $(node -v)"
     log "NPM Version: $(npm -v)"
     log "OS: $(uname -a)"
+    log "Auto-Yes Mode: $AUTO_YES"
     
     # Check requirements
     check_dependencies
@@ -151,13 +175,17 @@ main() {
         exit 0
     fi
     
-    # Confirm update
-    echo ""
-    read -p "Do you want to update MuxTerm? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_color "Update cancelled" "$YELLOW"
-        exit 0
+    # Confirm update (unless --yes flag is used)
+    if [ "$AUTO_YES" != "true" ]; then
+        echo ""
+        read -p "Do you want to update MuxTerm? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_color "Update cancelled" "$YELLOW"
+            exit 0
+        fi
+    else
+        print_color "\nAuto-confirming update (--yes flag detected)" "$BLUE"
     fi
     
     # Create backup

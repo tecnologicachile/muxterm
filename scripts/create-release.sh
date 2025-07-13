@@ -33,14 +33,16 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🧪 Test Release v1.0.24
+### 🧪 Test Release v1.0.26
 - No functional changes
-- Testing the improved update process from v1.0.23
-- Use \"View Logs\" button to monitor update progress
+- Testing the path fixes from v1.0.25
+- Should successfully update from UI now
 
-### 📝 Previous Fix Reminder
-- v1.0.23 fixed the update process dying issue
-- Updates should now complete successfully from UI
+### 📝 Previous Fix Summary (v1.0.25)
+- Fixed update script to use absolute paths
+- Script now works correctly when run from systemd
+- Added proper error handling for version detection
+- Update process should complete successfully
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
