@@ -226,4 +226,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
+For questions and support, please visit our [GitHub repository](https://github.com/tecnologicachile/muxterm).
+
 For issues and feature requests, please use the [GitHub Issues](https://github.com/tecnologicachile/muxterm/issues) page.
