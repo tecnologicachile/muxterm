@@ -297,16 +297,15 @@ main() {
         # Always rebuild
         print_color "Compiling frontend..." "$BLUE"
         print_color "Current directory before build: $(pwd)" "$BLUE"
-        exec_log "npm run build" "Building client"
+        exec_log "cd client && npm run build" "Building client"
         
         if [ $? -eq 0 ]; then
             print_color "✓ Frontend compiled successfully" "$GREEN"
             
             # Copy to public directory
-            cd ..
             print_color "Copying frontend files to public directory..." "$BLUE"
-            mkdir -p public
-            exec_log "cp -r client/dist/* public/" "Copying frontend to public directory"
+            mkdir -p ../public
+            exec_log "cp -r dist/* ../public/" "Copying frontend to public directory"
             
             if [ $? -eq 0 ]; then
                 print_color "✓ Frontend deployed to public directory" "$GREEN"
@@ -407,7 +406,7 @@ main() {
     # Always rebuild to ensure latest version
     print_color "Compiling frontend..." "$BLUE"
     print_color "Current directory before build: $(pwd)" "$BLUE"
-        exec_log "npm run build" "Building client"
+        exec_log "cd client && npm run build" "Building client"
     
     if [ $? -eq 0 ]; then
         print_color "✓ Frontend compiled successfully" "$GREEN"
