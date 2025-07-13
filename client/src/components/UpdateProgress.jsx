@@ -53,8 +53,8 @@ function UpdateProgress({ open, onClose, version }) {
       if (response.data.success) {
         // Start simulating progress
         simulateProgress();
-        // Start polling for service availability
-        setTimeout(() => startPolling(), 10000); // Wait 10s before starting to poll
+        // Start polling for service availability when restart begins
+        setTimeout(() => startPolling(), 65000); // Wait 65s (just before restart step)
       } else {
         setError('Failed to start update');
         setStatus('error');
@@ -67,8 +67,16 @@ function UpdateProgress({ open, onClose, version }) {
   };
 
   const simulateProgress = () => {
-    // Simulate progress through steps
-    const timings = [3000, 8000, 15000, 25000, 35000, 40000];
+    // Simulate progress through steps with more realistic timing
+    // Total update usually takes 60-120 seconds
+    const timings = [
+      5000,   // Backup (5s)
+      15000,  // Download (15s)
+      25000,  // Install dependencies (25s)
+      50000,  // Build frontend (50s)
+      70000,  // Restart service (70s)
+      // Verifying is handled by actual polling, not simulation
+    ];
     
     timings.forEach((delay, index) => {
       setTimeout(() => {
@@ -81,12 +89,18 @@ function UpdateProgress({ open, onClose, version }) {
   };
 
   const startPolling = async () => {
+    logger.info('Starting to poll for service availability');
     setStatus('polling');
     pollForService();
   };
 
   const pollForService = async () => {
     if (pollAttempts >= maxPollAttempts) {
+      // Mark the current active step as the one that timed out
+      setSteps(prev => prev.map(step => ({
+        ...step,
+        status: step.status === 'active' ? 'error' : step.status
+      })));
       setError('Update is taking longer than expected. The update may still be in progress. Please wait a moment and reload the page.');
       setStatus('timeout');
       return;
@@ -94,20 +108,30 @@ function UpdateProgress({ open, onClose, version }) {
 
     try {
       // Try to reach the API
+      logger.debug(`Polling attempt ${pollAttempts + 1}/${maxPollAttempts}`);
       const response = await axios.get('/api/update-check', { 
         timeout: 2000,
         validateStatus: () => true // Accept any status
       });
       
+      logger.debug(`Poll response status: ${response.status}`);
       if (response.status === 200) {
-        // Service is back!
-        setSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
-        setStatus('completed');
+        // Service is back! Mark restart as complete and verify as active
+        setSteps(prev => prev.map((step, index) => ({ 
+          ...step, 
+          status: index < 5 ? 'completed' : index === 5 ? 'active' : 'pending' 
+        })));
         
-        // Wait a bit then reload
+        // Quick verification then mark complete
         setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+          setSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
+          setStatus('completed');
+          
+          // Wait a bit then reload
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        }, 1000);
       } else {
         // Service not ready yet, continue polling
         setPollAttempts(prev => prev + 1);
