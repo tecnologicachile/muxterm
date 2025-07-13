@@ -33,21 +33,15 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🔧 Critical Fix: UI Update Process
-- Fixed issue where UI would not load after updating from web interface
-- Update script now properly copies frontend to public/ directory
-- Added automatic recovery mechanism if frontend is missing
-- Server now checks multiple locations for frontend files
+### 🖱️ UI Improvements
+- Fixed keyboard button appearing on desktop PCs with touch screens
+- Keyboard button now only shows on actual mobile devices (Android/iOS)
+- Improved mobile device detection using User Agent
 
-### 🚀 Update Process Improvements
-- Added verification step to ensure frontend is deployed
-- Auto-update script now double-checks and fixes missing UI
-- Better error handling and recovery during updates
-
-### 📝 Technical Details
-- Frontend build output is now preserved in public/ directory
-- Server serves static files from public/ with fallback to client/dist/
-- Update scripts are more resilient to build failures
+### 📱 Mobile Experience
+- More accurate detection of mobile devices vs touch-enabled desktops
+- Keyboard helper button only appears when truly needed
+- Better experience for laptop users with touch screens
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"

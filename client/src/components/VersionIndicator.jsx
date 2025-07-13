@@ -23,6 +23,7 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import StarIcon from '@mui/icons-material/Star';
 import axios from '../utils/axios';
 import logger from '../utils/logger';
+import UpdateProgress from './UpdateProgress';
 
 // Version actual del cliente (leída desde package.json)
 import packageJson from '../../package.json';
@@ -35,6 +36,7 @@ function VersionIndicator() {
   const [updating, setUpdating] = useState(false);
   const [lastCheck, setLastCheck] = useState(null);
   const [checkMessage, setCheckMessage] = useState('');
+  const [showUpdateProgress, setShowUpdateProgress] = useState(false);
 
   useEffect(() => {
     // Check on mount
@@ -56,19 +58,19 @@ function VersionIndicator() {
         setUpdateInfo(response.data.update);
         logger.info('Update available:', response.data.update);
         if (isManual) {
-          setCheckMessage(`¡Nueva versión ${response.data.update.latest} disponible!`);
+          setCheckMessage(`New version ${response.data.update.latest} available!`);
         }
       } else {
         setUpdateInfo(null);
         if (isManual) {
-          setCheckMessage('MuxTerm está actualizado ✓');
+          setCheckMessage('MuxTerm is up to date ✓');
         }
       }
       setLastCheck(new Date());
     } catch (error) {
       logger.error('Failed to check for updates:', error);
       if (isManual) {
-        setCheckMessage('Error al verificar actualizaciones');
+        setCheckMessage('Error checking for updates');
       }
     } finally {
       setChecking(false);
@@ -79,34 +81,8 @@ function VersionIndicator() {
   };
 
   const handleUpdate = async () => {
-    setUpdating(true);
-    
-    try {
-      const response = await axios.post('/api/update-execute');
-      
-      if (response.data.success) {
-        alert(`¡Actualización iniciada!\n\nEl servicio se reiniciará automáticamente para aplicar la versión ${response.data.version}.\n\nLa página se recargará en unos segundos...`);
-        
-        // Esperar un poco y luego recargar la página
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000);
-      } else {
-        alert('Error al iniciar la actualización. Por favor, intenta nuevamente.');
-      }
-    } catch (error) {
-      logger.error('Update execution failed:', error);
-      
-      if (error.response?.status === 401) {
-        alert('Tu sesión ha expirado. Por favor, vuelve a iniciar sesión.');
-        window.location.href = '/';
-      } else {
-        alert('Error al ejecutar la actualización. Por favor, usa el método manual:\n\nmuxterm update');
-      }
-    } finally {
-      setUpdating(false);
-      setDialogOpen(false);
-    }
+    setDialogOpen(false);
+    setShowUpdateProgress(true);
   };
 
   const hasUpdate = updateInfo !== null;
@@ -117,7 +93,7 @@ function VersionIndicator() {
 
   return (
     <>
-      <Tooltip title={hasUpdate ? "¡Nueva versión disponible!" : "MuxTerm está actualizado"}>
+      <Tooltip title={hasUpdate ? "New version available!" : "MuxTerm is up to date"}>
         <Chip
           icon={chipIcon}
           label={`v${CURRENT_VERSION}`}
@@ -141,25 +117,25 @@ function VersionIndicator() {
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <InfoIcon />
-            Información de Versión
+            Version Information
           </Box>
         </DialogTitle>
         <DialogContent>
           <Paper elevation={0} sx={{ p: 2, bgcolor: 'background.default' }}>
             <Typography variant="body2" gutterBottom>
-              <strong>Versión actual:</strong> v{CURRENT_VERSION}
+              <strong>Current version:</strong> v{CURRENT_VERSION}
             </Typography>
             
             {hasUpdate ? (
               <>
                 <Typography variant="body2" color="warning.main" gutterBottom>
-                  <strong>Nueva versión disponible:</strong> v{updateInfo.latest}
+                  <strong>New version available:</strong> v{updateInfo.latest}
                 </Typography>
                 
                 {updateInfo.changelog && updateInfo.changelog.length > 0 && (
                   <Box sx={{ mt: 2 }}>
                     <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                      Novedades en v{updateInfo.latest}:
+                      What's new in v{updateInfo.latest}:
                     </Typography>
                     <List dense sx={{ py: 0 }}>
                       {updateInfo.changelog.map((item, index) => (
@@ -182,13 +158,13 @@ function VersionIndicator() {
               </>
             ) : (
               <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
-                ✓ MuxTerm está actualizado
+                ✓ MuxTerm is up to date
               </Typography>
             )}
             
             {lastCheck && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                Última verificación: {lastCheck.toLocaleTimeString()}
+                Last check: {lastCheck.toLocaleTimeString()}
               </Typography>
             )}
             
@@ -214,11 +190,11 @@ function VersionIndicator() {
             <Box display="flex" alignItems="center" gap={1} mb={1}>
               <StarIcon sx={{ color: 'warning.main' }} />
               <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                ¿Te gusta MuxTerm?
+                Do you like MuxTerm?
               </Typography>
             </Box>
             <Typography variant="body2" sx={{ mb: 1.5 }}>
-              Ayúdanos dándole una estrella en GitHub. ¡Tu apoyo nos motiva a seguir mejorando!
+              Help us by giving it a star on GitHub. Your support motivates us to keep improving!
             </Typography>
             <Button
               fullWidth
@@ -249,7 +225,7 @@ function VersionIndicator() {
             {checking ? 'Verificando...' : 'Buscar Actualizaciones'}
           </Button>
           <Button onClick={() => setDialogOpen(false)}>
-            Cerrar
+            Close
           </Button>
           {hasUpdate && (
             <Button
@@ -259,11 +235,19 @@ function VersionIndicator() {
               disabled={updating}
               startIcon={updating ? <CircularProgress size={16} /> : <UpdateIcon />}
             >
-              {updating ? 'Actualizando...' : 'Actualizar Ahora'}
+              {updating ? 'Updating...' : 'Update Now'}
             </Button>
           )}
         </DialogActions>
       </Dialog>
+      
+      {updateInfo && (
+        <UpdateProgress 
+          open={showUpdateProgress}
+          onClose={() => setShowUpdateProgress(false)}
+          version={updateInfo.latest}
+        />
+      )}
     </>
   );
 }
