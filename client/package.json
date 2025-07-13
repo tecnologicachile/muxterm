@@ -1,6 +1,6 @@
 {
   "name": "muxterm-client",
-  "version": "1.0.32",
+  "version": "1.0.33",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
