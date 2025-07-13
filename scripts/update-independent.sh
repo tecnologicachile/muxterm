@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # MuxTerm Independent Update Script
-# This script creates a systemd timer to run the update independently
+# This script runs the update directly in background
 
 MUXTERM_DIR="${1:-/opt/muxterm}"
 UPDATE_SCRIPT="$MUXTERM_DIR/update.sh"
@@ -12,46 +12,18 @@ if [ ! -f "$UPDATE_SCRIPT" ]; then
     exit 1
 fi
 
-# Create a one-shot systemd service for the update
-cat > /tmp/muxterm-update.service << EOF
-[Unit]
-Description=MuxTerm One-Time Update
-After=network.target
+echo "[$(date)] Starting update process..."
 
-[Service]
-Type=oneshot
-ExecStart=/bin/bash $UPDATE_SCRIPT --yes
-WorkingDirectory=$MUXTERM_DIR
-StandardOutput=journal
-StandardError=journal
-Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+# Run the update directly in background
+(
+    # Small delay to allow API response
+    sleep 1
+    
+    # Run update with output to journal
+    /bin/bash "$UPDATE_SCRIPT" --yes 2>&1 | logger -t muxterm-update
+    
+    echo "[$(date)] Update process completed" | logger -t muxterm-update
+) > /dev/null 2>&1 &
 
-# Run independently of muxterm.service
-RemainAfterExit=yes
-EOF
-
-# Create a timer to run it in 5 seconds
-cat > /tmp/muxterm-update.timer << EOF
-[Unit]
-Description=MuxTerm Update Timer
-Requires=muxterm-update.service
-
-[Timer]
-OnActiveSec=5s
-AccuracySec=1s
-
-[Install]
-WantedBy=timers.target
-EOF
-
-# Install and start the timer
-sudo mv /tmp/muxterm-update.service /etc/systemd/system/
-sudo mv /tmp/muxterm-update.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl start muxterm-update.timer
-
-echo "Update scheduled to run in 5 seconds..."
-echo "Check progress with: sudo journalctl -u muxterm-update -f"
-
-# Clean up after 60 seconds
-(sleep 60 && sudo systemctl stop muxterm-update.timer && sudo rm -f /etc/systemd/system/muxterm-update.{service,timer} && sudo systemctl daemon-reload) &
+echo "Update started in background"
+echo "Check progress with: journalctl -t muxterm-update -f"
