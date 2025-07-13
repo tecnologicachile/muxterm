@@ -1,510 +1,1023 @@
 #!/bin/bash
 
+
+
 # MuxTerm Update Script
+
 # This script updates MuxTerm to the latest version while preserving user data
+
+
 
 set -e
 
+
+
 # Parse command line arguments
+
 AUTO_YES=false
+
 while [[ $# -gt 0 ]]; do
+
     case $1 in
+
         -y|--yes)
+
             AUTO_YES=true
+
             shift
+
             ;;
+
         -h|--help)
+
             echo "Usage: $0 [options]"
+
             echo "Options:"
+
             echo "  -y, --yes    Auto-confirm update (skip confirmation prompt)"
+
             echo "  -h, --help   Show this help message"
+
             exit 0
+
             ;;
+
         *)
+
             echo "Unknown option: $1"
+
             echo "Use --help for usage information"
+
             exit 1
+
             ;;
+
     esac
+
 done
 
+
+
 # Colors
+
 RED='\033[0;31m'
+
 GREEN='\033[0;32m'
+
 YELLOW='\033[1;33m'
+
 BLUE='\033[0;34m'
+
 NC='\033[0m' # No Color
 
+
+
 # Configuration
+
 REPO="tecnologicachile/muxterm"
+
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 SERVICE_NAME="muxterm"
+
 BACKUP_DIR="/tmp/muxterm-backup-$(date +%Y%m%d%H%M%S)"
+
 LOG_DIR="$INSTALL_DIR/logs/updates"
+
 LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M%S).log"
 
+
+
 # Create log directory if it doesn't exist
+
 mkdir -p "$LOG_DIR"
 
+
+
 # Always work from the install directory
+
 cd "$INSTALL_DIR" || exit 1
 
+
+
 # Function to log messages
+
 log() {
+
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
     echo "[$timestamp] $1" | tee -a "$LOG_FILE"
+
 }
+
+
 
 # Function to log error and exit
+
 log_error() {
+
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
     echo "[$timestamp] ERROR: $1" | tee -a "$LOG_FILE" >&2
+
     echo "[$timestamp] Update failed. Check log at: $LOG_FILE" | tee -a "$LOG_FILE"
+
     exit 1
+
 }
+
+
 
 # Function to execute and log commands
+
 exec_log() {
+
     local cmd="$1"
+
     local desc="$2"
+
     log "Executing: $desc"
+
     log "Command: $cmd"
+
     if eval "$cmd" >> "$LOG_FILE" 2>&1; then
+
         log "✓ Success: $desc"
+
         return 0
+
     else
+
         log_error "Failed: $desc"
+
         return 1
+
     fi
+
 }
+
+
 
 # Function to print colored output
+
 print_color() {
+
     echo -e "${2}${1}${NC}"
+
     log "$1"
+
 }
+
+
 
 # Function to check dependencies
+
 check_dependencies() {
+
     local deps=("curl" "git" "npm" "node")
+
     for dep in "${deps[@]}"; do
+
         if ! command -v "$dep" &> /dev/null; then
+
             print_color "Error: $dep is not installed" "$RED"
+
             exit 1
+
         fi
+
     done
+
     
+
     # Check Node.js version
+
     local node_version=$(node -v | cut -d'v' -f2)
+
     local major_version=$(echo "$node_version" | cut -d'.' -f1)
+
     if [ "$major_version" -lt 14 ]; then
+
         print_color "Warning: Node.js version is $node_version. Version 14+ recommended" "$YELLOW"
+
     fi
+
 }
+
+
 
 # Function to get latest version
+
 get_latest_version() {
+
     # Get all releases and find the one with highest version number
+
     local releases=$(curl -s "https://api.github.com/repos/$REPO/releases" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
     if [ -z "$releases" ]; then
+
         print_color "Failed to fetch releases" "$RED"
+
         exit 1
+
     fi
+
     
+
     # Sort versions and get the highest one
+
     local latest=$(echo "$releases" | sort -V | tail -1)
+
     if [ -z "$latest" ]; then
+
         print_color "Failed to determine latest version" "$RED"
+
         exit 1
+
     fi
+
     echo "$latest"
+
 }
+
+
 
 # Function to get current version
+
 get_current_version() {
+
     if [ -f "$INSTALL_DIR/package.json" ]; then
+
         local version=$(grep '"version":' "$INSTALL_DIR/package.json" | sed -E 's/.*"([^"]+)".*/\1/')
+
         echo "v$version"
+
     else
+
         echo "unknown"
+
     fi
+
 }
+
+
 
 # Function to check if systemd service exists
+
 service_exists() {
+
     systemctl list-unit-files | grep -q "^$SERVICE_NAME.service"
+
 }
+
+
 
 # Main update process
+
 main() {
+
     print_color "MuxTerm Update Script" "$BLUE"
+
     echo "===================="
+
     
+
     # Log system information
+
     log "=== MuxTerm Update Started ==="
+
     log "Date: $(date)"
+
     log "User: $(whoami)"
+
     log "Install Directory: $INSTALL_DIR"
+
     log "Node Version: $(node -v)"
+
     log "NPM Version: $(npm -v)"
+
     log "OS: $(uname -a)"
+
     log "Auto-Yes Mode: $AUTO_YES"
+
     
+
     # Check requirements
+
     check_dependencies
+
     
+
     # Get versions
+
     print_color "\nChecking versions..." "$YELLOW"
+
     CURRENT_VERSION=$(get_current_version)
+
     LATEST_VERSION=$(get_latest_version)
+
     
+
     print_color "Current version: $CURRENT_VERSION" "$BLUE"
+
     print_color "Latest version: $LATEST_VERSION" "$BLUE"
+
     
+
     # Validate current version
+
     if [ "$CURRENT_VERSION" = "unknown" ]; then
+
         print_color "\nError: Could not determine current version" "$RED"
+
         print_color "Please ensure you're in the MuxTerm directory" "$YELLOW"
+
         print_color "Install directory: $INSTALL_DIR" "$YELLOW"
+
         exit 1
-    fi
-    
-    # Check if update needed
-    NEEDS_UPDATE=false
-    NEEDS_REBUILD=false
-    
-    if [ "$CURRENT_VERSION" \!= "$LATEST_VERSION" ]; then
-        NEEDS_UPDATE=true
-        NEEDS_REBUILD=true  # Always rebuild frontend on version change
-        print_color "\nUpdate available: $CURRENT_VERSION -> $LATEST_VERSION" "$YELLOW"
-    else
-        print_color "\nMuxTerm is already at version $CURRENT_VERSION" "$GREEN"
-        
-        # Check if frontend needs rebuilding even if versions match
-        if [ \! -d "public" ] || [ \! -f "public/index.html" ]; then
-            print_color "Frontend files missing, will rebuild..." "$YELLOW"
-            NEEDS_REBUILD=true
-        elif [ -f "client/src/components/UpdateNotification.jsx" ] && [ -f "public/index.html" ]; then
-            # Check if source files are newer than build
-            if [ "client/src/components/UpdateNotification.jsx" -nt "public/index.html" ]; then
-                print_color "Frontend source has been modified, will rebuild..." "$YELLOW"
-                NEEDS_REBUILD=true
-            fi
-        fi
-        
-        # Check if client dependencies need updating
-        if [ -f "client/package.json" ] && [ -f "client/package-lock.json" ]; then
-            if [ "client/package.json" -nt "client/node_modules/.package-lock.json" ] 2>/dev/null; then
-                print_color "Client dependencies may need updating, will rebuild..." "$YELLOW"
-                NEEDS_REBUILD=true
-            fi
-        fi
-        
-        # Check if the built frontend has the correct version
-        if [ -d "public/assets" ]; then
-            # Look for version string in compiled JS files
-            BUILT_VERSION=$(grep -h -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" public/assets/index-*.js 2>/dev/null  < /dev/null |  head -1)
-            if [ -n "$BUILT_VERSION" ] && [ "$BUILT_VERSION" \!= "$CURRENT_VERSION" ]; then
-                print_color "Frontend shows $BUILT_VERSION but should be $CURRENT_VERSION" "$YELLOW"
-                print_color "Frontend needs to be rebuilt..." "$YELLOW"
-                NEEDS_REBUILD=true
-            elif [ -z "$BUILT_VERSION" ]; then
-                print_color "Could not detect version in built frontend, will rebuild..." "$YELLOW"
-                NEEDS_REBUILD=true
-            fi
-        fi
-    fi
-    
-    # Exit if nothing needs to be done
-    if [ "$NEEDS_UPDATE" = "false" ] && [ "$NEEDS_REBUILD" = "false" ]; then
-        print_color "Everything is up to date\!" "$GREEN"
-        exit 0
-    fi
-    
-    # If only rebuild is needed, skip git operations
-        print_color "\nFrontend rebuild required. This may happen when:" "$YELLOW"
-        print_color "  - Source files were modified" "$YELLOW"
-        print_color "  - Frontend version doesn't match backend version" "$YELLOW"
-        print_color "  - Dependencies need updating" "$YELLOW"
-    if [ "$NEEDS_UPDATE" = "false" ] && [ "$NEEDS_REBUILD" = "true" ]; then
-        print_color "\nSkipping git operations, only rebuilding frontend..." "$BLUE"
-        # Jump directly to frontend build section
-        cd "$INSTALL_DIR/client" || exit 1
-        
-        # Install dependencies if needed
-        # Install dependencies if needed or if build tools are missing
-        if [ \! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || \! command -v vite >/dev/null 2>&1; then
-            print_color "Installing client dependencies..." "$BLUE"
-            exec_log "npm install" "Installing client dependencies"
-            if [ $? -ne 0 ]; then
-                print_color "✗ Failed to install client dependencies" "$RED"
-                print_color "Try running manually: cd client && npm install" "$YELLOW"
-                exit 1
-            fi
-        fi
-        
-        # Ensure vite is available
-        if [ \! -f "node_modules/.bin/vite" ]; then
-            print_color "Vite not found, reinstalling dependencies..." "$YELLOW"
-            print_color "Current directory: $(pwd)" "$BLUE"
-            
-            # Remove and reinstall in the correct directory
-            rm -rf node_modules package-lock.json
-            
-            # Use npm ci for more reliable installation
-            if [ -f "../package-lock.json" ]; then
-                cp ../package-lock.json . 2>/dev/null
-            fi
-            
-            print_color "Installing dependencies with npm install..." "$BLUE"
-            
-            # Clear npm cache if needed
-            npm cache verify 2>/dev/null
-            
-            # Install all dependencies (including devDependencies)
-            npm install --verbose > /tmp/npm-install-client.log 2>&1
-            INSTALL_RESULT=$?
-            
-            if [ $INSTALL_RESULT -ne 0 ]; then
-                print_color "✗ Failed to install dependencies" "$RED"
-                print_color "Error log tail:" "$RED"
-                tail -20 /tmp/npm-install-client.log  < /dev/null |  while read line; do
-                    print_color "  $line" "$RED"
-                done
-                print_color "Full log at: /tmp/npm-install-client.log" "$YELLOW"
-                print_color "Try running manually: cd $(pwd) && npm install" "$YELLOW"
-                cd ..
-                exit 1
-            else
-                print_color "✓ Dependencies installed successfully" "$GREEN"
-                # List what was installed
-                if [ -f "node_modules/.bin/vite" ]; then
-                    print_color "✓ Vite binary found at: node_modules/.bin/vite" "$GREEN"
-                else
-                    print_color "⚠ Warning: Vite binary not found in node_modules/.bin/" "$YELLOW"
-                    # Check if vite is in node_modules
-                    if [ -d "node_modules/vite" ]; then
-                        print_color "  Vite package exists in node_modules/vite" "$BLUE"
-                        print_color "  Attempting to link vite binary..." "$BLUE"
-                        cd node_modules/.bin && ln -sf ../vite/bin/vite.js vite 2>/dev/null && cd ../..
-                    fi
-                fi
-            fi
-                print_color "✓ Vite installed successfully" "$GREEN"
-            fi
-        fi
-        
-        # Always rebuild
-        print_color "Compiling frontend..." "$BLUE"
-        print_color "Current directory before build: $(pwd)" "$BLUE"
-        exec_log "cd client && npm run build" "Building client"
-        
-        if [ $? -eq 0 ]; then
-            print_color "✓ Frontend compiled successfully" "$GREEN"
-            
-            # Copy to public directory
-            print_color "Copying frontend files to public directory..." "$BLUE"
-            mkdir -p ../public
-            exec_log "cp -r dist/* ../public/" "Copying frontend to public directory"
-            
-            if [ $? -eq 0 ]; then
-                print_color "✓ Frontend deployed to public directory" "$GREEN"
-            fi
-        else
-            print_color "✗ Frontend compilation failed" "$RED"
-            exit 1
-        fi
-        
-        # Restart service
-        print_color "\nRestarting MuxTerm service..." "$YELLOW"
-        exec_log "sudo systemctl restart muxterm" "Restarting MuxTerm service"
-        
-        print_color "\n✓ Frontend rebuild completed successfully\!" "$GREEN"
-        exit 0
-    
-    # Confirm update (unless --yes flag is used)
-    if [ "$AUTO_YES" != "true" ]; then
-        echo ""
-        read -p "Do you want to update MuxTerm? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_color "Update cancelled" "$YELLOW"
-            exit 0
-        fi
-    else
-        print_color "\nAuto-confirming update (--yes flag detected)" "$BLUE"
-    fi
-    
-    # Create backup
-    print_color "\nCreating backup..." "$YELLOW"
-    mkdir -p "$BACKUP_DIR"
-    
-    # Backup database
-    if [ -f "data/webssh.db" ]; then
-        cp -p "data/webssh.db" "$BACKUP_DIR/"
-        print_color "Database backed up" "$GREEN"
-    fi
-    
-    # Backup .env
-    if [ -f ".env" ]; then
-        cp -p ".env" "$BACKUP_DIR/"
-        print_color "Environment config backed up" "$GREEN"
-    fi
-    
-    # Backup tmux config
-    if [ -f ".tmux.webssh.conf" ]; then
-        cp -p ".tmux.webssh.conf" "$BACKUP_DIR/"
-        print_color "Tmux config backed up" "$GREEN"
-    fi
-    
-    # Stash local changes BEFORE stopping service
-    if [ -d ".git" ]; then
-        print_color "\nStashing local changes..." "$YELLOW"
-        exec_log "git stash || true" "Stashing local changes"
-    fi
-    
-    # Update via git BEFORE stopping service
-    print_color "\nDownloading update..." "$YELLOW"
-    if [ -d ".git" ]; then
-        exec_log "git fetch --tags" "Fetching latest tags"
-        exec_log "git checkout $LATEST_VERSION" "Checking out version $LATEST_VERSION"
-    else
-        # If not a git repo, download the release
-        print_color "Downloading latest release..." "$YELLOW"
-        curl -L "https://github.com/$REPO/archive/refs/tags/$LATEST_VERSION.tar.gz" -o "/tmp/muxterm-$LATEST_VERSION.tar.gz"
-        tar -xzf "/tmp/muxterm-$LATEST_VERSION.tar.gz" -C /tmp
-        rsync -av --exclude='data' --exclude='.env' --exclude='node_modules' --exclude='client/node_modules' \
-              "/tmp/muxterm-${LATEST_VERSION#v}/" "$INSTALL_DIR/"
-        rm -rf "/tmp/muxterm-$LATEST_VERSION.tar.gz" "/tmp/muxterm-${LATEST_VERSION#v}"
-    fi
-    
-    # Install backend dependencies
-    print_color "\nInstalling backend dependencies..." "$YELLOW"
-    exec_log "npm install --production" "Installing backend dependencies"
-    
-    # Build client
-    print_color "\nBuilding client..." "$YELLOW"
-    cd client
-    
-    # Check if node_modules exists and if package.json has changed
-    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
-        print_color "Installing client dependencies..." "$BLUE"
-        exec_log "npm install" "Installing client dependencies"
-    # Install client dependencies if needed
-    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || [ ! -f "node_modules/.bin/vite" ]; then
-        print_color "Installing client dependencies..." "$BLUE"
-        exec_log "npm install" "Installing client dependencies"
-        if [ $? -ne 0 ]; then
-            print_color "✗ Failed to install client dependencies" "$RED"
-            cd ..
-            exit 1
-        fi
-    fi
 
     fi
+
     
-    # Always rebuild to ensure latest version
-    print_color "Compiling frontend..." "$BLUE"
-    print_color "Current directory before build: $(pwd)" "$BLUE"
-        exec_log "cd client && npm run build" "Building client"
+
+    # Check if update needed
+
+    NEEDS_UPDATE=false
+
+    NEEDS_REBUILD=false
+
     
-    if [ $? -eq 0 ]; then
-        print_color "✓ Frontend compiled successfully" "$GREEN"
-        
-        # Verify dist directory was created
-        if [ -d "dist" ] && [ -f "dist/index.html" ]; then
-            print_color "✓ Frontend files verified" "$GREEN"
-            
-            # Copy to public directory
-            cd ..
-            print_color "Copying frontend files to public directory..." "$BLUE"
-            mkdir -p public
-            exec_log "cp -r client/dist/* public/" "Copying frontend to public directory"
-            
-            # Verify copy was successful
-            if [ -f "public/index.html" ]; then
-                print_color "✓ Frontend deployed to public directory" "$GREEN"
-            else
-                log_error "Failed to copy frontend files to public directory"
-            fi
-        else
-            print_color "⚠ Warning: dist directory may be incomplete" "$YELLOW"
-            cd ..
-        fi
+
+    if [ "$CURRENT_VERSION" \!= "$LATEST_VERSION" ]; then
+
+        NEEDS_UPDATE=true
+
+        NEEDS_REBUILD=true  # Always rebuild frontend on version change
+
+        print_color "\nUpdate available: $CURRENT_VERSION -> $LATEST_VERSION" "$YELLOW"
+
     else
-        print_color "✗ Frontend compilation failed" "$RED"
-        print_color "You may need to compile manually: cd client && npm run build" "$YELLOW"
-        cd ..
-    fi
-    
-    # Restore data
-    print_color "\nRestoring data..." "$YELLOW"
-    if [ -f "$BACKUP_DIR/webssh.db" ] && [ ! -f "data/webssh.db" ]; then
-        mkdir -p data
-        cp -p "$BACKUP_DIR/webssh.db" "data/"
-    fi
-    if [ -f "$BACKUP_DIR/.env" ] && [ ! -f ".env" ]; then
-        cp -p "$BACKUP_DIR/.env" .
-    fi
-    if [ -f "$BACKUP_DIR/.tmux.webssh.conf" ] && [ ! -f ".tmux.webssh.conf" ]; then
-        cp -p "$BACKUP_DIR/.tmux.webssh.conf" .
-    fi
-    
-    # NOW stop and restart service (after everything is ready)
-    if service_exists; then
-        print_color "\nRestarting MuxTerm service..." "$YELLOW"
-        exec_log "sudo systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
+
+        print_color "\nMuxTerm is already at version $CURRENT_VERSION" "$GREEN"
+
         
-        # Verify service with retries
-        local retry_count=0
-        local max_retries=10
-        
-        while [ $retry_count -lt $max_retries ]; do
-            sleep 2
-            if systemctl is-active --quiet "$SERVICE_NAME"; then
-                print_color "Service is running" "$GREEN"
-                break
-            else
-                retry_count=$((retry_count + 1))
-                print_color "Waiting for service to start... ($retry_count/$max_retries)" "$YELLOW"
+
+        # Check if frontend needs rebuilding even if versions match
+
+        if [ \! -d "public" ] || [ \! -f "public/index.html" ]; then
+
+            print_color "Frontend files missing, will rebuild..." "$YELLOW"
+
+            NEEDS_REBUILD=true
+
+        elif [ -f "client/src/components/UpdateNotification.jsx" ] && [ -f "public/index.html" ]; then
+
+            # Check if source files are newer than build
+
+            if [ "client/src/components/UpdateNotification.jsx" -nt "public/index.html" ]; then
+
+                print_color "Frontend source has been modified, will rebuild..." "$YELLOW"
+
+                NEEDS_REBUILD=true
+
             fi
-        done
-        
-        if [ $retry_count -eq $max_retries ]; then
-            print_color "Service failed to start after $max_retries attempts" "$RED"
-            print_color "Check logs: journalctl -u $SERVICE_NAME -n 50" "$YELLOW"
-            log_error "Service failed to start after multiple attempts"
+
         fi
+
+        
+
+        # Check if client dependencies need updating
+
+        if [ -f "client/package.json" ] && [ -f "client/package-lock.json" ]; then
+
+            if [ "client/package.json" -nt "client/node_modules/.package-lock.json" ] 2>/dev/null; then
+
+                print_color "Client dependencies may need updating, will rebuild..." "$YELLOW"
+
+                NEEDS_REBUILD=true
+
+            fi
+
+        fi
+
+        
+
+        # Check if the built frontend has the correct version
+
+        if [ -d "public/assets" ]; then
+
+            # Look for version string in compiled JS files
+
+            BUILT_VERSION=$(grep -h -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" public/assets/index-*.js 2>/dev/null  < /dev/null |  head -1)
+
+            if [ -n "$BUILT_VERSION" ] && [ "$BUILT_VERSION" \!= "$CURRENT_VERSION" ]; then
+
+                print_color "Frontend shows $BUILT_VERSION but should be $CURRENT_VERSION" "$YELLOW"
+
+                print_color "Frontend needs to be rebuilt..." "$YELLOW"
+
+                NEEDS_REBUILD=true
+
+            elif [ -z "$BUILT_VERSION" ]; then
+
+                print_color "Could not detect version in built frontend, will rebuild..." "$YELLOW"
+
+                NEEDS_REBUILD=true
+
+            fi
+
+        fi
+
     fi
+
     
+
+    # Exit if nothing needs to be done
+
+    if [ "$NEEDS_UPDATE" = "false" ] && [ "$NEEDS_REBUILD" = "false" ]; then
+
+        print_color "Everything is up to date\!" "$GREEN"
+
+        exit 0
+
+    fi
+
+    
+
+    # If only rebuild is needed, skip git operations
+
+    if [ "$NEEDS_REBUILD" = "true" ]; then
+
+        print_color "\nFrontend rebuild required. This may happen when:" "$YELLOW"
+
+        print_color "  - Source files were modified" "$YELLOW"
+
+        print_color "  - Frontend version doesn't match backend version" "$YELLOW"
+
+        print_color "  - Dependencies need updating" "$YELLOW"
+
+    fi
+
+    if [ "$NEEDS_UPDATE" = "false" ] && [ "$NEEDS_REBUILD" = "true" ]; then
+
+        print_color "\nSkipping git operations, only rebuilding frontend..." "$BLUE"
+
+        # Jump directly to frontend build section
+
+        cd "$INSTALL_DIR/client" || exit 1
+
+        
+
+        # Install dependencies if needed
+
+        # Install dependencies if needed or if build tools are missing
+
+        if [ \! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || \! command -v vite >/dev/null 2>&1; then
+
+            print_color "Installing client dependencies..." "$BLUE"
+
+            exec_log "npm install" "Installing client dependencies"
+
+            if [ $? -ne 0 ]; then
+
+                print_color "✗ Failed to install client dependencies" "$RED"
+
+                print_color "Try running manually: cd client && npm install" "$YELLOW"
+
+                exit 1
+
+            fi
+
+        fi
+
+        
+
+        # Ensure vite is available
+
+        if [ \! -f "node_modules/.bin/vite" ]; then
+
+            print_color "Vite not found, reinstalling dependencies..." "$YELLOW"
+
+            print_color "Current directory: $(pwd)" "$BLUE"
+
+            
+
+            # Remove and reinstall in the correct directory
+
+            rm -rf node_modules package-lock.json
+
+            
+
+            # Use npm ci for more reliable installation
+
+            if [ -f "../package-lock.json" ]; then
+
+                cp ../package-lock.json . 2>/dev/null
+
+            fi
+
+            
+
+            print_color "Installing dependencies with npm install..." "$BLUE"
+
+            
+
+            # Clear npm cache if needed
+
+            npm cache verify 2>/dev/null
+
+            
+
+            # Install all dependencies (including devDependencies)
+
+            npm install --verbose > /tmp/npm-install-client.log 2>&1
+
+            INSTALL_RESULT=$?
+
+            
+
+            if [ $INSTALL_RESULT -ne 0 ]; then
+
+                print_color "✗ Failed to install dependencies" "$RED"
+
+                print_color "Error log tail:" "$RED"
+
+                tail -20 /tmp/npm-install-client.log  < /dev/null |  while read line; do
+
+                    print_color "  $line" "$RED"
+
+                done
+
+                print_color "Full log at: /tmp/npm-install-client.log" "$YELLOW"
+
+                print_color "Try running manually: cd $(pwd) && npm install" "$YELLOW"
+
+                cd ..
+
+                exit 1
+
+            else
+
+                print_color "✓ Dependencies installed successfully" "$GREEN"
+
+                # List what was installed
+
+                if [ -f "node_modules/.bin/vite" ]; then
+
+                    print_color "✓ Vite binary found at: node_modules/.bin/vite" "$GREEN"
+
+                else
+
+                    print_color "⚠ Warning: Vite binary not found in node_modules/.bin/" "$YELLOW"
+
+                    # Check if vite is in node_modules
+
+                    if [ -d "node_modules/vite" ]; then
+
+                        print_color "  Vite package exists in node_modules/vite" "$BLUE"
+
+                        print_color "  Attempting to link vite binary..." "$BLUE"
+
+                        cd node_modules/.bin && ln -sf ../vite/bin/vite.js vite 2>/dev/null && cd ../..
+
+                    fi
+
+                fi
+
+            fi
+
+                print_color "✓ Vite installed successfully" "$GREEN"
+
+            fi
+
+        fi
+
+        
+
+        # Always rebuild
+
+        print_color "Compiling frontend..." "$BLUE"
+
+        print_color "Current directory before build: $(pwd)" "$BLUE"
+
+        exec_log "cd client && npm run build" "Building client"
+
+        
+
+        if [ $? -eq 0 ]; then
+
+            print_color "✓ Frontend compiled successfully" "$GREEN"
+
+            
+
+            # Copy to public directory
+
+            print_color "Copying frontend files to public directory..." "$BLUE"
+
+            mkdir -p ../public
+
+            exec_log "cp -r dist/* ../public/" "Copying frontend to public directory"
+
+            
+
+            if [ $? -eq 0 ]; then
+
+                print_color "✓ Frontend deployed to public directory" "$GREEN"
+
+            fi
+
+        else
+
+            print_color "✗ Frontend compilation failed" "$RED"
+
+            exit 1
+
+        fi
+
+        
+
+        # Restart service
+
+        print_color "\nRestarting MuxTerm service..." "$YELLOW"
+
+        exec_log "sudo systemctl restart muxterm" "Restarting MuxTerm service"
+
+        
+
+        print_color "\n✓ Frontend rebuild completed successfully\!" "$GREEN"
+
+
+    
+
+    # Confirm update (unless --yes flag is used)
+
+    if [ "$AUTO_YES" != "true" ]; then
+
+        echo ""
+
+        read -p "Do you want to update MuxTerm? (y/N) " -n 1 -r
+
+        echo
+
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+
+            print_color "Update cancelled" "$YELLOW"
+
+            exit 0
+
+        fi
+
+    else
+
+        print_color "\nAuto-confirming update (--yes flag detected)" "$BLUE"
+
+    fi
+
+    
+
+    # Create backup
+
+    print_color "\nCreating backup..." "$YELLOW"
+
+    mkdir -p "$BACKUP_DIR"
+
+    
+
+    # Backup database
+
+    if [ -f "data/webssh.db" ]; then
+
+        cp -p "data/webssh.db" "$BACKUP_DIR/"
+
+        print_color "Database backed up" "$GREEN"
+
+    fi
+
+    
+
+    # Backup .env
+
+    if [ -f ".env" ]; then
+
+        cp -p ".env" "$BACKUP_DIR/"
+
+        print_color "Environment config backed up" "$GREEN"
+
+    fi
+
+    
+
+    # Backup tmux config
+
+    if [ -f ".tmux.webssh.conf" ]; then
+
+        cp -p ".tmux.webssh.conf" "$BACKUP_DIR/"
+
+        print_color "Tmux config backed up" "$GREEN"
+
+    fi
+
+    
+
+    # Stash local changes BEFORE stopping service
+
+    if [ -d ".git" ]; then
+
+        print_color "\nStashing local changes..." "$YELLOW"
+
+        exec_log "git stash || true" "Stashing local changes"
+
+    fi
+
+    
+
+    # Update via git BEFORE stopping service
+
+    print_color "\nDownloading update..." "$YELLOW"
+
+    if [ -d ".git" ]; then
+
+        exec_log "git fetch --tags" "Fetching latest tags"
+
+        exec_log "git checkout $LATEST_VERSION" "Checking out version $LATEST_VERSION"
+
+    else
+
+        # If not a git repo, download the release
+
+        print_color "Downloading latest release..." "$YELLOW"
+
+        curl -L "https://github.com/$REPO/archive/refs/tags/$LATEST_VERSION.tar.gz" -o "/tmp/muxterm-$LATEST_VERSION.tar.gz"
+
+        tar -xzf "/tmp/muxterm-$LATEST_VERSION.tar.gz" -C /tmp
+
+        rsync -av --exclude='data' --exclude='.env' --exclude='node_modules' --exclude='client/node_modules' \
+
+              "/tmp/muxterm-${LATEST_VERSION#v}/" "$INSTALL_DIR/"
+
+        rm -rf "/tmp/muxterm-$LATEST_VERSION.tar.gz" "/tmp/muxterm-${LATEST_VERSION#v}"
+
+    fi
+
+    
+
+    # Install backend dependencies
+
+    print_color "\nInstalling backend dependencies..." "$YELLOW"
+
+    exec_log "npm install --production" "Installing backend dependencies"
+
+    
+
+    # Build client
+
+    print_color "\nBuilding client..." "$YELLOW"
+
+    cd client
+
+    
+
+    # Check if node_modules exists and if package.json has changed
+
+    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
+
+        print_color "Installing client dependencies..." "$BLUE"
+
+        exec_log "npm install" "Installing client dependencies"
+
+    # Install client dependencies if needed
+
+    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || [ ! -f "node_modules/.bin/vite" ]; then
+
+        print_color "Installing client dependencies..." "$BLUE"
+
+        exec_log "npm install" "Installing client dependencies"
+
+        if [ $? -ne 0 ]; then
+
+            print_color "✗ Failed to install client dependencies" "$RED"
+
+            cd ..
+
+            exit 1
+
+        fi
+
+    fi
+
+
+
+    fi
+
+    
+
+    # Always rebuild to ensure latest version
+
+    print_color "Compiling frontend..." "$BLUE"
+
+    print_color "Current directory before build: $(pwd)" "$BLUE"
+
+        exec_log "cd client && npm run build" "Building client"
+
+    
+
+    if [ $? -eq 0 ]; then
+
+        print_color "✓ Frontend compiled successfully" "$GREEN"
+
+        
+
+        # Verify dist directory was created
+
+        if [ -d "dist" ] && [ -f "dist/index.html" ]; then
+
+            print_color "✓ Frontend files verified" "$GREEN"
+
+            
+
+            # Copy to public directory
+
+            cd ..
+
+            print_color "Copying frontend files to public directory..." "$BLUE"
+
+            mkdir -p public
+
+            exec_log "cp -r client/dist/* public/" "Copying frontend to public directory"
+
+            
+
+            # Verify copy was successful
+
+            if [ -f "public/index.html" ]; then
+
+                print_color "✓ Frontend deployed to public directory" "$GREEN"
+
+            else
+
+                log_error "Failed to copy frontend files to public directory"
+
+            fi
+
+        else
+
+            print_color "⚠ Warning: dist directory may be incomplete" "$YELLOW"
+
+            cd ..
+
+        fi
+
+    else
+
+        print_color "✗ Frontend compilation failed" "$RED"
+
+        print_color "You may need to compile manually: cd client && npm run build" "$YELLOW"
+
+        cd ..
+
+    fi
+
+    
+
+    # Restore data
+
+    print_color "\nRestoring data..." "$YELLOW"
+
+    if [ -f "$BACKUP_DIR/webssh.db" ] && [ ! -f "data/webssh.db" ]; then
+
+        mkdir -p data
+
+        cp -p "$BACKUP_DIR/webssh.db" "data/"
+
+    fi
+
+    if [ -f "$BACKUP_DIR/.env" ] && [ ! -f ".env" ]; then
+
+        cp -p "$BACKUP_DIR/.env" .
+
+    fi
+
+    if [ -f "$BACKUP_DIR/.tmux.webssh.conf" ] && [ ! -f ".tmux.webssh.conf" ]; then
+
+        cp -p "$BACKUP_DIR/.tmux.webssh.conf" .
+
+    fi
+
+    
+
+    # NOW stop and restart service (after everything is ready)
+
+    if service_exists; then
+
+        print_color "\nRestarting MuxTerm service..." "$YELLOW"
+
+        exec_log "sudo systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
+
+        
+
+        # Verify service with retries
+
+        local retry_count=0
+
+        local max_retries=10
+
+        
+
+        while [ $retry_count -lt $max_retries ]; do
+
+            sleep 2
+
+            if systemctl is-active --quiet "$SERVICE_NAME"; then
+
+                print_color "Service is running" "$GREEN"
+
+                break
+
+            else
+
+                retry_count=$((retry_count + 1))
+
+                print_color "Waiting for service to start... ($retry_count/$max_retries)" "$YELLOW"
+
+            fi
+
+        done
+
+        
+
+        if [ $retry_count -eq $max_retries ]; then
+
+            print_color "Service failed to start after $max_retries attempts" "$RED"
+
+            print_color "Check logs: journalctl -u $SERVICE_NAME -n 50" "$YELLOW"
+
+            log_error "Service failed to start after multiple attempts"
+
+        fi
+
+    fi
+
+    
+
     print_color "\n✓ MuxTerm updated successfully to $LATEST_VERSION!" "$GREEN"
+
     print_color "\nBackup location: $BACKUP_DIR" "$BLUE"
+
     
+
     # Log summary
+
     log "=== Update Completed Successfully ==="
+
     log "Updated from: $CURRENT_VERSION to $LATEST_VERSION"
+
     log "Backup location: $BACKUP_DIR"
+
     log "Update log: $LOG_FILE"
+
     
+
     if ! service_exists; then
+
         print_color "\nTo start MuxTerm manually:" "$YELLOW"
+
         print_color "  npm start" "$BLUE"
+
     fi
+
     
+
     print_color "\nActive tmux sessions have been preserved." "$GREEN"
+
     
+
     # Star on GitHub reminder
+
     echo
+
     print_color "⭐ Enjoying the new features? Star us on GitHub!" "$YELLOW"
+
     print_color "   https://github.com/tecnologicachile/muxterm" "$BLUE"
+
     
+
     # Show log location
+
     echo
+
     print_color "📄 Update log saved at: $LOG_FILE" "$BLUE"
+
 }
 
+
+
 # Trap errors to show log location
+
 trap 'echo -e "\n${RED}Error occurred during update. Check the log:${NC}\n${BLUE}$LOG_FILE${NC}"' ERR
 
+
+
 # Run main function
+
 main "$@"
+
