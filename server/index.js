@@ -101,6 +101,66 @@ app.get('/api/update-debug', authenticateToken, async (req, res) => {
   res.json(debugInfo);
 });
 
+// Get update logs endpoint
+app.get('/api/update-logs', authenticateToken, async (req, res) => {
+  try {
+    const logsDir = path.join(__dirname, '..', 'logs');
+    const mainLogFile = path.join(logsDir, 'muxterm.log');
+    const updateLogsDir = path.join(logsDir, 'updates');
+    
+    let logs = {
+      recent: [],
+      updateLogs: [],
+      lastUpdateAttempt: null
+    };
+    
+    // Read last 100 lines of main log
+    if (fs.existsSync(mainLogFile)) {
+      const { exec } = require('child_process');
+      exec(`tail -100 ${mainLogFile} | grep -E "\\[Update|update|Update initiated|Update Process"`, (error, stdout) => {
+        if (!error && stdout) {
+          logs.recent = stdout.split('\n').filter(line => line.trim());
+        }
+        
+        // Read update logs directory
+        if (fs.existsSync(updateLogsDir)) {
+          const files = fs.readdirSync(updateLogsDir)
+            .filter(f => f.endsWith('.log'))
+            .sort((a, b) => {
+              const statA = fs.statSync(path.join(updateLogsDir, a));
+              const statB = fs.statSync(path.join(updateLogsDir, b));
+              return statB.mtime - statA.mtime;
+            })
+            .slice(0, 5); // Last 5 update attempts
+          
+          logs.updateLogs = files.map(file => {
+            const filePath = path.join(updateLogsDir, file);
+            const stats = fs.statSync(filePath);
+            const content = fs.readFileSync(filePath, 'utf8');
+            return {
+              filename: file,
+              timestamp: stats.mtime,
+              size: stats.size,
+              content: content.slice(-5000) // Last 5000 chars
+            };
+          });
+          
+          if (logs.updateLogs.length > 0) {
+            logs.lastUpdateAttempt = logs.updateLogs[0].timestamp;
+          }
+        }
+        
+        res.json(logs);
+      });
+    } else {
+      res.json(logs);
+    }
+  } catch (error) {
+    logger.error('Failed to get update logs:', error);
+    res.status(500).json({ error: 'Failed to retrieve logs' });
+  }
+});
+
 // GitHub stars endpoint (cached to avoid rate limits)
 let starsCache = { count: null, lastFetch: 0 };
 app.get('/api/github-stars', async (req, res) => {

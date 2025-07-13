@@ -21,6 +21,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import InfoIcon from '@mui/icons-material/Info';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import StarIcon from '@mui/icons-material/Star';
+import BugReportIcon from '@mui/icons-material/BugReport';
 import axios from '../utils/axios';
 import logger from '../utils/logger';
 // Lazy load UpdateProgress to avoid errors if component doesn't exist
@@ -42,6 +43,9 @@ function VersionIndicator() {
   const [lastCheck, setLastCheck] = useState(null);
   const [checkMessage, setCheckMessage] = useState('');
   const [showUpdateProgress, setShowUpdateProgress] = useState(false);
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
+  const [logs, setLogs] = useState(null);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   useEffect(() => {
     // Check on mount
@@ -126,6 +130,24 @@ function VersionIndicator() {
   const chipIcon = checking ? <CircularProgress size={14} /> : 
                    hasUpdate ? <UpdateIcon fontSize="small" /> : 
                    <CheckCircleIcon fontSize="small" />;
+  
+  const fetchLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const response = await axios.get('/api/update-logs');
+      setLogs(response.data);
+    } catch (error) {
+      logger.error('Failed to fetch logs:', error);
+      setLogs({ error: 'Failed to fetch logs' });
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+  
+  const handleShowLogs = () => {
+    setLogsDialogOpen(true);
+    fetchLogs();
+  };
 
   return (
     <>
@@ -254,6 +276,13 @@ function VersionIndicator() {
         </DialogContent>
         <DialogActions>
           <Button 
+            onClick={handleShowLogs}
+            startIcon={<BugReportIcon />}
+            color="secondary"
+          >
+            View Logs
+          </Button>
+          <Button 
             onClick={() => checkForUpdates(true)}
             disabled={checking}
             startIcon={checking ? <CircularProgress size={16} /> : <UpdateIcon />}
@@ -286,6 +315,92 @@ function VersionIndicator() {
           />
         </React.Suspense>
       )}
+      
+      {/* Logs Dialog */}
+      <Dialog
+        open={logsDialogOpen}
+        onClose={() => setLogsDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>Update Logs</DialogTitle>
+        <DialogContent>
+          {loadingLogs && (
+            <Box display="flex" justifyContent="center" p={3}>
+              <CircularProgress />
+            </Box>
+          )}
+          
+          {logs && !loadingLogs && (
+            <Box>
+              {logs.error ? (
+                <Typography color="error">{logs.error}</Typography>
+              ) : (
+                <>
+                  {/* Recent update-related logs */}
+                  {logs.recent && logs.recent.length > 0 && (
+                    <Box mb={3}>
+                      <Typography variant="h6" gutterBottom>
+                        Recent Update Activity
+                      </Typography>
+                      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.900' }}>
+                        <pre style={{ 
+                          margin: 0, 
+                          fontSize: '12px', 
+                          overflow: 'auto',
+                          maxHeight: '200px',
+                          fontFamily: 'monospace'
+                        }}>
+                          {logs.recent.join('\n')}
+                        </pre>
+                      </Paper>
+                    </Box>
+                  )}
+                  
+                  {/* Update log files */}
+                  {logs.updateLogs && logs.updateLogs.length > 0 && (
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        Update Log Files
+                      </Typography>
+                      {logs.updateLogs.map((log, index) => (
+                        <Box key={index} mb={2}>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            {log.filename} - {new Date(log.timestamp).toLocaleString()} ({log.size} bytes)
+                          </Typography>
+                          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.900', mt: 1 }}>
+                            <pre style={{ 
+                              margin: 0, 
+                              fontSize: '12px', 
+                              overflow: 'auto',
+                              maxHeight: '300px',
+                              fontFamily: 'monospace'
+                            }}>
+                              {log.content}
+                            </pre>
+                          </Paper>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                  
+                  {!logs.recent?.length && !logs.updateLogs?.length && (
+                    <Typography>No update logs found</Typography>
+                  )}
+                </>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => fetchLogs()} startIcon={<UpdateIcon />}>
+            Refresh
+          </Button>
+          <Button onClick={() => setLogsDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

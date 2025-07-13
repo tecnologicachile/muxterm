@@ -33,15 +33,21 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🌐 Complete English Translation
-- Translated 'Buscar Actualizaciones' to 'Check for Updates'
-- Translated 'Verificando...' to 'Checking...'
-- Translated 'Star en GitHub' to 'Star on GitHub'
-- Fixed condition checking for Spanish text
+### 🔧 Fix: Update Script Version Detection
+- Fixed update.sh to find highest version number instead of latest by date
+- Now uses 'sort -V' for proper version sorting
+- Matches the fix done for update-checker
 
-### 📊 User Experience
-- All UI text is now consistently in English
-- Better internationalization support
+### 🐛 Debug Tools Added
+- Added detailed logging to update execution endpoint
+- Created debug-update.sh script for troubleshooting
+- Added /api/update-debug endpoint to check system state
+- Enhanced process exit and error logging
+
+### 📊 Improvements
+- Better error reporting when updates fail from UI
+- Logs update command and working directory
+- Helps diagnose update issues in production
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -55,7 +61,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Complete English translation",
+  "name": "$LATEST_TAG - Update fixes and debug tools",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false
