@@ -55,9 +55,11 @@ function TerminalView() {
   // Detect mobile
   useEffect(() => {
     const checkMobile = () => {
-      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      // Check if it's actually a mobile device, not just a touch-capable PC
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       const isSmallScreen = window.innerWidth <= 768;
-      setIsMobile(isTouchDevice || isSmallScreen);
+      // Only show keyboard button on actual mobile devices, not touch-enabled PCs
+      setIsMobile(isMobileDevice && isSmallScreen);
     };
     
     checkMobile();

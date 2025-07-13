@@ -33,20 +33,21 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 📝 Update Process Improvements
-- Added comprehensive logging system for update process
-- All update operations now logged to logs/updates/ with timestamps
-- Detailed error capture and system information in logs
-- Both CLI and UI updates now generate detailed logs
+### 🔧 Critical Fix: UI Update Process
+- Fixed issue where UI would not load after updating from web interface
+- Update script now properly copies frontend to public/ directory
+- Added automatic recovery mechanism if frontend is missing
+- Server now checks multiple locations for frontend files
 
-### 🐛 Bug Fixes
-- Fixed \"undefined terminal(s)\" display in session list
-- Improved error handling during updates
+### 🚀 Update Process Improvements
+- Added verification step to ensure frontend is deployed
+- Auto-update script now double-checks and fixes missing UI
+- Better error handling and recovery during updates
 
-### 🔧 Technical Improvements
-- Added exec_log() function for command execution tracking
-- Better error reporting with log file locations
-- System information captured at update start
+### 📝 Technical Details
+- Frontend build output is now preserved in public/ directory
+- Server serves static files from public/ with fallback to client/dist/
+- Update scripts are more resilient to build failures
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
