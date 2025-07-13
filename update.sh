@@ -23,6 +23,9 @@ LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M%S).log"
 # Create log directory if it doesn't exist
 mkdir -p "$LOG_DIR"
 
+# Always work from the install directory
+cd "$INSTALL_DIR" || exit 1
+
 # Function to log messages
 log() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -96,8 +99,8 @@ get_latest_version() {
 
 # Function to get current version
 get_current_version() {
-    if [ -f "package.json" ]; then
-        local version=$(grep '"version":' "package.json" | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ -f "$INSTALL_DIR/package.json" ]; then
+        local version=$(grep '"version":' "$INSTALL_DIR/package.json" | sed -E 's/.*"([^"]+)".*/\1/')
         echo "v$version"
     else
         echo "unknown"
@@ -133,6 +136,14 @@ main() {
     
     print_color "Current version: $CURRENT_VERSION" "$BLUE"
     print_color "Latest version: $LATEST_VERSION" "$BLUE"
+    
+    # Validate current version
+    if [ "$CURRENT_VERSION" = "unknown" ]; then
+        print_color "\nError: Could not determine current version" "$RED"
+        print_color "Please ensure you're in the MuxTerm directory" "$YELLOW"
+        print_color "Install directory: $INSTALL_DIR" "$YELLOW"
+        exit 1
+    fi
     
     # Check if update needed
     if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then

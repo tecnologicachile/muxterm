@@ -26,8 +26,8 @@ StandardOutput=journal
 StandardError=journal
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 
-# Don't stop when muxterm.service stops
-RefuseManualStop=yes
+# Run independently of muxterm.service
+RemainAfterExit=yes
 EOF
 
 # Create a timer to run it in 5 seconds
