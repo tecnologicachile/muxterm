@@ -211,7 +211,7 @@ function VersionIndicator() {
                   mt: 1, 
                   p: 1, 
                   bgcolor: checkMessage.includes('Error') ? 'error.main' : 
-                           checkMessage.includes('actualizado') ? 'success.main' : 'warning.main',
+                           checkMessage.includes('up to date') ? 'success.main' : 'warning.main',
                   color: 'white',
                   borderRadius: 1,
                   textAlign: 'center'
@@ -248,7 +248,7 @@ function VersionIndicator() {
                 }
               }}
             >
-              ⭐ Star en GitHub
+              ⭐ Star on GitHub
             </Button>
           </Box>
         </DialogContent>
@@ -258,7 +258,7 @@ function VersionIndicator() {
             disabled={checking}
             startIcon={checking ? <CircularProgress size={16} /> : <UpdateIcon />}
           >
-            {checking ? 'Verificando...' : 'Buscar Actualizaciones'}
+            {checking ? 'Checking...' : 'Check for Updates'}
           </Button>
           <Button onClick={() => setDialogOpen(false)}>
             Close
