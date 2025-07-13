@@ -1,3 +1,22 @@
+## [1.0.48] - 2025-07-13
+
+### Fixed
+- **NPM Install Diagnostics** - Added verbose logging and error output for npm install failures
+- **Vite Binary Linking** - Attempts to create vite binary link if package exists but binary is missing
+- **NPM Cache Verification** - Clears potential cache issues before installation
+
+### Added
+- Detailed error logging when npm install fails (shows last 20 lines)
+- Verification of vite binary location after installation
+- Automatic attempt to link vite binary if found in node_modules but not in .bin
+- Success confirmation messages for dependency installation
+
+### Technical
+- npm install runs with --verbose flag and logs to /tmp/npm-install-client.log
+- Checks for vite in both node_modules/.bin/ and node_modules/vite/
+- Attempts to create symlink if vite package exists but binary is missing
+- Shows specific file paths in success/error messages
+
 ## [1.0.46] - 2025-07-13
 
 ### Fixed

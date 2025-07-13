@@ -257,39 +257,20 @@ main() {
             fi
             
             print_color "Installing dependencies with npm install..." "$BLUE"
-            
-            # Clear npm cache if needed
-            npm cache verify 2>/dev/null
-            
-            # Install all dependencies (including devDependencies)
-            npm install --verbose > /tmp/npm-install-client.log 2>&1
+            npm install
             INSTALL_RESULT=$?
             
             if [ $INSTALL_RESULT -ne 0 ]; then
                 print_color "✗ Failed to install dependencies" "$RED"
-                print_color "Error log tail:" "$RED"
-                tail -20 /tmp/npm-install-client.log  < /dev/null |  while read line; do
-                    print_color "  $line" "$RED"
-                done
-                print_color "Full log at: /tmp/npm-install-client.log" "$YELLOW"
                 print_color "Try running manually: cd $(pwd) && npm install" "$YELLOW"
                 cd ..
                 exit 1
-            else
-                print_color "✓ Dependencies installed successfully" "$GREEN"
-                # List what was installed
-                if [ -f "node_modules/.bin/vite" ]; then
-                    print_color "✓ Vite binary found at: node_modules/.bin/vite" "$GREEN"
-                else
-                    print_color "⚠ Warning: Vite binary not found in node_modules/.bin/" "$YELLOW"
-                    # Check if vite is in node_modules
-                    if [ -d "node_modules/vite" ]; then
-                        print_color "  Vite package exists in node_modules/vite" "$BLUE"
-                        print_color "  Attempting to link vite binary..." "$BLUE"
-                        cd node_modules/.bin && ln -sf ../vite/bin/vite.js vite 2>/dev/null && cd ../..
-                    fi
-                fi
             fi
+            
+            # Verify vite was installed
+            if [ \! -f "node_modules/.bin/vite" ]; then
+                print_color "✗ Vite still not found after installation" "$RED"
+                print_color "Package.json may be missing vite as a dependency" "$YELLOW"
                 cd ..
                 exit 1
             else
