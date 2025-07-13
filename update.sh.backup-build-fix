@@ -232,26 +232,9 @@ main() {
         cd "$INSTALL_DIR/client" || exit 1
         
         # Install dependencies if needed
-        # Install dependencies if needed or if build tools are missing
-        if [ \! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || \! command -v vite >/dev/null 2>&1; then
+        if [ \! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null; then
             print_color "Installing client dependencies..." "$BLUE"
             exec_log "npm install" "Installing client dependencies"
-            if [ $? -ne 0 ]; then
-                print_color "✗ Failed to install client dependencies" "$RED"
-                print_color "Try running manually: cd client && npm install" "$YELLOW"
-                exit 1
-            fi
-        fi
-        
-        # Ensure vite is available
-        if [ \! -f "node_modules/.bin/vite" ]; then
-            print_color "Vite not found, reinstalling dependencies..." "$YELLOW"
-            rm -rf node_modules package-lock.json
-            exec_log "npm install" "Reinstalling client dependencies"
-            if [ $? -ne 0 ]; then
-                print_color "✗ Failed to reinstall dependencies" "$RED"
-                exit 1
-            fi
         fi
         
         # Always rebuild
@@ -351,17 +334,6 @@ main() {
     if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
         print_color "Installing client dependencies..." "$BLUE"
         exec_log "npm install" "Installing client dependencies"
-    # Install client dependencies if needed
-    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || [ ! -f "node_modules/.bin/vite" ]; then
-        print_color "Installing client dependencies..." "$BLUE"
-        exec_log "npm install" "Installing client dependencies"
-        if [ $? -ne 0 ]; then
-            print_color "✗ Failed to install client dependencies" "$RED"
-            cd ..
-            exit 1
-        fi
-    fi
-
     fi
     
     # Always rebuild to ensure latest version

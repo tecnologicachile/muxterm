@@ -1,3 +1,21 @@
+## [1.0.44] - 2025-07-13
+
+### Fixed
+- **Frontend Build Failures** - Improved dependency installation checks before building
+- **Missing Build Tools** - Added verification for vite availability before build
+- **Dependency Installation** - Enhanced error handling and recovery for npm install failures
+
+### Changed
+- Added check for vite binary existence in node_modules/.bin/
+- Improved dependency installation logic with better error messages
+- Added fallback to reinstall dependencies if vite is missing
+- Both frontend rebuild paths now properly check and install dependencies
+
+### Technical
+- Checks for node_modules/.bin/vite before attempting build
+- Will remove and reinstall dependencies if build tools are missing
+- Exits with clear error message if dependency installation fails
+
 ## [1.0.42] - 2025-07-13
 
 ### Fixed
