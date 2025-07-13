@@ -33,24 +33,15 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🔧 Fix: Update Progress Stuck at 'Verifying Installation'
-- Fixed issue where update appeared stuck at the verification step
-- Adjusted progress timing to match actual update process (70s typical)
-- Polling now starts at 65s to align with service restart phase
-
-### ⏱️ Improved Update Timing
-- More realistic progress steps: 5s backup, 15s download, 25s install, 50s build, 70s restart
-- Verification step now shows briefly when service comes back online
-- Better synchronization between UI progress and actual update status
+### 🔧 Fix: Update Detection
+- Fixed update checker to properly detect v1.0.16 and future versions
+- Now finds the release with the highest version number instead of the most recent by date
+- Ensures proper version comparison regardless of release publication order
 
 ### 🐛 Bug Fixes
-- Fixed progress bar getting stuck at 'Verifying installation'
-- Added debug logging for polling attempts
-- Error states now properly mark the stuck step
-
-### 📊 User Experience
-- Clearer indication of which step failed if timeout occurs
-- More accurate progress representation during updates
+- Update checker now correctly identifies the latest version
+- Skips draft and prerelease versions when checking for updates
+- Uses semantic version comparison for accurate results
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -64,7 +55,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Fix update stuck at verification",
+  "name": "$LATEST_TAG - Fix update detection",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false

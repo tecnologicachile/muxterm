@@ -186,8 +186,18 @@ function SessionList() {
           <Grid container spacing={3}>
             {sessions.map((session) => (
               <Grid item xs={12} md={6} lg={4} key={session.id}>
-                <Card className="session-card">
-                  <CardContent>
+                <Card 
+                  className="session-card"
+                  sx={{ 
+                    cursor: 'pointer',
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: 4
+                    }
+                  }}
+                >
+                  <CardContent onClick={() => handleOpenSession(session.id)}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                       {session.panelCount > 3 ? (
                         <GridIcon sx={{ mr: 1, color: 'primary.main' }} />
@@ -223,14 +233,20 @@ function SessionList() {
                     <Box>
                       <IconButton
                         size="small"
-                        onClick={() => handleEditSession(session)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditSession(session);
+                        }}
                         title="Edit session name"
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
                       <IconButton
                         size="small"
-                        onClick={() => handleDeleteSession(session)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSession(session);
+                        }}
                         color="error"
                         title="Delete session"
                       >
