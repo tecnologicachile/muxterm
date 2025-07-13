@@ -33,22 +33,21 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🚀 Update Process Improvements
-- New visual update progress dialog with step-by-step feedback
-- Automatic service detection with 2-minute polling system
-- No more annoying alerts - professional progress UI
-- Auto-reload when update completes successfully
+### 🔧 Critical Fix: Update Compatibility
+- Added fallback mechanism for UI updates from older versions
+- UpdateProgress component now loads lazily to prevent errors
+- Fallback method uses simple alerts when new UI isn't available
+- 30-second delay in fallback mode to ensure service has time to restart
 
-### 🌐 Language Consistency
-- All update dialogs now in English
-- Version information dialog translated to English
-- Consistent language throughout the application
+### 🛡️ Backward Compatibility
+- Updates from v1.0.11 or older will now work properly
+- Prevents \"component not found\" errors during updates
+- Graceful degradation when new features aren't available
 
-### 📊 Update Progress Features
-- Visual progress bar showing completion status
-- Detailed steps: backup, download, install, build, restart, verify
-- Error handling with manual reload option
-- Real-time status updates during the process
+### 📝 Technical Details
+- Lazy loading with React.Suspense for optional components
+- Try-catch fallback for update execution
+- Better error handling for missing components
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"

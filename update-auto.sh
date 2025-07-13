@@ -33,8 +33,8 @@ print_color "Update logs will be saved in: $LOG_DIR" "$YELLOW"
 # Change to script directory
 cd "$SCRIPT_DIR"
 
-# Run the update script with auto-yes
-echo "y" | bash update.sh > "$TEMP_LOG_FILE" 2>&1 &
+# Run the update script with auto-yes and timeout
+echo "y" | timeout 300 bash update.sh > "$TEMP_LOG_FILE" 2>&1 &
 UPDATE_PID=$!
 
 # Show progress

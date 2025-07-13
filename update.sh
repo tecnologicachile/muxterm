@@ -255,13 +255,25 @@ main() {
         print_color "\nStarting MuxTerm service..." "$YELLOW"
         exec_log "sudo systemctl start $SERVICE_NAME" "Starting MuxTerm service"
         
-        # Verify service
-        sleep 2
-        if systemctl is-active --quiet "$SERVICE_NAME"; then
-            print_color "Service is running" "$GREEN"
-        else
-            print_color "Service failed to start" "$RED"
+        # Verify service with retries
+        local retry_count=0
+        local max_retries=10
+        
+        while [ $retry_count -lt $max_retries ]; do
+            sleep 2
+            if systemctl is-active --quiet "$SERVICE_NAME"; then
+                print_color "Service is running" "$GREEN"
+                break
+            else
+                retry_count=$((retry_count + 1))
+                print_color "Waiting for service to start... ($retry_count/$max_retries)" "$YELLOW"
+            fi
+        done
+        
+        if [ $retry_count -eq $max_retries ]; then
+            print_color "Service failed to start after $max_retries attempts" "$RED"
             print_color "Check logs: journalctl -u $SERVICE_NAME -n 50" "$YELLOW"
+            log_error "Service failed to start after multiple attempts"
         fi
     fi
     

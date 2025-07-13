@@ -34,7 +34,7 @@ function UpdateProgress({ open, onClose, version }) {
   ]);
   const [error, setError] = useState(null);
   const [pollAttempts, setPollAttempts] = useState(0);
-  const maxPollAttempts = 60; // 2 minutes (2s intervals)
+  const maxPollAttempts = 90; // 3 minutes (2s intervals)
 
   useEffect(() => {
     if (open) {
@@ -87,7 +87,7 @@ function UpdateProgress({ open, onClose, version }) {
 
   const pollForService = async () => {
     if (pollAttempts >= maxPollAttempts) {
-      setError('Update is taking longer than expected. Please check the service manually.');
+      setError('Update is taking longer than expected. The update may still be in progress. Please wait a moment and reload the page.');
       setStatus('timeout');
       return;
     }
@@ -207,8 +207,20 @@ function UpdateProgress({ open, onClose, version }) {
               variant="contained"
               startIcon={<RefreshIcon />}
               onClick={() => window.location.reload()}
+              sx={{ mr: 2 }}
             >
               Reload Page
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setPollAttempts(0);
+                setStatus('polling');
+                setError(null);
+                pollForService();
+              }}
+            >
+              Keep Waiting
             </Button>
           </Box>
         )}
