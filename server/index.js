@@ -233,38 +233,27 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
     logger.info(`Update command: ${updateCommand}`);
     logger.info(`Working directory: ${muxTermDir}`);
     
-    // Execute the update command
-    const updateProcess = spawn('/bin/bash', ['-c', updateCommand], {
+    // Create a wrapper script that survives service stop
+    const wrapperScript = `#!/bin/bash
+# Update wrapper script that survives service stop
+(
+  # Detach from parent process completely
+  setsid ${updateCommand} &
+  echo "Update process started with PID: $!"
+) &`;
+    
+    // Execute the wrapper script
+    const updateProcess = spawn('/bin/bash', ['-c', wrapperScript], {
       detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: 'ignore',
       env: { ...process.env, FORCE_COLOR: '0' } // Disable color output for logs
     });
     
-    // Collect output for logging
-    let output = '';
-    let errorOutput = '';
-    
-    updateProcess.stdout.on('data', (data) => {
-      output += data.toString();
-      logger.info('[Update]', data.toString().trim());
-    });
-    
-    updateProcess.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      logger.error('[Update Error]', data.toString().trim());
-    });
+    // Log that update was started
+    logger.info('[Update] Update process started in background');
     
     updateProcess.on('error', (error) => {
       logger.error('[Update Process Error]', error);
-    });
-    
-    updateProcess.on('exit', (code, signal) => {
-      logger.info(`[Update Process Exit] Code: ${code}, Signal: ${signal}`);
-      if (code !== 0) {
-        logger.error(`[Update Failed] Exit code: ${code}`);
-        logger.error(`[Update Output] ${output}`);
-        logger.error(`[Update Error Output] ${errorOutput}`);
-      }
     });
     
     // Don't wait for process to complete

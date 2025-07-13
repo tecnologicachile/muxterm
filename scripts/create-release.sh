@@ -33,21 +33,16 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🔧 Fix: Update Script Version Detection
-- Fixed update.sh to find highest version number instead of latest by date
-- Now uses 'sort -V' for proper version sorting
-- Matches the fix done for update-checker
+### 🔍 Update Logs Viewer
+- Added \"View Logs\" button in version dialog
+- View update logs directly from the UI
+- Shows recent update activity and log files
+- No SSH needed to debug update issues
 
-### 🐛 Debug Tools Added
-- Added detailed logging to update execution endpoint
-- Created debug-update.sh script for troubleshooting
-- Added /api/update-debug endpoint to check system state
-- Enhanced process exit and error logging
-
-### 📊 Improvements
-- Better error reporting when updates fail from UI
-- Logs update command and working directory
-- Helps diagnose update issues in production
+### 🧪 Test Release
+- No functional changes in this version
+- Released to test update process and logging
+- Use \"View Logs\" button to see update progress
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -61,7 +56,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Update fixes and debug tools",
+  "name": "$LATEST_TAG - Test release for update debugging",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false

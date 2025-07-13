@@ -45,11 +45,25 @@ case "$1" in
         
         if [ -f "$MUXTERM_DIR/update.sh" ]; then
             cd "$MUXTERM_DIR"
-            # Check for --yes or -y flag
-            if [ "$2" = "--yes" ] || [ "$2" = "-y" ]; then
-                echo "y" | bash update.sh
+            
+            # Check if we're running from systemd service
+            if [ -n "$INVOCATION_ID" ] || systemctl is-active --quiet muxterm; then
+                # Use independent update method
+                print_color "Detected running from service, using independent update..." "$YELLOW"
+                if [ -f "$MUXTERM_DIR/scripts/update-independent.sh" ]; then
+                    exec bash "$MUXTERM_DIR/scripts/update-independent.sh" "$MUXTERM_DIR"
+                else
+                    print_color "Error: Independent update script not found" "$RED"
+                    exit 1
+                fi
             else
-                exec bash update.sh
+                # Normal update
+                # Check for --yes or -y flag
+                if [ "$2" = "--yes" ] || [ "$2" = "-y" ]; then
+                    echo "y" | bash update.sh
+                else
+                    exec bash update.sh
+                fi
             fi
         else
             print_color "Error: Update script not found" "$RED"

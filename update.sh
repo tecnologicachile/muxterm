@@ -171,20 +171,14 @@ main() {
         print_color "Tmux config backed up" "$GREEN"
     fi
     
-    # Stop service if running
-    if service_exists; then
-        print_color "\nStopping MuxTerm service..." "$YELLOW"
-        exec_log "sudo systemctl stop $SERVICE_NAME || true" "Stopping MuxTerm service"
-    fi
-    
-    # Stash local changes
+    # Stash local changes BEFORE stopping service
     if [ -d ".git" ]; then
         print_color "\nStashing local changes..." "$YELLOW"
         exec_log "git stash || true" "Stashing local changes"
     fi
     
-    # Update via git
-    print_color "\nUpdating MuxTerm..." "$YELLOW"
+    # Update via git BEFORE stopping service
+    print_color "\nDownloading update..." "$YELLOW"
     if [ -d ".git" ]; then
         exec_log "git fetch --tags" "Fetching latest tags"
         exec_log "git checkout $LATEST_VERSION" "Checking out version $LATEST_VERSION"
@@ -258,10 +252,10 @@ main() {
         cp -p "$BACKUP_DIR/.tmux.webssh.conf" .
     fi
     
-    # Start service if it was running
+    # NOW stop and restart service (after everything is ready)
     if service_exists; then
-        print_color "\nStarting MuxTerm service..." "$YELLOW"
-        exec_log "sudo systemctl start $SERVICE_NAME" "Starting MuxTerm service"
+        print_color "\nRestarting MuxTerm service..." "$YELLOW"
+        exec_log "sudo systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
         
         # Verify service with retries
         local retry_count=0
