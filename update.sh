@@ -290,9 +290,6 @@ main() {
                     fi
                 fi
             fi
-                cd ..
-                exit 1
-            else
                 print_color "✓ Vite installed successfully" "$GREEN"
             fi
         fi
@@ -325,7 +322,6 @@ main() {
         
         print_color "\n✓ Frontend rebuild completed successfully\!" "$GREEN"
         exit 0
-    fi
     
     # Confirm update (unless --yes flag is used)
     if [ "$AUTO_YES" != "true" ]; then
