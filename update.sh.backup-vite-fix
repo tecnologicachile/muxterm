@@ -246,41 +246,16 @@ main() {
         # Ensure vite is available
         if [ \! -f "node_modules/.bin/vite" ]; then
             print_color "Vite not found, reinstalling dependencies..." "$YELLOW"
-            print_color "Current directory: $(pwd)" "$BLUE"
-            
-            # Remove and reinstall in the correct directory
             rm -rf node_modules package-lock.json
-            
-            # Use npm ci for more reliable installation
-            if [ -f "../package-lock.json" ]; then
-                cp ../package-lock.json . 2>/dev/null
-            fi
-            
-            print_color "Installing dependencies with npm install..." "$BLUE"
-            npm install
-            INSTALL_RESULT=$?
-            
-            if [ $INSTALL_RESULT -ne 0 ]; then
-                print_color "✗ Failed to install dependencies" "$RED"
-                print_color "Try running manually: cd $(pwd) && npm install" "$YELLOW"
-                cd ..
+            exec_log "npm install" "Reinstalling client dependencies"
+            if [ $? -ne 0 ]; then
+                print_color "✗ Failed to reinstall dependencies" "$RED"
                 exit 1
-            fi
-            
-            # Verify vite was installed
-            if [ \! -f "node_modules/.bin/vite" ]; then
-                print_color "✗ Vite still not found after installation" "$RED"
-                print_color "Package.json may be missing vite as a dependency" "$YELLOW"
-                cd ..
-                exit 1
-            else
-                print_color "✓ Vite installed successfully" "$GREEN"
             fi
         fi
         
         # Always rebuild
         print_color "Compiling frontend..." "$BLUE"
-        print_color "Current directory before build: $(pwd)" "$BLUE"
         exec_log "npm run build" "Building client"
         
         if [ $? -eq 0 ]; then
@@ -391,8 +366,7 @@ main() {
     
     # Always rebuild to ensure latest version
     print_color "Compiling frontend..." "$BLUE"
-    print_color "Current directory before build: $(pwd)" "$BLUE"
-        exec_log "npm run build" "Building client"
+    exec_log "npm run build" "Building client"
     
     if [ $? -eq 0 ]; then
         print_color "✓ Frontend compiled successfully" "$GREEN"
