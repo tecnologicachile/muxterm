@@ -23,7 +23,12 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import StarIcon from '@mui/icons-material/Star';
 import axios from '../utils/axios';
 import logger from '../utils/logger';
-import UpdateProgress from './UpdateProgress';
+// Lazy load UpdateProgress to avoid errors if component doesn't exist
+const UpdateProgress = React.lazy(() => 
+  import('./UpdateProgress').catch(() => ({
+    default: () => null // Fallback if component doesn't exist
+  }))
+);
 
 // Version actual del cliente (leída desde package.json)
 import packageJson from '../../package.json';
@@ -82,7 +87,38 @@ function VersionIndicator() {
 
   const handleUpdate = async () => {
     setDialogOpen(false);
-    setShowUpdateProgress(true);
+    
+    // Try to use UpdateProgress, fallback to old method if it doesn't exist
+    try {
+      setShowUpdateProgress(true);
+    } catch (error) {
+      // Fallback to old update method
+      handleUpdateFallback();
+    }
+  };
+
+  const handleUpdateFallback = async () => {
+    setUpdating(true);
+    
+    try {
+      const response = await axios.post('/api/update-execute');
+      
+      if (response.data.success) {
+        alert(`Update started!\n\nThe service will restart automatically.\n\nThe page will reload in 30 seconds...`);
+        
+        // Wait longer and then reload
+        setTimeout(() => {
+          window.location.reload();
+        }, 30000);
+      } else {
+        alert('Error starting update. Please try again.');
+      }
+    } catch (error) {
+      logger.error('Update execution failed:', error);
+      alert('Update failed. Please use manual method:\n\nmuxterm update');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const hasUpdate = updateInfo !== null;
@@ -242,11 +278,13 @@ function VersionIndicator() {
       </Dialog>
       
       {updateInfo && (
-        <UpdateProgress 
-          open={showUpdateProgress}
-          onClose={() => setShowUpdateProgress(false)}
-          version={updateInfo.latest}
-        />
+        <React.Suspense fallback={null}>
+          <UpdateProgress 
+            open={showUpdateProgress}
+            onClose={() => setShowUpdateProgress(false)}
+            version={updateInfo.latest}
+          />
+        </React.Suspense>
       )}
     </>
   );

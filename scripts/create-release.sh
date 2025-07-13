@@ -33,15 +33,22 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🖱️ UI Improvements
-- Fixed keyboard button appearing on desktop PCs with touch screens
-- Keyboard button now only shows on actual mobile devices (Android/iOS)
-- Improved mobile device detection using User Agent
+### 🚀 Update Process Improvements
+- New visual update progress dialog with step-by-step feedback
+- Automatic service detection with 2-minute polling system
+- No more annoying alerts - professional progress UI
+- Auto-reload when update completes successfully
 
-### 📱 Mobile Experience
-- More accurate detection of mobile devices vs touch-enabled desktops
-- Keyboard helper button only appears when truly needed
-- Better experience for laptop users with touch screens
+### 🌐 Language Consistency
+- All update dialogs now in English
+- Version information dialog translated to English
+- Consistent language throughout the application
+
+### 📊 Update Progress Features
+- Visual progress bar showing completion status
+- Detailed steps: backup, download, install, build, restart, verify
+- Error handling with manual reload option
+- Real-time status updates during the process
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
