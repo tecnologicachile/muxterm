@@ -1,3 +1,23 @@
+## [1.0.40] - 2025-07-13
+
+### Fixed
+- **Frontend Rebuild Logic** - Always rebuild frontend when version changes
+- **Rebuild Detection** - Added separate flags for update vs rebuild scenarios
+- **Frontend-Only Updates** - Can now rebuild frontend without full git update
+
+### Changed
+- Improved update.sh logic to handle three scenarios:
+  1. Full update (version change) - always rebuilds frontend
+  2. Frontend-only rebuild - skips git operations, only rebuilds
+  3. No action needed - exits early
+- Added check for client dependency updates
+- Optimized update process to skip unnecessary git operations when only frontend rebuild is needed
+
+### Technical
+- Split NEEDS_UPDATE and NEEDS_REBUILD flags for better control
+- Added dedicated path for frontend-only rebuilds
+- Service restart only happens when actually needed
+
 ## [1.0.38] - 2025-07-13
 
 ### Fixed

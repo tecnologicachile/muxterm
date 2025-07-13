@@ -170,82 +170,29 @@ main() {
     fi
     
     # Check if update needed
-    NEEDS_UPDATE=false
-    NEEDS_REBUILD=false
-    
-    if [ "$CURRENT_VERSION" \!= "$LATEST_VERSION" ]; then
-        NEEDS_UPDATE=true
-        NEEDS_REBUILD=true  # Always rebuild frontend on version change
-        print_color "\nUpdate available: $CURRENT_VERSION -> $LATEST_VERSION" "$YELLOW"
-    else
+    if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
         print_color "\nMuxTerm is already at version $CURRENT_VERSION" "$GREEN"
+        # exit 0  # Commented out to allow frontend rebuild check
         
         # Check if frontend needs rebuilding even if versions match
+        SKIP_UPDATE=true
+        
+        # Check if public directory exists and has files
         if [ \! -d "public" ] || [ \! -f "public/index.html" ]; then
             print_color "Frontend files missing, will rebuild..." "$YELLOW"
-            NEEDS_REBUILD=true
+            SKIP_UPDATE=false
         elif [ -f "client/src/components/UpdateNotification.jsx" ] && [ -f "public/index.html" ]; then
             # Check if source files are newer than build
             if [ "client/src/components/UpdateNotification.jsx" -nt "public/index.html" ]; then
                 print_color "Frontend source has been modified, will rebuild..." "$YELLOW"
-                NEEDS_REBUILD=true
+                SKIP_UPDATE=false
             fi
         fi
         
-        # Check if client dependencies need updating
-        if [ -f "client/package.json" ] && [ -f "client/package-lock.json" ]; then
-            if [ "client/package.json" -nt "client/node_modules/.package-lock.json" ] 2>/dev/null; then
-                print_color "Client dependencies may need updating, will rebuild..." "$YELLOW"
-                NEEDS_REBUILD=true
-            fi
+        if [ "$SKIP_UPDATE" = "true" ]; then
+            print_color "Frontend is up to date\!" "$GREEN"
+            exit 0
         fi
-    fi
-    
-    # Exit if nothing needs to be done
-    if [ "$NEEDS_UPDATE" = "false" ] && [ "$NEEDS_REBUILD" = "false" ]; then
-        print_color "Everything is up to date\!" "$GREEN"
-        exit 0
-    fi
-    
-    # If only rebuild is needed, skip git operations
-    if [ "$NEEDS_UPDATE" = "false" ] && [ "$NEEDS_REBUILD" = "true" ]; then
-        print_color "\nSkipping git operations, only rebuilding frontend..." "$BLUE"
-        # Jump directly to frontend build section
-        cd "$INSTALL_DIR/client" || exit 1
-        
-        # Install dependencies if needed
-        if [ \! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null; then
-            print_color "Installing client dependencies..." "$BLUE"
-            exec_log "npm install" "Installing client dependencies"
-        fi
-        
-        # Always rebuild
-        print_color "Compiling frontend..." "$BLUE"
-        exec_log "npm run build" "Building client"
-        
-        if [ $? -eq 0 ]; then
-            print_color "✓ Frontend compiled successfully" "$GREEN"
-            
-            # Copy to public directory
-            cd ..
-            print_color "Copying frontend files to public directory..." "$BLUE"
-            mkdir -p public
-            exec_log "cp -r client/dist/* public/" "Copying frontend to public directory"
-            
-            if [ $? -eq 0 ]; then
-                print_color "✓ Frontend deployed to public directory" "$GREEN"
-            fi
-        else
-            print_color "✗ Frontend compilation failed" "$RED"
-            exit 1
-        fi
-        
-        # Restart service
-        print_color "\nRestarting MuxTerm service..." "$YELLOW"
-        exec_log "sudo systemctl restart muxterm" "Restarting MuxTerm service"
-        
-        print_color "\n✓ Frontend rebuild completed successfully\!" "$GREEN"
-        exit 0
     fi
     
     # Confirm update (unless --yes flag is used)
