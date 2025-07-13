@@ -1,0 +1,16 @@
+--- server/index.js
++++ server/index.js
+@@ -228,7 +228,12 @@
+     // Execute update in background using muxterm update command
+     const { spawn } = require('child_process');
+     
+-    const updateCommand = `cd "${muxTermDir}" && timeout 300 ${muxTermCommand} update --yes`;
++    // Instead of calling muxterm command which detects service environment,
++    // call the update-independent.sh script directly
++    const updateIndependentScript = path.join(muxTermDir, 'scripts', 'update-independent.sh');
++    const updateCommand = fs.existsSync(updateIndependentScript) 
++      ? `${updateIndependentScript} "${muxTermDir}"`
++      : `cd "${muxTermDir}" && timeout 300 ${muxTermCommand} update --yes`;
+     
+     logger.info(`Update command: ${updateCommand}`);
+     logger.info(`Working directory: ${muxTermDir}`);

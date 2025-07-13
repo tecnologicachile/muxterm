@@ -1,15 +1,3 @@
-## [1.0.37] - 2025-07-13
-
-### Fixed
-- **UI Update System** - Fixed update execution from web interface
-- **Update Process** - Direct execution of update-independent.sh script instead of relying on environment detection
-- **Version Consistency** - Corrected version numbers in package.json files
-
-### Changed
-- Modified server/index.js to execute update-independent.sh directly when available
-- Improved error handling in update process
-- Enhanced logging for update troubleshooting
-
 # Changelog
 
 ## [1.1.0] - 2025-01-10

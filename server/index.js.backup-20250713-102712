@@ -228,19 +228,7 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
     // Create a script to run muxterm update with auto-yes
     // First cd to the muxterm directory to ensure we're in the right place
     const muxTermDir = path.join(__dirname, '..');
-    
-    // Instead of calling muxterm command which detects service environment,
-    // call the update-independent.sh script directly if it exists
-    const updateIndependentScript = path.join(muxTermDir, 'scripts', 'update-independent.sh');
-    let updateCommand;
-    
-    if (fs.existsSync(updateIndependentScript)) {
-      updateCommand = `${updateIndependentScript} "${muxTermDir}"`;
-      logger.info(`Using update-independent.sh script`);
-    } else {
-      updateCommand = `cd "${muxTermDir}" && timeout 300 ${muxTermCommand} update --yes`;
-      logger.info(`Using muxterm command directly`);
-    }
+    const updateCommand = `cd "${muxTermDir}" && timeout 300 ${muxTermCommand} update --yes`;
     
     logger.info(`Update command: ${updateCommand}`);
     logger.info(`Working directory: ${muxTermDir}`);
