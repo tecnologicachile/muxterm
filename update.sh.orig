@@ -171,28 +171,8 @@ main() {
     
     # Check if update needed
     if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
-        print_color "\nMuxTerm is already at version $CURRENT_VERSION" "$GREEN"
-        # exit 0  # Commented out to allow frontend rebuild check
-        
-        # Check if frontend needs rebuilding even if versions match
-        SKIP_UPDATE=true
-        
-        # Check if public directory exists and has files
-        if [ \! -d "public" ] || [ \! -f "public/index.html" ]; then
-            print_color "Frontend files missing, will rebuild..." "$YELLOW"
-            SKIP_UPDATE=false
-        elif [ -f "client/src/components/UpdateNotification.jsx" ] && [ -f "public/index.html" ]; then
-            # Check if source files are newer than build
-            if [ "client/src/components/UpdateNotification.jsx" -nt "public/index.html" ]; then
-                print_color "Frontend source has been modified, will rebuild..." "$YELLOW"
-                SKIP_UPDATE=false
-            fi
-        fi
-        
-        if [ "$SKIP_UPDATE" = "true" ]; then
-            print_color "Frontend is up to date\!" "$GREEN"
-            exit 0
-        fi
+        print_color "\nMuxTerm is already up to date!" "$GREEN"
+        exit 0
     fi
     
     # Confirm update (unless --yes flag is used)

@@ -1,3 +1,15 @@
+## [1.0.38] - 2025-07-13
+
+### Fixed
+- **Update Process** - Frontend rebuild detection when versions match
+- **UI Updates** - Ensure frontend is always rebuilt when source files change
+- **Version Display** - Fix issue where UI showed old version after update
+
+### Changed
+- Modified update.sh to check if frontend needs rebuilding even when versions are equal
+- Added detection for missing or outdated frontend files in public directory
+- Improved update process to handle edge cases where code is updated but version remains same
+
 ## [1.0.37] - 2025-07-13
 
 ### Fixed

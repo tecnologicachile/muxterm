@@ -1,0 +1,28 @@
+--- update.sh
++++ update.sh
+@@ -171,8 +171,23 @@
+     
+     # Check if update needed
+     if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+-        print_color "\nMuxTerm is already up to date\!" "$GREEN"
+-        exit 0
++        print_color "\nMuxTerm is already at version $CURRENT_VERSION" "$GREEN"
++        
++        # Check if frontend needs rebuilding
++        if [ -d "client/dist" ] && [ -d "public" ]; then
++            # Check if public directory has index.html
++            if [ \! -f "public/index.html" ]; then
++                print_color "Frontend files missing in public directory, rebuilding..." "$YELLOW"
++            else
++                # Check if dist is newer than public
++                if [ "client/dist/index.html" -nt "public/index.html" ] 2>/dev/null; then
++                    print_color "Frontend has been updated, rebuilding..." "$YELLOW"
++                else
++                    print_color "Everything is up to date\!" "$GREEN"
++                    exit 0
++                fi
++            fi
++        fi
+     fi
+     
+     # Confirm update (unless --yes flag is used)
