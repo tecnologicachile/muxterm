@@ -33,16 +33,21 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🔍 Update Logs Viewer
-- Added \"View Logs\" button in version dialog
-- View update logs directly from the UI
-- Shows recent update activity and log files
-- No SSH needed to debug update issues
+### 🔧 Critical Fix: Update Process Survival
+- Fixed update process dying when service stops
+- Update now runs in separate process group using setsid
+- Download and compile happens BEFORE stopping service
+- Minimal downtime with systemctl restart
 
-### 🧪 Test Release
-- No functional changes in this version
-- Released to test update process and logging
-- Use \"View Logs\" button to see update progress
+### 🚀 Smart Update Detection
+- Detects if running from systemd service
+- Uses independent update method when needed
+- Added systemd timer-based update for service context
+
+### 🐛 Improvements
+- Update process is now much more reliable
+- Service restart happens only after everything is ready
+- Better process isolation prevents update failures
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -56,7 +61,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Test release for update debugging",
+  "name": "$LATEST_TAG - Fix update process survival",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false
