@@ -69,7 +69,7 @@ class UpdateChecker {
     return new Promise((resolve) => {
       const options = {
         hostname: 'api.github.com',
-        path: '/repos/tecnologicachile/muxterm/releases/latest',
+        path: '/repos/tecnologicachile/muxterm/releases',
         headers: {
           'User-Agent': 'MuxTerm-Update-Checker',
           'Accept': 'application/vnd.github.v3+json'
@@ -85,8 +85,27 @@ class UpdateChecker {
 
         res.on('end', () => {
           try {
-            const release = JSON.parse(data);
-            resolve(release.tag_name ? release : null);
+            const releases = JSON.parse(data);
+            if (!Array.isArray(releases) || releases.length === 0) {
+              resolve(null);
+              return;
+            }
+
+            // Find the release with the highest version number
+            let latestRelease = releases[0];
+            let latestVersion = this.parseVersion(latestRelease.tag_name);
+
+            for (const release of releases) {
+              if (release.draft || release.prerelease) continue;
+              
+              const version = this.parseVersion(release.tag_name);
+              if (this.compareVersions(version, latestVersion) > 0) {
+                latestVersion = version;
+                latestRelease = release;
+              }
+            }
+
+            resolve(latestRelease);
           } catch {
             resolve(null);
           }
@@ -97,15 +116,22 @@ class UpdateChecker {
     });
   }
 
-  isNewerVersion(latestTag) {
-    const latest = latestTag.replace('v', '').split('.').map(Number);
-    const current = this.currentVersion.split('.').map(Number);
+  parseVersion(versionTag) {
+    return versionTag.replace('v', '').split('.').map(Number);
+  }
 
+  compareVersions(v1, v2) {
     for (let i = 0; i < 3; i++) {
-      if (latest[i] > current[i]) return true;
-      if (latest[i] < current[i]) return false;
+      if (v1[i] > v2[i]) return 1;
+      if (v1[i] < v2[i]) return -1;
     }
-    return false;
+    return 0;
+  }
+
+  isNewerVersion(latestTag) {
+    const latest = this.parseVersion(latestTag);
+    const current = this.currentVersion.split('.').map(Number);
+    return this.compareVersions(latest, current) > 0;
   }
 
   parseChangelog(body) {

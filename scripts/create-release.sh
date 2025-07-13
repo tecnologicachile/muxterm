@@ -21,8 +21,8 @@ elif [ -z "$GITHUB_TOKEN" ]; then
     exit 1
 fi
 
-# Get the latest tag
-LATEST_TAG=$(git describe --tags --abbrev=0)
+# Get the latest tag (or use provided tag as argument)
+LATEST_TAG=${1:-$(git describe --tags --abbrev=0)}
 VERSION=${LATEST_TAG#v}  # Remove 'v' prefix
 
 echo "Creating release for tag: $LATEST_TAG"
@@ -33,25 +33,24 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🚀 Improved Update Reliability
-- Now uses the proven 'muxterm update' command instead of update-auto.sh
-- Same command that users run manually, ensuring consistency
-- Automatically finds the correct installation directory
+### 🔧 Fix: Update Progress Stuck at 'Verifying Installation'
+- Fixed issue where update appeared stuck at the verification step
+- Adjusted progress timing to match actual update process (70s typical)
+- Polling now starts at 65s to align with service restart phase
 
-### 🔧 Update Process Improvements
-- Fixed issue where updates appeared stuck at 'Verifying Installation'
-- More realistic progress timing (5s backup, 15s download, 25s install, 50s build, 70s restart)
-- Better synchronization between UI progress and actual update process
+### ⏱️ Improved Update Timing
+- More realistic progress steps: 5s backup, 15s download, 25s install, 50s build, 70s restart
+- Verification step now shows briefly when service comes back online
+- Better synchronization between UI progress and actual update status
 
 ### 🐛 Bug Fixes
-- Fixed progress bar getting stuck during verification step
-- Added validation to ensure muxterm command exists before updating
-- Improved error handling and debug logging
+- Fixed progress bar getting stuck at 'Verifying installation'
+- Added debug logging for polling attempts
+- Error states now properly mark the stuck step
 
 ### 📊 User Experience
-- Updates now use the same reliable process as manual updates
-- Clearer progress indication and error states
-- Polling starts at the right time (65s) to match service restart
+- Clearer indication of which step failed if timeout occurs
+- More accurate progress representation during updates
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -65,7 +64,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Improved update reliability",
+  "name": "$LATEST_TAG - Fix update stuck at verification",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false
