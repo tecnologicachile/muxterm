@@ -78,9 +78,17 @@ check_dependencies() {
 
 # Function to get latest version
 get_latest_version() {
-    local latest=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    # Get all releases and find the one with highest version number
+    local releases=$(curl -s "https://api.github.com/repos/$REPO/releases" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ -z "$releases" ]; then
+        print_color "Failed to fetch releases" "$RED"
+        exit 1
+    fi
+    
+    # Sort versions and get the highest one
+    local latest=$(echo "$releases" | sort -V | tail -1)
     if [ -z "$latest" ]; then
-        print_color "Failed to fetch latest version" "$RED"
+        print_color "Failed to determine latest version" "$RED"
         exit 1
     fi
     echo "$latest"

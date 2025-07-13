@@ -33,22 +33,15 @@ PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^)
 # Create release notes
 RELEASE_NOTES="## What's Changed
 
-### 🎯 Improved Session Card Interaction
-- Session cards are now fully clickable to open sessions
-- Click anywhere on the card except edit/delete icons
-- Added hover effects for better visual feedback
-- Edit and delete buttons maintain their specific functionality
-
-### 🚀 Enhanced Update Command
-- Added \`--yes\` or \`-y\` flag to \`muxterm update\` command
-- Allows automatic updates without confirmation prompt
-- Example: \`muxterm update --yes\`
-- UI now uses the cleaner \`--yes\` flag instead of piping echo
+### 🌐 Complete English Translation
+- Translated 'Buscar Actualizaciones' to 'Check for Updates'
+- Translated 'Verificando...' to 'Checking...'
+- Translated 'Star en GitHub' to 'Star on GitHub'
+- Fixed condition checking for Spanish text
 
 ### 📊 User Experience
-- More intuitive session list interaction
-- Faster access to sessions with single click
-- Professional command-line update options
+- All UI text is now consistently in English
+- Better internationalization support
 
 ## Full Changelog
 https://github.com/tecnologicachile/muxterm/compare/${PREVIOUS_TAG}...${LATEST_TAG}"
@@ -62,7 +55,7 @@ curl -X POST \
 {
   "tag_name": "$LATEST_TAG",
   "target_commitish": "main",
-  "name": "$LATEST_TAG - Clickable session cards & update improvements",
+  "name": "$LATEST_TAG - Complete English translation",
   "body": $(echo "$RELEASE_NOTES" | jq -Rs .),
   "draft": false,
   "prerelease": false
