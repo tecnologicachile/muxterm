@@ -595,7 +595,7 @@ StandardError=append:$INSTALL_DIR/logs/muxterm-error.log
 
 # Security
 NoNewPrivileges=true
-PrivateTmp=true
+# PrivateTmp=true # Disabled to allow tmux session persistence
 
 [Install]
 WantedBy=multi-user.target
