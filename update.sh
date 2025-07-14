@@ -649,6 +649,8 @@ main() {
 
     
 
+    fi
+
     # Confirm update (unless --yes flag is used)
 
     if [ "$AUTO_YES" != "true" ]; then
