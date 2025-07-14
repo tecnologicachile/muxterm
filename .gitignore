@@ -49,6 +49,7 @@ run-*.js
 *.html
 !client/index.html
 !client/public/index.html
+!public/index.html
 
 # Screenshots and images
 *.png
