@@ -594,57 +594,57 @@ main() {
 
         
 
-        # Always rebuild
-
-        print_color "Compiling frontend..." "$BLUE"
-
-        print_color "Current directory before build: $(pwd)" "$BLUE"
-
-        print_color "Frontend pre-compiled in repository. Skipping build..." "$GREEN"
-
-        
-
-        if [ $? -eq 0 ]; then
-
-            print_color "✓ Frontend compiled successfully" "$GREEN"
-
-            
-
-            # Copy to public directory
-
-            print_color "Copying frontend files to public directory..." "$BLUE"
-
-            mkdir -p ../public
-
-            print_color "Using pre-compiled files in public/ directory" "$BLUE"
-
-            
-
-            if [ $? -eq 0 ]; then
-
-                print_color "✓ Frontend deployed to public directory" "$GREEN"
-
-            fi
-
-        else
-
-            print_color "✗ Frontend compilation failed" "$RED"
-
-            exit 1
-
-        fi
-
-        
-
-        # Restart service
-
-        print_color "\nRestarting MuxTerm service..." "$YELLOW"
-
-        exec_log "sudo systemctl restart muxterm" "Restarting MuxTerm service"
-
-        
-
-        print_color "\n✓ Frontend rebuild completed successfully\!" "$GREEN"
+# RESIDUAL CODE - REMOVED:         # Always rebuild
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         print_color "Compiling frontend..." "$BLUE"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         print_color "Current directory before build: $(pwd)" "$BLUE"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         print_color "Frontend pre-compiled in repository. Skipping build..." "$GREEN"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         if [ $? -eq 0 ]; then
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             print_color "✓ Frontend compiled successfully" "$GREEN"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             # Copy to public directory
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             print_color "Copying frontend files to public directory..." "$BLUE"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             mkdir -p ../public
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             print_color "Using pre-compiled files in public/ directory" "$BLUE"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             if [ $? -eq 0 ]; then
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:                 print_color "✓ Frontend deployed to public directory" "$GREEN"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             fi
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         else
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             print_color "✗ Frontend compilation failed" "$RED"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:             exit 1
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         fi
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         # Restart service
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         print_color "\nRestarting MuxTerm service..." "$YELLOW"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         exec_log "sudo systemctl restart muxterm" "Restarting MuxTerm service"
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         
+# RESIDUAL CODE - REMOVED: 
+# RESIDUAL CODE - REMOVED:         print_color "\n✓ Frontend rebuild completed successfully\!" "$GREEN"
     # Continue with update if needed
     if [ "$NEEDS_UPDATE" = "true" ]; then
         print_color "\nContinuing with full update process..." "$BLUE"
