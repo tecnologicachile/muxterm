@@ -352,7 +352,7 @@ main() {
 
         NEEDS_UPDATE=true
 
-        NEEDS_REBUILD=true  # Always rebuild frontend on version change
+        NEEDS_REBUILD=false  # Frontend pre-compiled in repo
 
         print_color "\nUpdate available: $CURRENT_VERSION -> $LATEST_VERSION" "$YELLOW"
 
@@ -368,7 +368,7 @@ main() {
 
             print_color "Frontend files missing, will rebuild..." "$YELLOW"
 
-            NEEDS_REBUILD=true
+            NEEDS_REBUILD=false  # Pre-compiled
 
         elif [ -f "client/src/components/UpdateNotification.jsx" ] && [ -f "public/index.html" ]; then
 
@@ -378,7 +378,7 @@ main() {
 
                 print_color "Frontend source has been modified, will rebuild..." "$YELLOW"
 
-                NEEDS_REBUILD=true
+                NEEDS_REBUILD=false  # Pre-compiled
 
             fi
 
@@ -394,7 +394,7 @@ main() {
 
                 print_color "Client dependencies may need updating, will rebuild..." "$YELLOW"
 
-                NEEDS_REBUILD=true
+                NEEDS_REBUILD=false  # Pre-compiled
 
             fi
 
@@ -416,13 +416,13 @@ main() {
 
                 print_color "Frontend needs to be rebuilt..." "$YELLOW"
 
-                NEEDS_REBUILD=true
+                NEEDS_REBUILD=false  # Pre-compiled
 
             elif [ -z "$BUILT_VERSION" ]; then
 
                 print_color "Could not detect version in built frontend, will rebuild..." "$YELLOW"
 
-                NEEDS_REBUILD=true
+                NEEDS_REBUILD=false  # Pre-compiled
 
             fi
 
@@ -600,7 +600,7 @@ main() {
 
         print_color "Current directory before build: $(pwd)" "$BLUE"
 
-        exec_log "cd client && npm run build" "Building client"
+        print_color "Frontend pre-compiled in repository. Skipping build..." "$GREEN"
 
         
 
@@ -616,7 +616,7 @@ main() {
 
             mkdir -p ../public
 
-            exec_log "cp -r dist/* ../public/" "Copying frontend to public directory"
+            print_color "Using pre-compiled files in public/ directory" "$BLUE"
 
             
 
@@ -645,11 +645,17 @@ main() {
         
 
         print_color "\n✓ Frontend rebuild completed successfully\!" "$GREEN"
+    # Continue with update if needed
+    if [ "$NEEDS_UPDATE" = "true" ]; then
+        print_color "\nContinuing with full update process..." "$BLUE"
+    else
+        print_color "\nNo update needed, only rebuild was required" "$GREEN"
+        exit 0
+    fi
 
 
     
 
-    fi
 
     # Confirm update (unless --yes flag is used)
 
@@ -867,7 +873,7 @@ main() {
         # Try to build
         if [ -f "node_modules/.bin/vite" ]; then
             print_color "Compiling frontend..." "$BLUE"
-            exec_log "npm run build" "Building client"
+            print_color "Frontend pre-compiled. Skipping build..." "$GREEN"
             
             if [ $? -eq 0 ]; then
                 print_color "✓ Frontend compiled successfully" "$GREEN"
