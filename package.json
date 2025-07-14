@@ -1,6 +1,6 @@
 {
   "name": "muxterm",
-  "version": "1.0.66",
+  "version": "1.0.67",
   "description": "Web-based terminal multiplexer with persistent sessions",
   "main": "server/index.js",
   "scripts": {
