@@ -763,119 +763,144 @@ main() {
 
     
 
-    # Install backend dependencies
-
+    # Install backend dependencies with better error handling
     print_color "\nInstalling backend dependencies..." "$YELLOW"
-
-    exec_log "npm install --production" "Installing backend dependencies"
-
     
-
-    # Build client
-
-    print_color "\nBuilding client..." "$YELLOW"
-
-    cd client
-
+    # Ensure we're in the correct directory
+    cd "$INSTALL_DIR" || log_error "Failed to change to install directory"
     
-
-    # Check if node_modules exists and if package.json has changed
-
-    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
-
-        print_color "Installing client dependencies..." "$BLUE"
-
-        exec_log "npm install" "Installing client dependencies"
-
-    # Install client dependencies if needed
-
-    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || [ ! -f "node_modules/.bin/vite" ]; then
-
-        print_color "Installing client dependencies..." "$BLUE"
-
-        exec_log "npm install" "Installing client dependencies"
-
-        if [ $? -ne 0 ]; then
-
-            print_color "✗ Failed to install client dependencies" "$RED"
-
-            cd ..
-
-            exit 1
-
-        fi
-
+    # Remove package-lock if it exists to avoid conflicts
+    if [ -f "package-lock.json" ]; then
+        print_color "Removing package-lock.json to avoid conflicts..." "$BLUE"
+        rm -f package-lock.json
     fi
-
-
-
-    fi
-
     
-
-    # Always rebuild to ensure latest version
-
-    print_color "Compiling frontend..." "$BLUE"
-
-    print_color "Current directory before build: $(pwd)" "$BLUE"
-
-        exec_log "cd client && npm run build" "Building client"
-
+    # Clear npm cache to avoid issues
+    print_color "Clearing npm cache..." "$BLUE"
+    npm cache clean --force 2>/dev/null || true
     
-
-    if [ $? -eq 0 ]; then
-
-        print_color "✓ Frontend compiled successfully" "$GREEN"
-
+    # Install dependencies with retry logic
+    local install_attempts=0
+    local max_install_attempts=3
+    local install_success=false
+    
+    while [ $install_attempts -lt $max_install_attempts ] && [ "$install_success" = "false" ]; do
+        install_attempts=$((install_attempts + 1))
+        print_color "Installing backend dependencies (attempt $install_attempts/$max_install_attempts)..." "$YELLOW"
         
-
-        # Verify dist directory was created
-
-        if [ -d "dist" ] && [ -f "dist/index.html" ]; then
-
-            print_color "✓ Frontend files verified" "$GREEN"
-
-            
-
-            # Copy to public directory
-
-            cd ..
-
-            print_color "Copying frontend files to public directory..." "$BLUE"
-
-            mkdir -p public
-
-            exec_log "cp -r client/dist/* public/" "Copying frontend to public directory"
-
-            
-
-            # Verify copy was successful
-
-            if [ -f "public/index.html" ]; then
-
-                print_color "✓ Frontend deployed to public directory" "$GREEN"
-
-            else
-
-                log_error "Failed to copy frontend files to public directory"
-
-            fi
-
+        if npm install --production >> "$LOG_FILE" 2>&1; then
+            install_success=true
+            print_color "✓ Backend dependencies installed successfully" "$GREEN"
         else
-
-            print_color "⚠ Warning: dist directory may be incomplete" "$YELLOW"
-
-            cd ..
-
+            print_color "⚠ Attempt $install_attempts failed, retrying..." "$YELLOW"
+            sleep 2
         fi
-
+    done
+    
+    if [ "$install_success" = "false" ]; then
+        log_error "Failed to install backend dependencies after $max_install_attempts attempts"
+    fi
+    
+    # Verify critical dependencies
+    print_color "Verifying critical dependencies..." "$BLUE"
+    local missing_deps=""
+    
+    for dep in "dotenv" "express" "socket.io" "node-pty"; do
+        if [ ! -d "node_modules/$dep" ]; then
+            missing_deps="$missing_deps $dep"
+        fi
+    done
+    
+    if [ -n "$missing_deps" ]; then
+        print_color "⚠ Missing critical dependencies:$missing_deps" "$RED"
+        print_color "Attempting to install missing dependencies individually..." "$YELLOW"
+        
+        for dep in $missing_deps; do
+            print_color "Installing $dep..." "$BLUE"
+            npm install "$dep" --save >> "$LOG_FILE" 2>&1 || log_error "Failed to install $dep"
+        done
     else
+        print_color "✓ All critical dependencies verified" "$GREEN"
+    fi
 
-        print_color "✗ Frontend compilation failed" "$RED"
+    
 
-        print_color "You may need to compile manually: cd client && npm run build" "$YELLOW"
-
-        cd ..
+    # Check if frontend is already pre-compiled
+    print_color "\nChecking frontend status..." "$YELLOW"
+    
+    # Check if public directory exists with compiled files
+    if [ -d "public" ] && [ -f "public/index.html" ] && [ -d "public/assets" ]; then
+        print_color "✓ Frontend is pre-compiled in public/ directory" "$GREEN"
+        
+        # Verify the version in the compiled files matches
+        if [ -f "public/assets/index-*.js" ]; then
+            COMPILED_VERSION=$(grep -h -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" public/assets/index-*.js 2>/dev/null | head -1)
+            if [ -n "$COMPILED_VERSION" ] && [ "$COMPILED_VERSION" = "$LATEST_VERSION" ]; then
+                print_color "✓ Compiled frontend version matches: $COMPILED_VERSION" "$GREEN"
+                print_color "✓ Skipping frontend build - using pre-compiled files" "$GREEN"
+            else
+                print_color "⚠ Warning: Compiled version ($COMPILED_VERSION) differs from expected ($LATEST_VERSION)" "$YELLOW"
+                print_color "Frontend may need rebuilding, but will use existing files" "$YELLOW"
+            fi
+        fi
+    else
+        # Only build if public directory doesn't exist or is incomplete
+        print_color "⚠ Frontend not found or incomplete in public/ directory" "$YELLOW"
+        print_color "This should not happen in recent versions (v1.0.63+)" "$YELLOW"
+        print_color "Attempting to build frontend locally..." "$YELLOW"
+        
+        cd client
+        
+        # Check if node_modules exists and if package.json has changed
+        if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || [ ! -f "node_modules/.bin/vite" ]; then
+            print_color "Installing client dependencies..." "$BLUE"
+            exec_log "npm install" "Installing client dependencies"
+            
+            if [ $? -ne 0 ]; then
+                print_color "✗ Failed to install client dependencies" "$RED"
+                cd ..
+                # Don't exit - continue without frontend build
+                print_color "⚠ Continuing without frontend build" "$YELLOW"
+            fi
+        fi
+        
+        # Try to build
+        if [ -f "node_modules/.bin/vite" ]; then
+            print_color "Compiling frontend..." "$BLUE"
+            exec_log "npm run build" "Building client"
+            
+            if [ $? -eq 0 ]; then
+                print_color "✓ Frontend compiled successfully" "$GREEN"
+                
+                # Verify dist directory was created
+                if [ -d "dist" ] && [ -f "dist/index.html" ]; then
+                    print_color "✓ Frontend files verified" "$GREEN"
+                    
+                    # Copy to public directory
+                    cd ..
+                    print_color "Copying frontend files to public directory..." "$BLUE"
+                    mkdir -p public
+                    exec_log "cp -r client/dist/* public/" "Copying frontend to public directory"
+                    
+                    # Verify copy was successful
+                    if [ -f "public/index.html" ]; then
+                        print_color "✓ Frontend deployed to public directory" "$GREEN"
+                    else
+                        log_error "Failed to copy frontend files to public directory"
+                    fi
+                else
+                    print_color "⚠ Warning: dist directory may be incomplete" "$YELLOW"
+                    cd ..
+                fi
+            else
+                print_color "✗ Frontend compilation failed" "$RED"
+                print_color "You may need to compile manually: cd client && npm run build" "$YELLOW"
+                cd ..
+            fi
+        else
+            cd ..
+            print_color "⚠ Cannot build frontend - vite not found" "$YELLOW"
+        fi
 
     fi
 
