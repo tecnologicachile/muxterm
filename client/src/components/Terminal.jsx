@@ -7,7 +7,7 @@ import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 import tracer from '../utils/persistenceTracer';
 
-function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive, autoYes: autoYesProp = false, onAutoYesLog, panelId }) {
+function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive, autoYes: autoYesProp = false, onAutoYesLog, panelId, onActivityChange }) {
   const containerRef = useRef(null);
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
@@ -20,6 +20,8 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
   const mobileInputRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
   const lastOutputRef = useRef('');
+  const [hasActivity, setHasActivity] = useState(false);
+  const activityTimeoutRef = useRef(null);
   
   // Debug auto-yes prop
   useEffect(() => {
@@ -41,6 +43,15 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Cleanup activity timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Initialize terminal
@@ -219,6 +230,25 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
           terminalId: data.terminalId,
           dataLength: data.data.length
         });
+        
+        // Activity detection - show activity indicator when receiving output
+        setHasActivity(true);
+        if (onActivityChange) {
+          onActivityChange(panelId, true);
+        }
+        
+        // Clear previous timeout
+        if (activityTimeoutRef.current) {
+          clearTimeout(activityTimeoutRef.current);
+        }
+        
+        // Set timeout to hide activity indicator after 2 seconds of inactivity
+        activityTimeoutRef.current = setTimeout(() => {
+          setHasActivity(false);
+          if (onActivityChange) {
+            onActivityChange(panelId, false);
+          }
+        }, 2000);
         
         // Store last output for pattern detection
         lastOutputRef.current += data.data;

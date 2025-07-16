@@ -14,10 +14,21 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // Track auto-yes state for each panel
   const [autoYesStates, setAutoYesStates] = useState({});
   
+  // Track activity state for each panel
+  const [activityStates, setActivityStates] = useState({});
+  
   // Debug autoYesStates
   useEffect(() => {
     logger.debug('[PanelManager] autoYesStates:', autoYesStates);
   }, [autoYesStates]);
+  
+  // Handle activity changes from terminals
+  const handleActivityChange = (panelId, isActive) => {
+    setActivityStates(prev => ({
+      ...prev,
+      [panelId]: isActive
+    }));
+  };
   // For simplicity, we'll use a 2x2 grid layout
   // This allows up to 4 terminals in a grid pattern
   
@@ -63,7 +74,22 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           >
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+            {/* Activity indicator */}
+            <Box 
+              sx={{
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                border: '2px solid #00ff00',
+                borderTop: '2px solid transparent',
+                opacity: activityStates[panel.id] ? 1 : 0.3,
+                transition: 'opacity 0.3s ease',
+                animation: activityStates[panel.id] ? 'spin 1s linear infinite' : 'none',
+                backgroundColor: activityStates[panel.id] ? 'rgba(0, 255, 0, 0.1)' : 'transparent'
+              }}
+            />
+            
             <Tooltip title={autoYesStates[panel.id] ? `Auto-Yes ON (${autoYesCounts?.[panel.id] || 0} responses)` : "Auto-Yes OFF - Click to enable for Claude CLI"}>
               <IconButton
                 size="small"
@@ -179,6 +205,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           }}
           onAutoYesLog={onAutoYesLog}
           panelId={panel.id}
+          onActivityChange={handleActivityChange}
         />
         </Box>
       </Box>
