@@ -47,8 +47,23 @@ db.exec(`
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS ssh_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL,
+    port INTEGER DEFAULT 22,
+    username TEXT NOT NULL,
+    auth_type TEXT DEFAULT 'password',
+    password TEXT,
+    private_key TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_terminals_session_id ON terminals(session_id);
+  CREATE INDEX IF NOT EXISTS idx_ssh_connections_user_id ON ssh_connections(user_id);
 `);
 
 // Prepared statements
@@ -78,6 +93,14 @@ const statements = {
   findTerminalById: db.prepare('SELECT * FROM terminals WHERE id = ?'),
   findTerminalsBySessionId: db.prepare('SELECT * FROM terminals WHERE session_id = ?'),
   deleteTerminal: db.prepare('DELETE FROM terminals WHERE id = ?'),
+  deleteTerminalsBySessionId: db.prepare('DELETE FROM terminals WHERE session_id = ?'),
+
+  // SSH Connections
+  createSshConnection: db.prepare('INSERT INTO ssh_connections (user_id, name, host, port, username, auth_type, password, private_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+  findSshConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, auth_type, created_at FROM ssh_connections WHERE user_id = ? ORDER BY name'),
+  findSshConnectionById: db.prepare('SELECT * FROM ssh_connections WHERE id = ?'),
+  updateSshConnection: db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=?, auth_type=?, password=?, private_key=? WHERE id=? AND user_id=?'),
+  deleteSshConnection: db.prepare('DELETE FROM ssh_connections WHERE id = ? AND user_id = ?'),
   deleteTerminalsBySessionId: db.prepare('DELETE FROM terminals WHERE session_id = ?')
 };
 
@@ -147,6 +170,11 @@ const dbHelpers = {
 
   // Terminals
   createTerminal(terminalId, sessionId, panelId, tmuxWindow = null, tmuxPane = null) {
+    // Check if terminal already exists to avoid UNIQUE constraint error
+    const existing = statements.findTerminalById.get(terminalId);
+    if (existing) {
+      return terminalId;
+    }
     statements.createTerminal.run(terminalId, sessionId, panelId, tmuxWindow, tmuxPane);
     return terminalId;
   },
@@ -161,6 +189,30 @@ const dbHelpers = {
 
   deleteTerminal(terminalId) {
     statements.deleteTerminal.run(terminalId);
+  },
+
+  // SSH Connections
+  createSshConnection(userId, name, host, port, username, authType, password, privateKey) {
+    const result = statements.createSshConnection.run(userId, name, host, port || 22, username, authType || 'password', password || null, privateKey || null);
+    return { id: result.lastInsertRowid, name, host, port: port || 22, username };
+  },
+
+  getSshConnections(userId) {
+    return statements.findSshConnectionsByUserId.all(userId);
+  },
+
+  getSshConnection(id) {
+    return statements.findSshConnectionById.get(id);
+  },
+
+  updateSshConnection(id, userId, name, host, port, username, authType, password, privateKey) {
+    const result = statements.updateSshConnection.run(name, host, port || 22, username, authType || 'password', password || null, privateKey || null, id, userId);
+    return result.changes > 0;
+  },
+
+  deleteSshConnection(id, userId) {
+    const result = statements.deleteSshConnection.run(id, userId);
+    return result.changes > 0;
   }
 };
 

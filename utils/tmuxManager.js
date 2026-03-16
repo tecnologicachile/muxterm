@@ -1,5 +1,7 @@
 const { spawn, exec } = require('child_process');
 const { promisify } = require('util');
+const path = require('path');
+const fs = require('fs');
 const logger = require('./logger');
 
 const execAsync = promisify(exec);
@@ -7,6 +9,18 @@ const execAsync = promisify(exec);
 class TmuxManager {
   constructor() {
     this.prefix = 'webssh_';
+    this.configPath = path.join(__dirname, '..', '.tmux.webssh.conf');
+    // Use a separate tmux server socket to isolate from user's personal tmux
+    this.socketName = 'muxterm';
+  }
+
+  // Get tmux base command with isolated socket and config
+  getTmuxCmd() {
+    const parts = ['tmux', `-L ${this.socketName}`];
+    if (fs.existsSync(this.configPath)) {
+      parts.push(`-f ${this.configPath}`);
+    }
+    return parts.join(' ');
   }
 
   // Generate tmux session name
@@ -28,7 +42,7 @@ class TmuxManager {
   // List all webssh tmux sessions
   async listSessions() {
     try {
-      const { stdout } = await execAsync('tmux list-sessions -F "#{session_name}"');
+      const { stdout } = await execAsync(`${this.getTmuxCmd()} list-sessions -F "#{session_name}"`);
       return stdout
         .split('\n')
         .filter(name => name.startsWith(this.prefix))
@@ -43,8 +57,8 @@ class TmuxManager {
   async createSession(sessionId) {
     const sessionName = this.generateSessionName(sessionId);
     try {
-      // Create detached tmux session with initial window
-      await execAsync(`tmux new-session -d -s ${sessionName} -n main`);
+      // Create detached tmux session on isolated server with custom config
+      await execAsync(`${this.getTmuxCmd()} new-session -d -s ${sessionName} -n main`);
       logger.debug(`Created tmux session: ${sessionName}`);
       return sessionName;
     } catch (error) {
@@ -56,7 +70,7 @@ class TmuxManager {
   // Check if session exists
   async sessionExists(sessionName) {
     try {
-      await execAsync(`tmux has-session -t ${sessionName}`);
+      await execAsync(`${this.getTmuxCmd()} has-session -t ${sessionName}`);
       return true;
     } catch {
       return false;
@@ -67,7 +81,7 @@ class TmuxManager {
   async createWindow(sessionName, windowName) {
     try {
       const { stdout } = await execAsync(
-        `tmux new-window -t ${sessionName}: -n ${windowName} -P -F "#{window_index}"`
+        `${this.getTmuxCmd()} new-window -t ${sessionName}: -n ${windowName} -P -F "#{window_index}"`
       );
       return parseInt(stdout.trim());
     } catch (error) {
@@ -80,7 +94,7 @@ class TmuxManager {
   async createPane(sessionName, windowIndex) {
     try {
       const { stdout } = await execAsync(
-        `tmux split-window -t ${sessionName}:${windowIndex} -P -F "#{pane_id}"`
+        `${this.getTmuxCmd()} split-window -t ${sessionName}:${windowIndex} -P -F "#{pane_id}"`
       );
       return stdout.trim();
     } catch (error) {
@@ -92,7 +106,7 @@ class TmuxManager {
   // Kill specific pane
   async killPane(sessionName, paneId) {
     try {
-      await execAsync(`tmux kill-pane -t ${sessionName}:${paneId}`);
+      await execAsync(`${this.getTmuxCmd()} kill-pane -t ${sessionName}:${paneId}`);
     } catch (error) {
       logger.error('Failed to kill tmux pane:', error);
     }
@@ -101,7 +115,7 @@ class TmuxManager {
   // Kill entire session
   async killSession(sessionName) {
     try {
-      await execAsync(`tmux kill-session -t ${sessionName}`);
+      await execAsync(`${this.getTmuxCmd()} kill-session -t ${sessionName}`);
       logger.debug(`Killed tmux session: ${sessionName}`);
     } catch (error) {
       logger.error('Failed to kill tmux session:', error);
@@ -112,9 +126,9 @@ class TmuxManager {
   async getSessionInfo(sessionName) {
     try {
       const { stdout: windows } = await execAsync(
-        `tmux list-windows -t ${sessionName} -F "#{window_index}:#{window_name}:#{window_panes}"`
+        `${this.getTmuxCmd()} list-windows -t ${sessionName} -F "#{window_index}:#{window_name}:#{window_panes}"`
       );
-      
+
       const windowList = windows.trim().split('\n').map(line => {
         const [index, name, panes] = line.split(':');
         return { index: parseInt(index), name, panes: parseInt(panes) };
@@ -130,13 +144,13 @@ class TmuxManager {
   // Spawn process attached to tmux
   spawnInTmux(sessionName, windowIndex = 0, paneId = null) {
     const target = paneId ? `${sessionName}:${paneId}` : `${sessionName}:${windowIndex}`;
-    
+
     // Use tmux pipe-pane to capture output and send input
-    const tmuxProcess = spawn('tmux', ['pipe-pane', '-t', target, '-o', 'cat']);
-    
+    const tmuxProcess = spawn('tmux', ['-L', this.socketName, 'pipe-pane', '-t', target, '-o', 'cat']);
+
     // Also create a process to send input
     const sendInput = (data) => {
-      exec(`tmux send-keys -t ${target} "${data.replace(/"/g, '\\"')}"`, (error) => {
+      exec(`tmux -L ${this.socketName} send-keys -t ${target} "${data.replace(/"/g, '\\"')}"`, (error) => {
         if (error) {
           logger.error('Failed to send input to tmux:', error);
         }

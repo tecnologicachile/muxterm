@@ -59,3 +59,13 @@ run-*.js
 
 # Old directories
 webssh/
+# Playwright CLI cache
+.playwright-cli/
+
+# Cache
+.cache/
+
+# Test files
+final-panel-test.js
+fix-login.sh
+hide-tmux-bar.sh

@@ -31,6 +31,7 @@ import PanelManager from './PanelManager';
 import UpdateNotification from './UpdateNotification';
 import VersionIndicator from './VersionIndicator';
 import AppHeader from './AppHeader';
+import SpecialKeysToolbar from './SpecialKeysToolbar';
 import { useSocket } from '../utils/SocketContext';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger';
@@ -43,6 +44,7 @@ function TerminalView() {
   const [panels, setPanels] = useState([]);
   const [activePanel, setActivePanel] = useState(null);
   const [sessionName, setSessionName] = useState(searchParams.get('name') || 'Session');
+  const sshConnectionId = searchParams.get('ssh') || null;
   const [sessionCreated, setSessionCreated] = useState(false);
   const [splitMenuAnchor, setSplitMenuAnchor] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -50,22 +52,34 @@ function TerminalView() {
   const [renamingPanel, setRenamingPanel] = useState(null);
   const [newPanelName, setNewPanelName] = useState('');
   const [minimizedPanels, setMinimizedPanels] = useState([]);
-  const [autoYesCounts, setAutoYesCounts] = useState({});
   
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  const bottomBarRef = React.useRef(null);
+
   // Detect mobile
   useEffect(() => {
     const checkMobile = () => {
-      // Check if it's actually a mobile device, not just a touch-capable PC
       const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       const isSmallScreen = window.innerWidth <= 768;
-      // Only show keyboard button on actual mobile devices, not touch-enabled PCs
       setIsMobile(isMobileDevice && isSmallScreen);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Measure the actual bottom bar height dynamically
+  useEffect(() => {
+    if (!isMobile || !bottomBarRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setBottomBarHeight(entry.contentRect.height + 2); // +2 for borders
+      }
+    });
+    observer.observe(bottomBarRef.current);
+    return () => observer.disconnect();
+  }, [isMobile]);
 
   // Create session if needed
   useEffect(() => {
@@ -278,25 +292,10 @@ function TerminalView() {
     setActivePanel(panel.id);
   };
 
-  const handleAutoYesLog = (panelId, prompt, response) => {
-    // Update counter for this panel
-    setAutoYesCounts(prev => ({
-      ...prev,
-      [panelId]: (prev[panelId] || 0) + 1
-    }));
-  };
-  
-  const handleAutoYesReset = (panelId) => {
-    // Reset counter for this panel
-    setAutoYesCounts(prev => ({
-      ...prev,
-      [panelId]: 0
-    }));
-  };
 
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100dvh', maxHeight: '100dvh', overflow: 'hidden' }}>
       <UpdateNotification />
       <AppHeader 
         mode="terminal"
@@ -371,9 +370,10 @@ function TerminalView() {
         </MenuItem>
       </Menu>
 
-      <Box sx={{ 
-        flexGrow: 1, 
-        overflow: 'auto',
+      <Box sx={{
+        flex: 1,
+        overflow: 'hidden',
+        minHeight: 0,
         paddingBottom: minimizedPanels.length > 0 ? (isMobile ? '36px' : '56px') : 0
       }}>
         {panels.length > 0 ? (
@@ -386,17 +386,106 @@ function TerminalView() {
             onRenamePanel={handleRenamePanel}
             onMinimizePanel={handleMinimizePanel}
             sessionId={sessionId}
+            sshConnectionId={sshConnectionId}
             onTerminalCreated={(panelId, newTerminalId) => {
-              setPanels(prev => prev.map(p => 
+              setPanels(prev => prev.map(p =>
                 p.id === panelId ? { ...p, terminalId: newTerminalId } : p
               ));
             }}
-            onAutoYesLog={handleAutoYesLog}
-            onAutoYesReset={handleAutoYesReset}
-            autoYesCounts={autoYesCounts}
           />
         ) : null}
       </Box>
+
+      {/* Mobile bottom bars - fixed */}
+      {isMobile && (
+        <Box
+          ref={bottomBarRef}
+          sx={{
+            flexShrink: 0,
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            backgroundColor: '#111'
+          }}
+        >
+          {/* Special keys toolbar */}
+          <SpecialKeysToolbar
+            onKeyPress={(seq) => {
+              if (socket && activePanel) {
+                const panel = panels.find(p => p.id === activePanel);
+                if (panel && panel.terminalId) {
+                  if (seq === 'scroll-up' || seq === 'scroll-down') {
+                    socket.emit('terminal-scroll', { terminalId: panel.terminalId, direction: seq === 'scroll-up' ? 'up' : 'down' });
+                  } else {
+                    socket.emit('send-keys', { terminalId: panel.terminalId, keys: seq });
+                  }
+                }
+              }
+            }}
+            isVisible={true}
+            onDismissKeyboard={() => {
+              // Blur any focused textarea
+              const textarea = document.querySelector('textarea');
+              if (textarea) {
+                textarea.style.position = 'fixed';
+                textarea.style.top = '-9999px';
+                textarea.blur();
+                setTimeout(() => {
+                  if (textarea) {
+                    textarea.style.position = 'absolute';
+                    textarea.style.top = '50%';
+                  }
+                }, 300);
+              }
+            }}
+          />
+          {/* Tab bar */}
+          {panels.length > 1 && (
+            <Box
+              sx={{
+                display: 'flex',
+                overflowX: 'auto',
+                borderTop: '1px solid #333',
+                height: '40px',
+                alignItems: 'stretch',
+                '&::-webkit-scrollbar': { height: '2px' },
+                '&::-webkit-scrollbar-thumb': { backgroundColor: '#555' }
+              }}
+            >
+              {panels.map((panel, idx) => (
+                <Box
+                  key={`tab-${panel.id}`}
+                  onClick={() => setActivePanel(panel.id)}
+                  sx={{
+                    flex: '1 0 auto',
+                    minWidth: '60px',
+                    maxWidth: '120px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    borderRight: '1px solid #333',
+                    backgroundColor: panel.id === activePanel ? '#1a1a1a' : 'transparent',
+                    borderTop: panel.id === activePanel ? '2px solid #00ff00' : '2px solid transparent',
+                    '&:hover': { backgroundColor: '#222' }
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: panel.id === activePanel ? '#00ff00' : '#888',
+                      fontSize: '11px',
+                      fontWeight: panel.id === activePanel ? 'bold' : 'normal',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {panel.name || `T${idx + 1}`}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
+      )}
 
       {/* Bandeja de ventanas minimizadas */}
       {minimizedPanels.length > 0 && (

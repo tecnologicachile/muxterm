@@ -8,23 +8,27 @@ const path = require('path');
 const fs = require('fs');
 
 const authRoutes = require('./auth');
-const terminalManager = require('./terminal');
+const ttydManager = require('./ttyd-manager');
 const sessionManager = require('./session');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
 const logger = require('./utils/logger');
 const tracer = require('./utils/persistenceTracer');
 const updateChecker = require('./update-checker');
+const httpProxy = require('http-proxy');
 
 const app = express();
 const server = http.createServer(app);
+
+// Socket.io uses /socket.io/ path, ttyd uses /ttyd/ path - no conflict
 const io = socketIo(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? false 
+    origin: process.env.NODE_ENV === 'production'
+      ? false
       : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3003'],
     credentials: true
-  }
+  },
+  path: '/socket.io/'
 });
 
 
@@ -286,6 +290,73 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
   }
 });
 
+// ttyd proxy - authenticate and forward to ttyd UNIX sockets
+const ttydProxy = httpProxy.createProxyServer({});
+
+ttydProxy.on('error', (err, req, res) => {
+  logger.debug('ttyd proxy error:', err.message);
+  if (res.writeHead) {
+    res.writeHead(502, { 'Content-Type': 'text/plain' });
+    res.end('Terminal not ready');
+  }
+});
+
+// Auth middleware for ttyd routes
+const authenticateTtydRequest = (req, res, next) => {
+  // Token from query params (iframe passes it via URL)
+  const token = req.query.arg || req.query.token;
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.ttydUser = { id: decoded.id, username: decoded.username };
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// HTTP proxy for ttyd
+app.use('/ttyd/:terminalId', authenticateTtydRequest, (req, res) => {
+  const terminal = ttydManager.getTerminal(req.params.terminalId);
+  if (!terminal || !terminal.socketPath) {
+    return res.status(404).json({ error: 'Terminal not found' });
+  }
+  if (!fs.existsSync(terminal.socketPath)) {
+    return res.status(503).json({ error: 'Terminal starting...' });
+  }
+  // Rewrite URL: remove /ttyd/:terminalId prefix, keep the rest
+  req.url = req.url.replace(`/${req.params.terminalId}`, '') || '/';
+  ttydProxy.web(req, res, {
+    target: { socketPath: terminal.socketPath },
+    ws: false
+  });
+});
+
+// WebSocket upgrade for ttyd
+server.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const match = url.pathname.match(/^\/ttyd\/([^/]+)\/ws/);
+  if (!match) return; // Not a ttyd WebSocket, let socket.io handle it
+
+  const terminalId = match[1];
+  const terminal = ttydManager.getTerminal(terminalId);
+  if (!terminal || !terminal.socketPath || !fs.existsSync(terminal.socketPath)) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  // Rewrite path to ttyd's expected path
+  req.url = '/ws' + (url.search || '');
+
+  ttydProxy.ws(req, socket, head, {
+    target: { socketPath: terminal.socketPath }
+  });
+});
+
 if (process.env.NODE_ENV === 'production') {
   // First try public directory, then fall back to client/dist
   const publicPath = path.join(__dirname, '../public');
@@ -324,206 +395,150 @@ io.use(authenticateSocket);
 
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
-  
-  // Store terminal data listeners for cleanup
-  socket.terminalListeners = new Map();
-  
-  // Check if there's a session layout stored for this user
+
+  // Send user sessions
   const userSessions = sessionManager.getUserSessions(socket.userId);
-  
-  // If user has sessions, emit them. Otherwise check for default session
   if (userSessions.length > 0) {
-    logger.debug(`Sending ${userSessions.length} existing sessions for user ${socket.username}`);
     socket.emit('sessions', userSessions);
   } else {
-    // Check if we should send the last active session layout
-    const lastLayout = socket.handshake.query.sessionId ? 
+    const lastLayout = socket.handshake.query.sessionId ?
       sessionManager.getSession(socket.userId, socket.handshake.query.sessionId) : null;
-      
     if (lastLayout) {
-      logger.debug('Sending session layout:', lastLayout.layout);
-      socket.emit('session-layout', {
-        sessionId: lastLayout.id,
-        layout: lastLayout.layout
-      });
+      socket.emit('session-layout', { sessionId: lastLayout.id, layout: lastLayout.layout });
     } else {
-      logger.debug('Sending session layout:', { type: 'single', panels: [], activePanel: null });
-      socket.emit('session-layout', {
-        sessionId: null,
-        layout: { type: 'single', panels: [], activePanel: null }
-      });
+      socket.emit('session-layout', { sessionId: null, layout: { type: 'single', panels: [], activePanel: null } });
     }
   }
 
-  // Handle get-sessions request
   socket.on('get-sessions', () => {
-    const sessions = sessionManager.getUserSessions(socket.userId);
-    logger.debug(`get-sessions requested, returning ${sessions.length} sessions`);
-    socket.emit('sessions', sessions);
+    socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
   });
 
+  // Terminal management via ttyd
   socket.on('create-terminal', async (data) => {
     try {
-      const terminal = await terminalManager.createTerminal(
+      // Check if this session has an SSH config
+      let sshConfig = null;
+      if (data.sshConnectionId) {
+        const conn = database.getSshConnection(data.sshConnectionId);
+        if (conn && conn.user_id === socket.userId) {
+          sshConfig = {
+            host: conn.host,
+            port: conn.port,
+            username: conn.username,
+            authType: conn.auth_type,
+            password: conn.password,
+            privateKey: conn.private_key
+          };
+        }
+      }
+
+      const terminal = await ttydManager.createTerminal(
         socket.userId,
         data.sessionId,
         data.rows || 24,
-        data.cols || 80
+        data.cols || 80,
+        null,
+        sshConfig
       );
-
-      socket.join(`terminal-${terminal.id}`);
-      
-      // Store the listener reference for cleanup
-      const removeListener = terminal.onData((data) => {
-        socket.emit('terminal-output', {
-          terminalId: terminal.id,
-          data: data
-        });
-      });
-      socket.terminalListeners.set(terminal.id, removeListener);
-
-      logger.debug('Terminal created:', terminal.id, 'for session:', data.sessionId);
       socket.emit('terminal-created', {
         terminalId: terminal.id,
         sessionId: data.sessionId
       });
-      
-      // Terminal is already saved in terminalManager.createTerminal
-      logger.debug('Terminal successfully created and saved');
     } catch (error) {
-      socket.emit('terminal-error', {
-        message: 'Failed to create terminal',
-        error: error.message
-      });
+      logger.error('Failed to create terminal:', error);
+      socket.emit('terminal-error', { message: 'Failed to create terminal', error: error.message });
+    }
+  });
+
+  // SSH Connection management
+  socket.on('get-ssh-connections', () => {
+    const connections = database.getSshConnections(socket.userId);
+    socket.emit('ssh-connections', connections);
+  });
+
+  socket.on('create-ssh-connection', (data) => {
+    try {
+      const conn = database.createSshConnection(
+        socket.userId, data.name, data.host, data.port,
+        data.username, data.authType, data.password, data.privateKey
+      );
+      socket.emit('ssh-connection-created', conn);
+      socket.emit('ssh-connections', database.getSshConnections(socket.userId));
+    } catch (error) {
+      socket.emit('ssh-error', { message: 'Failed to create SSH connection', error: error.message });
+    }
+  });
+
+  socket.on('delete-ssh-connection', (data) => {
+    const deleted = database.deleteSshConnection(data.id, socket.userId);
+    if (deleted) {
+      socket.emit('ssh-connections', database.getSshConnections(socket.userId));
     }
   });
 
   socket.on('restore-terminal', async (data) => {
     try {
-      logger.debug('Restoring terminal:', data.terminalId);
-      
-      // SIEMPRE llamar a restoreTerminal para manejar la captura de buffer
-      const cols = data.cols || 80;
-      const rows = data.rows || 24;
-      const terminal = await terminalManager.restoreTerminal(data.terminalId, socket.userId, data.sessionId, rows, cols);
-      
+      const terminal = await ttydManager.restoreTerminal(
+        data.terminalId,
+        socket.userId,
+        data.sessionId,
+        data.rows || 24,
+        data.cols || 80
+      );
       if (terminal && terminal.userId === socket.userId) {
-        socket.join(`terminal-${terminal.id}`);
-        
-        // Remove old listener if exists
-        const oldListener = socket.terminalListeners.get(terminal.id);
-        if (oldListener) {
-          oldListener(); // This calls the remove function
-        }
-        
-        // Attach new data listener
-        const removeListener = terminal.onData((output) => {
-          socket.emit('terminal-output', {
-            terminalId: terminal.id,
-            data: output
-          });
-        });
-        socket.terminalListeners.set(terminal.id, removeListener);
-        
-        // Con tmux, no necesitamos enviar el buffer ya que tmux mantiene el estado
-        // Solo enviamos una señal de que el terminal fue restaurado
         socket.emit('terminal-restored', {
           terminalId: terminal.id,
           sessionId: data.sessionId
         });
-        
-        // Terminal restaurada - tmux ya está configurado desde el archivo .tmux.webssh.conf
-        tracer.trace('CLIENT', 'SESSION_RESTORED', {
-          terminalId: terminal.id,
-          sessionId: data.sessionId,
-          note: 'Terminal restored with tmux config'
-        });
-        
-        logger.debug('Terminal restored successfully:', data.terminalId);
-        
-        // Forzar un resize para actualizar el contenido y adaptarse al nuevo cliente
-        if (data.cols && data.rows) {
-          // Primero hacer resize
-          terminal.resize(data.cols, data.rows);
-          logger.debug(`Resized terminal to ${data.cols}x${data.rows}`);
-          
-          // Luego forzar un redraw completo
-          setTimeout(() => {
-            terminal.write('\x1b[2J\x1b[H'); // Clear and reset
-            terminal.write('\x0c'); // Form feed para refrescar
-            logger.debug('Forced redraw after resize');
-          }, 400);
-        }
       } else {
-        logger.info('Terminal not found and could not be restored:', data.terminalId);
-        socket.emit('terminal-error', {
-          message: 'Terminal not found',
-          terminalId: data.terminalId
-        });
+        socket.emit('terminal-error', { message: 'Terminal not found', terminalId: data.terminalId });
       }
     } catch (error) {
       logger.error('Error restoring terminal:', error);
-      socket.emit('terminal-error', {
-        message: 'Failed to restore terminal',
-        error: error.message
-      });
+      socket.emit('terminal-error', { message: 'Failed to restore terminal', error: error.message });
     }
   });
 
-  socket.on('terminal-input', async (data) => {
-    logger.debug('Received terminal input:', data.terminalId, 'input:', data.input);
-    // Debug auto-yes inputs
-    if (data.input === '1\r' || data.input === '\r' || data.input === '1') {
-      logger.debug(`[Auto-Yes Debug] Received auto-yes input: "${data.input}" for terminal: ${data.terminalId}`);
-    }
+  // Scroll terminal history via tmux copy-mode
+  socket.on('terminal-scroll', async (data) => {
     try {
-      const terminal = terminalManager.getTerminal(data.terminalId);
-      if (terminal && terminal.userId === socket.userId) {
-        logger.debug('Writing to terminal:', data.terminalId);
-        terminal.write(data.input);
-      } else {
-        logger.debug('Terminal not found or user mismatch:', data.terminalId, socket.userId);
+      const terminal = ttydManager.getTerminal(data.terminalId);
+      if (terminal && terminal.userId === socket.userId && terminal.tmuxSessionName) {
+        const { execSync } = require('child_process');
+        const sess = terminal.tmuxSessionName;
+        if (data.direction === 'up') {
+          execSync(`tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X page-up`, { timeout: 2000 });
+        } else {
+          execSync(`tmux -L muxterm send-keys -t ${sess} -X page-down 2>/dev/null || true`, { timeout: 2000 });
+        }
       }
     } catch (error) {
-      logger.error('Error writing to terminal:', error);
-      socket.emit('terminal-error', {
-        message: 'Failed to write to terminal',
-        error: error.message
-      });
+      logger.debug('Scroll error:', error.message);
     }
   });
 
-  socket.on('resize-terminal', async (data) => {
+  // Send keys via tmux (for SpecialKeysToolbar on mobile)
+  socket.on('send-keys', async (data) => {
     try {
-      const terminal = terminalManager.getTerminal(data.terminalId);
+      const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId) {
-        terminal.resize(data.cols, data.rows);
+        ttydManager.sendKeys(data.terminalId, data.keys);
       }
     } catch (error) {
-      socket.emit('terminal-error', {
-        message: 'Failed to resize terminal',
-        error: error.message
-      });
+      logger.error('Error sending keys:', error);
     }
   });
 
   socket.on('close-terminal', async (data) => {
     try {
-      const terminal = terminalManager.getTerminal(data.terminalId);
+      const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId) {
-        terminalManager.closeTerminal(data.terminalId);
-        socket.leave(`terminal-${data.terminalId}`);
-        await sessionManager.removeTerminalFromSession(
-          socket.userId,
-          data.sessionId,
-          data.terminalId
-        );
+        ttydManager.closeTerminal(data.terminalId);
+        await sessionManager.removeTerminalFromSession(socket.userId, data.sessionId, data.terminalId);
       }
     } catch (error) {
-      socket.emit('terminal-error', {
-        message: 'Failed to close terminal',
-        error: error.message
-      });
+      logger.error('Failed to close terminal:', error);
     }
   });
 
@@ -532,21 +547,11 @@ io.on('connection', (socket) => {
       const session = await sessionManager.getSession(socket.userId, data.sessionId);
       if (session) {
         for (const terminalId of session.terminals) {
-          const terminal = terminalManager.getTerminal(terminalId);
-          if (terminal) {
-            socket.join(`terminal-${terminalId}`);
-            socket.emit('terminal-restored', {
-              terminalId: terminalId,
-              sessionId: data.sessionId
-            });
-          }
+          socket.emit('terminal-restored', { terminalId, sessionId: data.sessionId });
         }
       }
     } catch (error) {
-      socket.emit('session-error', {
-        message: 'Failed to restore session',
-        error: error.message
-      });
+      socket.emit('session-error', { message: 'Failed to restore session', error: error.message });
     }
   });
 
@@ -619,10 +624,21 @@ io.on('connection', (socket) => {
     logger.debug('Received create-session request:', data);
     try {
       const session = await sessionManager.createSession(socket.userId, data.name);
-      logger.debug('Session created:', session);
-      socket.emit('session-created', { 
-        sessionId: session.id, 
-        name: session.name 
+
+      // If SSH config provided, save connection and pass ID
+      let sshConnectionId = data.sshConnectionId || null;
+      if (!sshConnectionId && data.sshConfig) {
+        const conn = database.createSshConnection(
+          socket.userId, data.name, data.sshConfig.host, data.sshConfig.port,
+          data.sshConfig.username, 'password', data.sshConfig.password, null
+        );
+        sshConnectionId = conn.id;
+      }
+
+      socket.emit('session-created', {
+        sessionId: session.id,
+        name: session.name,
+        sshConnectionId: sshConnectionId
       });
       socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
     } catch (error) {
@@ -636,16 +652,6 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     logger.info(`User ${socket.username} disconnected`);
-    
-    // Clean up all terminal listeners
-    if (socket.terminalListeners) {
-      socket.terminalListeners.forEach((removeListener) => {
-        if (removeListener) {
-          removeListener();
-        }
-      });
-      socket.terminalListeners.clear();
-    }
   });
 });
 
@@ -657,6 +663,12 @@ server.listen(PORT, async () => {
   const hasTmux = await tmuxManager.checkTmux();
   if (!hasTmux) {
     logger.error('WARNING: tmux not installed. Sessions will not persist!');
+  }
+
+  // Clean up orphaned ttyd processes and tmux sessions
+  if (hasTmux) {
+    ttydManager.cleanupOrphanedProcesses();
+    ttydManager.cleanupOrphanedTmuxSessions();
   }
   
   // Create default user if no users exist

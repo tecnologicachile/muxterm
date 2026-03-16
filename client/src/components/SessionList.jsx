@@ -48,33 +48,83 @@ function SessionList() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [editedName, setEditedName] = useState('');
+  const [sessionType, setSessionType] = useState('local'); // 'local' or 'ssh'
+  const [sshHost, setSshHost] = useState('');
+  const [sshPort, setSshPort] = useState('22');
+  const [sshUsername, setSshUsername] = useState('');
+  const [sshPassword, setSshPassword] = useState('');
+  const [sshConnections, setSshConnections] = useState([]);
+  const [selectedSshConnection, setSelectedSshConnection] = useState('');
 
   useEffect(() => {
     if (socket) {
       socket.on('sessions', (userSessions) => {
         setSessions(userSessions);
       });
+      socket.on('ssh-connections', (conns) => {
+        setSshConnections(conns);
+      });
 
       socket.emit('get-sessions');
+      socket.emit('get-ssh-connections');
 
       return () => {
         socket.off('sessions');
+        socket.off('ssh-connections');
       };
     }
   }, [socket]);
 
   const handleCreateSession = () => {
-    logger.debug('Creating session, socket:', socket);
     if (socket) {
-      const name = sessionName || `Session ${new Date().toLocaleDateString()}`;
-      logger.debug('Emitting create-session with name:', name);
-      socket.emit('create-session', { name });
+      let name = sessionName;
+
+      // If SSH, save connection first if it's new
+      if (sessionType === 'ssh' && !selectedSshConnection && sshHost) {
+        const connName = name || `${sshUsername}@${sshHost}`;
+        socket.emit('create-ssh-connection', {
+          name: connName,
+          host: sshHost,
+          port: parseInt(sshPort) || 22,
+          username: sshUsername,
+          authType: 'password',
+          password: sshPassword
+        });
+      }
+
+      if (!name) {
+        if (sessionType === 'ssh') {
+          name = sshHost ? `${sshUsername}@${sshHost}` : 'SSH Session';
+        } else {
+          name = `Session ${new Date().toLocaleDateString()}`;
+        }
+      }
+
+      const createData = { name };
+      if (sessionType === 'ssh') {
+        if (selectedSshConnection) {
+          createData.sshConnectionId = parseInt(selectedSshConnection);
+        } else if (sshHost) {
+          // Pass SSH config directly for immediate use
+          createData.sshConfig = {
+            host: sshHost,
+            port: parseInt(sshPort) || 22,
+            username: sshUsername,
+            password: sshPassword
+          };
+        }
+      }
+
+      socket.emit('create-session', createData);
       
       socket.once('session-created', (data) => {
-        logger.debug('Session created:', data);
         setCreateDialogOpen(false);
         setSessionName('');
-        navigate(`/terminal/${data.sessionId}`);
+        setSessionType('local');
+        setSshHost(''); setSshPort('22'); setSshUsername(''); setSshPassword('');
+        setSelectedSshConnection('');
+        const sshParam = data.sshConnectionId ? `?ssh=${data.sshConnectionId}` : '';
+        navigate(`/terminal/${data.sessionId}${sshParam}`);
       });
       
       socket.once('session-error', (error) => {
@@ -149,7 +199,7 @@ function SessionList() {
         onLogout={handleLogout}
       />
 
-      <Container maxWidth="lg" className="session-list">
+      <Container maxWidth="lg" className="session-list" sx={{ overflow: 'auto', maxHeight: 'calc(100dvh - 64px)', pb: 4 }}>
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h4">Your Sessions</Typography>
           <Box>
@@ -261,35 +311,138 @@ function SessionList() {
         )}
       </Container>
 
-      <Dialog 
-        open={createDialogOpen} 
+      <Dialog
+        open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
         maxWidth="sm"
         fullWidth
       >
         <DialogTitle>Create New Session</DialogTitle>
         <DialogContent>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, mt: 1 }}>
+            <Button
+              variant={sessionType === 'local' ? 'contained' : 'outlined'}
+              size="small"
+              onClick={() => setSessionType('local')}
+              sx={{ flex: 1 }}
+            >
+              Local Terminal
+            </Button>
+            <Button
+              variant={sessionType === 'ssh' ? 'contained' : 'outlined'}
+              size="small"
+              onClick={() => setSessionType('ssh')}
+              sx={{ flex: 1 }}
+            >
+              SSH Connection
+            </Button>
+          </Box>
+
           <TextField
             autoFocus
             margin="dense"
             label="Session Name (optional)"
             fullWidth
             variant="outlined"
+            size="small"
             value={sessionName}
             onChange={(e) => setSessionName(e.target.value)}
             onKeyPress={(e) => {
-              if (e.key === 'Enter') {
-                handleCreateSession();
-              }
+              if (e.key === 'Enter') handleCreateSession();
             }}
           />
+
+          {sessionType === 'ssh' && (
+            <Box sx={{ mt: 2 }}>
+              {sshConnections.length > 0 && (
+                <TextField
+                  select
+                  fullWidth
+                  size="small"
+                  margin="dense"
+                  label="Saved Connection"
+                  value={selectedSshConnection}
+                  onChange={(e) => {
+                    setSelectedSshConnection(e.target.value);
+                    if (e.target.value) {
+                      const conn = sshConnections.find(c => c.id === parseInt(e.target.value));
+                      if (conn) {
+                        setSshHost(conn.host);
+                        setSshPort(conn.port.toString());
+                        setSshUsername(conn.username);
+                        setSessionName(conn.name);
+                      }
+                    }
+                  }}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="">-- New Connection --</option>
+                  {sshConnections.map(conn => (
+                    <option key={conn.id} value={conn.id}>
+                      {conn.name} ({conn.username}@{conn.host})
+                    </option>
+                  ))}
+                </TextField>
+              )}
+
+              {!selectedSshConnection && (
+                <>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField
+                      margin="dense"
+                      label="Host"
+                      variant="outlined"
+                      size="small"
+                      value={sshHost}
+                      onChange={(e) => setSshHost(e.target.value)}
+                      sx={{ flex: 3 }}
+                      placeholder="192.168.1.100"
+                    />
+                    <TextField
+                      margin="dense"
+                      label="Port"
+                      variant="outlined"
+                      size="small"
+                      value={sshPort}
+                      onChange={(e) => setSshPort(e.target.value)}
+                      sx={{ flex: 1 }}
+                    />
+                  </Box>
+                  <TextField
+                    margin="dense"
+                    label="Username"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={sshUsername}
+                    onChange={(e) => setSshUsername(e.target.value)}
+                    placeholder="root"
+                  />
+                  <TextField
+                    margin="dense"
+                    label="Password"
+                    type="password"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={sshPassword}
+                    onChange={(e) => setSshPassword(e.target.value)}
+                  />
+                </>
+              )}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateDialogOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleCreateSession} variant="contained">
-            Create
+          <Button
+            onClick={handleCreateSession}
+            variant="contained"
+            disabled={sessionType === 'ssh' && !selectedSshConnection && !sshHost}
+          >
+            {sessionType === 'ssh' ? 'Connect' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
