@@ -195,7 +195,7 @@ async function runAllTests() {
   
   // Limpiar sesiones tmux antes de empezar
   try {
-    require('child_process').execSync('tmux kill-server 2>/dev/null || true');
+    require('child_process').execSync('tmux -L muxterm kill-server 2>/dev/null || true');
     console.log('🧹 Sesiones tmux limpiadas\n');
   } catch (e) {}
   

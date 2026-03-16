@@ -17,7 +17,7 @@ sleep 1
 
 # 3. Limpiar sesiones tmux huérfanas (opcional)
 echo "3. Limpiando sesiones tmux..."
-tmux ls 2>/dev/null | grep "webssh_" | cut -d: -f1 | xargs -I {} tmux kill-session -t {} 2>/dev/null
+tmux -L muxterm ls 2>/dev/null | grep "webssh_" | cut -d: -f1 | xargs -I {} tmux -L muxterm kill-session -t {} 2>/dev/null
 
 # 4. Reiniciar servicios
 echo "4. Reiniciando servicios..."

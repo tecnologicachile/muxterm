@@ -100,8 +100,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-            {/* Scroll buttons - mobile only */}
-            {isMobile && panel.terminalId && (
+            {/* Scroll buttons */}
+            {panel.terminalId && (
               <>
                 <Box
                   onClick={(e) => {
@@ -132,7 +132,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 <Box
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (socket) socket.emit('send-keys', { terminalId: panel.terminalId, keys: 'q' });
+                    if (socket) socket.emit('terminal-scroll', { terminalId: panel.terminalId, direction: 'exit' });
                   }}
                   sx={{
                     width: '22px', height: '18px',

@@ -509,8 +509,10 @@ io.on('connection', (socket) => {
         const sess = terminal.tmuxSessionName;
         if (data.direction === 'up') {
           execSync(`tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X page-up`, { timeout: 2000 });
-        } else {
+        } else if (data.direction === 'down') {
           execSync(`tmux -L muxterm send-keys -t ${sess} -X page-down 2>/dev/null || true`, { timeout: 2000 });
+        } else if (data.direction === 'exit') {
+          execSync(`tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`, { timeout: 2000 });
         }
       }
     } catch (error) {
