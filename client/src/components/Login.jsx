@@ -32,7 +32,7 @@ function Login() {
       : await register(username, password);
 
     if (result.success) {
-      navigate('/sessions');
+      navigate('/workspace');
     } else {
       setError(result.error);
     }

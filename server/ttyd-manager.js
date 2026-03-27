@@ -143,7 +143,7 @@ class TtydProcessManager {
     };
 
     this.terminals.set(terminalId, terminal);
-    database.createTerminal(terminalId, sessionId, terminalId, null, null);
+    database.createTerminalForUser(terminalId, userId, terminalId, null);
 
     logger.info(`Terminal created: id=${terminalId.substring(0, 8)}, tmux=${tmuxSessionName}, pid=${ttydProcess.pid}`);
     return terminal;

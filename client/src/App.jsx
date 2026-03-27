@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
-import SessionList from './components/SessionList';
 import TerminalView from './components/TerminalView';
 import { AuthProvider, useAuth } from './utils/AuthContext';
 import { SocketProvider } from './utils/SocketContext';
@@ -11,11 +10,11 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh' 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh'
       }}>
         Loading...
       </div>
@@ -24,21 +23,20 @@ function AppContent() {
 
   return (
     <Routes>
-      <Route 
-        path="/login" 
-        element={!user ? <Login /> : <Navigate to="/sessions" />} 
+      <Route
+        path="/login"
+        element={!user ? <Login /> : <Navigate to="/workspace" />}
       />
-      <Route 
-        path="/sessions" 
-        element={user ? <SessionList /> : <Navigate to="/login" />} 
+      <Route
+        path="/workspace"
+        element={user ? <TerminalView /> : <Navigate to="/login" />}
       />
-      <Route 
-        path="/terminal/:sessionId" 
-        element={user ? <TerminalView /> : <Navigate to="/login" />} 
-      />
-      <Route 
-        path="/" 
-        element={<Navigate to={user ? "/sessions" : "/login"} />} 
+      {/* Legacy routes redirect to workspace */}
+      <Route path="/sessions" element={<Navigate to={user ? "/workspace" : "/login"} />} />
+      <Route path="/terminal/:sessionId" element={<Navigate to={user ? "/workspace" : "/login"} />} />
+      <Route
+        path="/"
+        element={<Navigate to={user ? "/workspace" : "/login"} />}
       />
     </Routes>
   );

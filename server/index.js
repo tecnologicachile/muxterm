@@ -9,7 +9,7 @@ const fs = require('fs');
 
 const authRoutes = require('./auth');
 const ttydManager = require('./ttyd-manager');
-const sessionManager = require('./session');
+const jwt = require('jsonwebtoken');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
 const logger = require('./utils/logger');
@@ -63,11 +63,10 @@ const authenticateToken = (req, res, next) => {
   }
   
   try {
-    const jwt = require('jsonwebtoken');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { 
-      id: decoded.id, 
-      username: decoded.username || 'unknown' 
+    req.user = {
+      id: decoded.id,
+      username: decoded.username || 'unknown'
     };
     next();
   } catch (error) {
@@ -309,7 +308,6 @@ const authenticateTtydRequest = (req, res, next) => {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
-    const jwt = require('jsonwebtoken');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.ttydUser = { id: decoded.id, username: decoded.username };
     next();
@@ -378,7 +376,7 @@ if (process.env.NODE_ENV === 'production') {
 const authenticateSocket = async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
-    const user = await sessionManager.validateToken(token);
+    const user = jwt.verify(token, process.env.JWT_SECRET);
     if (user) {
       socket.userId = user.id;
       socket.username = user.username;
@@ -396,31 +394,32 @@ io.use(authenticateSocket);
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
 
-  // Send user sessions
-  const userSessions = sessionManager.getUserSessions(socket.userId);
-  if (userSessions.length > 0) {
-    socket.emit('sessions', userSessions);
-  } else {
-    const lastLayout = socket.handshake.query.sessionId ?
-      sessionManager.getSession(socket.userId, socket.handshake.query.sessionId) : null;
-    if (lastLayout) {
-      socket.emit('session-layout', { sessionId: lastLayout.id, layout: lastLayout.layout });
-    } else {
-      socket.emit('session-layout', { sessionId: null, layout: { type: 'single', panels: [], activePanel: null } });
-    }
-  }
+  // Send workspace layout on connect
+  const workspace = database.getWorkspaceLayout(socket.userId);
+  socket.emit('workspace', workspace || { panels: [], activePanel: null, minimizedPanels: [] });
 
-  socket.on('get-sessions', () => {
-    socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
+  // Workspace events
+  socket.on('get-workspace', () => {
+    const ws = database.getWorkspaceLayout(socket.userId);
+    socket.emit('workspace', ws || { panels: [], activePanel: null, minimizedPanels: [] });
+  });
+
+  socket.on('update-workspace', (data) => {
+    try {
+      database.saveWorkspaceLayout(socket.userId, data);
+    } catch (error) {
+      logger.error('Failed to update workspace:', error);
+    }
   });
 
   // Terminal management via ttyd
   socket.on('create-terminal', async (data) => {
     try {
-      // Check if this session has an SSH config
+      // Check if this terminal has an SSH config (per-panel SSH)
       let sshConfig = null;
-      if (data.sshConnectionId) {
-        const conn = database.getSshConnection(data.sshConnectionId);
+      const sshConnectionId = data.sshConnectionId || null;
+      if (sshConnectionId) {
+        const conn = database.getSshConnection(sshConnectionId);
         if (conn && conn.user_id === socket.userId) {
           sshConfig = {
             host: conn.host,
@@ -433,9 +432,12 @@ io.on('connection', (socket) => {
         }
       }
 
+      // Support both workspace mode (no sessionId) and legacy mode (with sessionId)
+      const sessionId = data.sessionId || `ws_${socket.userId}`;
+
       const terminal = await ttydManager.createTerminal(
         socket.userId,
-        data.sessionId,
+        sessionId,
         data.rows || 24,
         data.cols || 80,
         null,
@@ -443,7 +445,7 @@ io.on('connection', (socket) => {
       );
       socket.emit('terminal-created', {
         terminalId: terminal.id,
-        sessionId: data.sessionId
+        sessionId: sessionId
       });
     } catch (error) {
       logger.error('Failed to create terminal:', error);
@@ -479,17 +481,18 @@ io.on('connection', (socket) => {
 
   socket.on('restore-terminal', async (data) => {
     try {
+      const sessionId = data.sessionId || `ws_${socket.userId}`;
       const terminal = await ttydManager.restoreTerminal(
         data.terminalId,
         socket.userId,
-        data.sessionId,
+        sessionId,
         data.rows || 24,
         data.cols || 80
       );
       if (terminal && terminal.userId === socket.userId) {
         socket.emit('terminal-restored', {
           terminalId: terminal.id,
-          sessionId: data.sessionId
+          sessionId: sessionId
         });
       } else {
         socket.emit('terminal-error', { message: 'Terminal not found', terminalId: data.terminalId });
@@ -537,118 +540,10 @@ io.on('connection', (socket) => {
       const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId) {
         ttydManager.closeTerminal(data.terminalId);
-        await sessionManager.removeTerminalFromSession(socket.userId, data.sessionId, data.terminalId);
+        database.deleteTerminalByUser(data.terminalId, socket.userId);
       }
     } catch (error) {
       logger.error('Failed to close terminal:', error);
-    }
-  });
-
-  socket.on('restore-session', async (data) => {
-    try {
-      const session = await sessionManager.getSession(socket.userId, data.sessionId);
-      if (session) {
-        for (const terminalId of session.terminals) {
-          socket.emit('terminal-restored', { terminalId, sessionId: data.sessionId });
-        }
-      }
-    } catch (error) {
-      socket.emit('session-error', { message: 'Failed to restore session', error: error.message });
-    }
-  });
-
-  // Handle layout requests
-  socket.on('get-session-layout', async (data) => {
-    try {
-      const session = await sessionManager.getSession(socket.userId, data.sessionId);
-      if (session) {
-        logger.debug('Sending session layout:', session.layout);
-        socket.emit('session-layout', {
-          sessionId: data.sessionId,
-          layout: session.layout
-        });
-      }
-    } catch (error) {
-      logger.error('Failed to get session layout:', error);
-    }
-  });
-
-  // Handle layout updates
-  socket.on('update-session-layout', async (data) => {
-    try {
-      logger.debug('Updating session layout:', data.sessionId, data.layout);
-      await sessionManager.updateSessionLayout(socket.userId, data.sessionId, data.layout);
-    } catch (error) {
-      logger.error('Failed to update session layout:', error);
-    }
-  });
-  
-  // Handle session name update
-  socket.on('update-session-name', async (data) => {
-    try {
-      const updated = await sessionManager.updateSessionName(socket.userId, data.sessionId, data.name);
-      if (updated) {
-        socket.emit('session-name-updated', { sessionId: data.sessionId, name: data.name });
-        // Update all connected clients
-        socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
-      }
-    } catch (error) {
-      logger.error('Failed to update session name:', error);
-    }
-  });
-  
-  // Handle session deletion
-  socket.on('delete-session', async (data) => {
-    try {
-      const deleted = await sessionManager.deleteSession(socket.userId, data.sessionId);
-      if (deleted) {
-        socket.emit('session-deleted', { sessionId: data.sessionId });
-        socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
-      }
-    } catch (error) {
-      logger.error('Failed to delete session:', error);
-    }
-  });
-  
-  // Handle delete all sessions
-  socket.on('delete-all-sessions', async () => {
-    try {
-      const count = await sessionManager.deleteAllUserSessions(socket.userId);
-      socket.emit('all-sessions-deleted', { count });
-      socket.emit('sessions', []);
-    } catch (error) {
-      logger.error('Failed to delete all sessions:', error);
-    }
-  });
-  
-  // Create session with name
-  socket.on('create-session', async (data) => {
-    logger.debug('Received create-session request:', data);
-    try {
-      const session = await sessionManager.createSession(socket.userId, data.name);
-
-      // If SSH config provided, save connection and pass ID
-      let sshConnectionId = data.sshConnectionId || null;
-      if (!sshConnectionId && data.sshConfig) {
-        const conn = database.createSshConnection(
-          socket.userId, data.name, data.sshConfig.host, data.sshConfig.port,
-          data.sshConfig.username, 'password', data.sshConfig.password, null
-        );
-        sshConnectionId = conn.id;
-      }
-
-      socket.emit('session-created', {
-        sessionId: session.id,
-        name: session.name,
-        sshConnectionId: sshConnectionId
-      });
-      socket.emit('sessions', sessionManager.getUserSessions(socket.userId));
-    } catch (error) {
-      logger.error('Failed to create session:', error);
-      socket.emit('session-error', { 
-        message: 'Failed to create session', 
-        error: error.message 
-      });
     }
   });
 

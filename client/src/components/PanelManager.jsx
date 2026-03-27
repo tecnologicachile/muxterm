@@ -10,7 +10,7 @@ import Terminal from './Terminal';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, sessionId, sshConnectionId }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel }) {
   const { socket } = useSocket();
 
   // Track activity state for each panel
@@ -215,9 +215,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           <Terminal
           key={`terminal-${panel.id}`}
           terminalId={panel.terminalId}
-          sessionId={sessionId}
           isActive={isActive}
-          sshConnectionId={sshConnectionId}
+          sshConnectionId={panel.sshConnectionId || null}
           onClose={() => onPanelClose(panel.id)}
           onTerminalCreated={(newTerminalId) => {
             if (onTerminalCreated && !panel.terminalId) {

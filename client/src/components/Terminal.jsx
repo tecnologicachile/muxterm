@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive, panelId, onActivityChange, sshConnectionId }) {
+function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, onActivityChange, sshConnectionId }) {
   const iframeRef = useRef(null);
   const { socket, isReconnected } = useSocket();
   const [localTerminalId, setLocalTerminalId] = useState(terminalId);
@@ -22,21 +22,21 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
 
   // Request terminal creation if new
   useEffect(() => {
-    if (!socket || !sessionId) return;
+    if (!socket) return;
     if (localTerminalId || terminalId || terminalCreatedRef.current) return;
 
     terminalCreatedRef.current = true;
-    const createData = { sessionId };
+    const createData = {};
     if (sshConnectionId) createData.sshConnectionId = sshConnectionId;
     socket.emit('create-terminal', createData);
-  }, [socket, sessionId, localTerminalId, terminalId]);
+  }, [socket, localTerminalId, terminalId]);
 
   // Socket event handlers
   useEffect(() => {
     if (!socket) return;
 
     const handleTerminalCreated = (data) => {
-      if (data.sessionId === sessionId && !localTerminalId) {
+      if (!localTerminalId) {
         setLocalTerminalId(data.terminalId);
         if (onTerminalCreated) onTerminalCreated(data.terminalId);
       }
@@ -76,21 +76,21 @@ function Terminal({ terminalId, sessionId, onClose, onTerminalCreated, isActive,
       socket.off('terminal-error', handleTerminalError);
       socket.off('terminal-activity', handleTerminalActivity);
     };
-  }, [socket, sessionId, localTerminalId, terminalId, onTerminalCreated, panelId, onActivityChange]);
+  }, [socket, localTerminalId, terminalId, onTerminalCreated, panelId, onActivityChange]);
 
   // Restore terminal if we have an existing ID
   useEffect(() => {
     if (!socket || !localTerminalId && !terminalId) return;
     const tid = localTerminalId || terminalId;
-    socket.emit('restore-terminal', { terminalId: tid, sessionId });
-  }, [socket, localTerminalId, terminalId, sessionId]);
+    socket.emit('restore-terminal', { terminalId: tid });
+  }, [socket, localTerminalId, terminalId]);
 
   // Handle reconnection
   useEffect(() => {
     if (isReconnected && localTerminalId && socket) {
-      socket.emit('restore-terminal', { terminalId: localTerminalId, sessionId });
+      socket.emit('restore-terminal', { terminalId: localTerminalId });
     }
-  }, [isReconnected, localTerminalId, socket, sessionId]);
+  }, [isReconnected, localTerminalId, socket]);
 
 
   const getToken = () => {

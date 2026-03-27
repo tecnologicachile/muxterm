@@ -64,7 +64,34 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_terminals_session_id ON terminals(session_id);
   CREATE INDEX IF NOT EXISTS idx_ssh_connections_user_id ON ssh_connections(user_id);
+
+  -- Workspace layout (one per user, replaces session_layouts)
+  CREATE TABLE IF NOT EXISTS workspace_layouts (
+    user_id INTEGER PRIMARY KEY,
+    layout TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
+
+// Add user_id and ssh_connection_id columns to terminals if not present
+try {
+  db.exec('ALTER TABLE terminals ADD COLUMN user_id INTEGER REFERENCES users(id)');
+} catch (e) {
+  // Column already exists
+}
+try {
+  db.exec('ALTER TABLE terminals ADD COLUMN ssh_connection_id INTEGER REFERENCES ssh_connections(id)');
+} catch (e) {
+  // Column already exists
+}
+
+// Index for user_id (after ALTER TABLE ensures column exists)
+try {
+  db.exec('CREATE INDEX IF NOT EXISTS idx_terminals_user_id ON terminals(user_id)');
+} catch (e) {
+  // Index already exists or column not ready
+}
 
 // Prepared statements
 const statements = {
@@ -95,13 +122,24 @@ const statements = {
   deleteTerminal: db.prepare('DELETE FROM terminals WHERE id = ?'),
   deleteTerminalsBySessionId: db.prepare('DELETE FROM terminals WHERE session_id = ?'),
 
+  // Workspace layouts
+  upsertWorkspaceLayout: db.prepare(`
+    INSERT INTO workspace_layouts (user_id, layout) VALUES (?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET layout = excluded.layout, updated_at = CURRENT_TIMESTAMP
+  `),
+  findWorkspaceLayoutByUserId: db.prepare('SELECT * FROM workspace_layouts WHERE user_id = ?'),
+
+  // Terminals (workspace-based)
+  createTerminalForUser: db.prepare('INSERT INTO terminals (id, session_id, user_id, panel_id, ssh_connection_id) VALUES (?, ?, ?, ?, ?)'),
+  findTerminalsByUserId: db.prepare('SELECT * FROM terminals WHERE user_id = ?'),
+  deleteTerminalByUser: db.prepare('DELETE FROM terminals WHERE id = ? AND user_id = ?'),
+
   // SSH Connections
   createSshConnection: db.prepare('INSERT INTO ssh_connections (user_id, name, host, port, username, auth_type, password, private_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
   findSshConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, auth_type, created_at FROM ssh_connections WHERE user_id = ? ORDER BY name'),
   findSshConnectionById: db.prepare('SELECT * FROM ssh_connections WHERE id = ?'),
   updateSshConnection: db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=?, auth_type=?, password=?, private_key=? WHERE id=? AND user_id=?'),
-  deleteSshConnection: db.prepare('DELETE FROM ssh_connections WHERE id = ? AND user_id = ?'),
-  deleteTerminalsBySessionId: db.prepare('DELETE FROM terminals WHERE session_id = ?')
+  deleteSshConnection: db.prepare('DELETE FROM ssh_connections WHERE id = ? AND user_id = ?')
 };
 
 // Helper functions
@@ -189,6 +227,38 @@ const dbHelpers = {
 
   deleteTerminal(terminalId) {
     statements.deleteTerminal.run(terminalId);
+  },
+
+  // Workspace layouts
+  saveWorkspaceLayout(userId, layout) {
+    statements.upsertWorkspaceLayout.run(userId, JSON.stringify(layout));
+  },
+
+  getWorkspaceLayout(userId) {
+    const row = statements.findWorkspaceLayoutByUserId.get(userId);
+    return row ? JSON.parse(row.layout) : null;
+  },
+
+  // Terminals (workspace-based)
+  createTerminalForUser(terminalId, userId, panelId, sshConnectionId = null) {
+    const existing = statements.findTerminalById.get(terminalId);
+    if (existing) return terminalId;
+    db.pragma('foreign_keys = OFF');
+    try {
+      statements.createTerminalForUser.run(terminalId, '_', userId, panelId, sshConnectionId);
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+    return terminalId;
+  },
+
+  findTerminalsByUserId(userId) {
+    return statements.findTerminalsByUserId.all(userId);
+  },
+
+  deleteTerminalByUser(terminalId, userId) {
+    const result = statements.deleteTerminalByUser.run(terminalId, userId);
+    return result.changes > 0;
   },
 
   // SSH Connections
