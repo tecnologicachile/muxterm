@@ -16,6 +16,7 @@ const logger = require('./utils/logger');
 const tracer = require('./utils/persistenceTracer');
 const updateChecker = require('./update-checker');
 const httpProxy = require('http-proxy');
+const guacamoleManager = require('./guacamole-manager');
 
 const app = express();
 const server = http.createServer(app);
@@ -479,6 +480,57 @@ io.on('connection', (socket) => {
     }
   });
 
+  // RDP Connection management
+  socket.on('get-rdp-connections', () => {
+    socket.emit('rdp-connections', database.getRdpConnections(socket.userId));
+  });
+
+  socket.on('create-rdp-connection', (data) => {
+    try {
+      const conn = database.createRdpConnection(
+        socket.userId, data.name, data.host, data.port,
+        data.username, data.password, data.domain
+      );
+      socket.emit('rdp-connection-created', conn);
+      socket.emit('rdp-connections', database.getRdpConnections(socket.userId));
+    } catch (error) {
+      socket.emit('rdp-error', { message: 'Failed to create RDP connection', error: error.message });
+    }
+  });
+
+  socket.on('delete-rdp-connection', (data) => {
+    const deleted = database.deleteRdpConnection(data.id, socket.userId);
+    if (deleted) {
+      socket.emit('rdp-connections', database.getRdpConnections(socket.userId));
+    }
+  });
+
+  socket.on('create-rdp-token', (data) => {
+    try {
+      let rdpConfig;
+      if (data.rdpConnectionId) {
+        const conn = database.getRdpConnection(data.rdpConnectionId);
+        if (!conn || conn.user_id !== socket.userId) {
+          socket.emit('rdp-error', { message: 'RDP connection not found' });
+          return;
+        }
+        rdpConfig = conn;
+      } else {
+        rdpConfig = { host: data.host, port: data.port, username: data.username, password: data.password, domain: data.domain };
+      }
+
+      const token = guacamoleManager.createToken(rdpConfig);
+      const wsProtocol = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
+      socket.emit('rdp-token-created', {
+        token,
+        wsUrl: `/guacamole/`
+      });
+    } catch (error) {
+      logger.error('Failed to create RDP token:', error);
+      socket.emit('rdp-error', { message: 'Failed to create RDP token', error: error.message });
+    }
+  });
+
   socket.on('restore-terminal', async (data) => {
     try {
       const sessionId = data.sessionId || `ws_${socket.userId}`;
@@ -553,6 +605,9 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3002;
+// Initialize Guacamole proxy for RDP
+guacamoleManager.init(server);
+
 server.listen(PORT, async () => {
   logger.info(`Server running on port ${PORT}`);
   

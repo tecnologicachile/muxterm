@@ -47,18 +47,31 @@ function TerminalView() {
   const [sshPort, setSshPort] = useState('22');
   const [sshUsername, setSshUsername] = useState('');
   const [sshPassword, setSshPassword] = useState('');
+  const [rdpConnections, setRdpConnections] = useState([]);
+  const [selectedRdpConnection, setSelectedRdpConnection] = useState('');
+  const [rdpHost, setRdpHost] = useState('');
+  const [rdpPort, setRdpPort] = useState('3389');
+  const [rdpUsername, setRdpUsername] = useState('');
+  const [rdpPassword, setRdpPassword] = useState('');
+  const [rdpDomain, setRdpDomain] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState('');
   const sidebarTimeoutRef = React.useRef(null);
   const sidebarFilterRef = React.useRef(null);
 
-  // Load SSH connections
+  // Load SSH and RDP connections
   useEffect(() => {
     if (!socket) return;
     const handleSshConnections = (conns) => setSshConnections(conns);
+    const handleRdpConnections = (conns) => setRdpConnections(conns);
     socket.on('ssh-connections', handleSshConnections);
+    socket.on('rdp-connections', handleRdpConnections);
     socket.emit('get-ssh-connections');
-    return () => socket.off('ssh-connections', handleSshConnections);
+    socket.emit('get-rdp-connections');
+    return () => {
+      socket.off('ssh-connections', handleSshConnections);
+      socket.off('rdp-connections', handleRdpConnections);
+    };
   }, [socket]);
 
   // Detect mobile
@@ -189,52 +202,63 @@ function TerminalView() {
     setSshPort('22');
     setSshUsername('');
     setSshPassword('');
+    setSelectedRdpConnection('');
+    setRdpHost('');
+    setRdpPort('3389');
+    setRdpUsername('');
+    setRdpPassword('');
+    setRdpDomain('');
     setNewTerminalDialogOpen(true);
   };
 
   const handleCreateTerminal = () => {
-    let sshConnId = null;
     let termName = `Terminal ${terminalCounter}`;
+    let newPanel;
 
     if (newTerminalType === 'ssh') {
       if (selectedSshConnection) {
-        sshConnId = parseInt(selectedSshConnection);
-        const conn = sshConnections.find(c => c.id === sshConnId);
-        if (conn) termName = `${conn.name}`;
+        const conn = sshConnections.find(c => c.id === parseInt(selectedSshConnection));
+        newPanel = { id: uuidv4(), terminalId: null, name: conn?.name || termName, type: 'ssh', sshConnectionId: parseInt(selectedSshConnection) };
       } else if (sshHost) {
-        // Create new SSH connection first, then create terminal
         socket.emit('create-ssh-connection', {
-          name: `${sshUsername}@${sshHost}`,
-          host: sshHost,
-          port: parseInt(sshPort) || 22,
-          username: sshUsername,
-          authType: 'password',
-          password: sshPassword
+          name: `${sshUsername}@${sshHost}`, host: sshHost, port: parseInt(sshPort) || 22,
+          username: sshUsername, authType: 'password', password: sshPassword
         });
         socket.once('ssh-connection-created', (conn) => {
-          const newPanel = {
-            id: uuidv4(),
-            terminalId: null,
-            name: `${conn.name}`,
-            sshConnectionId: conn.id
-          };
+          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'ssh', sshConnectionId: conn.id };
           setTerminalCounter(prev => prev + 1);
-          setPanels(prev => [...prev, newPanel]);
-          setActivePanel(newPanel.id);
+          setPanels(prev => [...prev, p]);
+          setActivePanel(p.id);
         });
         setNewTerminalDialogOpen(false);
         return;
       } else {
-        return; // No SSH config provided
+        return;
       }
+    } else if (newTerminalType === 'rdp') {
+      if (selectedRdpConnection) {
+        const conn = rdpConnections.find(c => c.id === parseInt(selectedRdpConnection));
+        newPanel = { id: uuidv4(), terminalId: null, name: conn?.name || termName, type: 'rdp', rdpConnectionId: parseInt(selectedRdpConnection), displayMode: 'fit' };
+      } else if (rdpHost) {
+        socket.emit('create-rdp-connection', {
+          name: `${rdpUsername}@${rdpHost}`, host: rdpHost, port: parseInt(rdpPort) || 3389,
+          username: rdpUsername, password: rdpPassword, domain: rdpDomain
+        });
+        socket.once('rdp-connection-created', (conn) => {
+          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'rdp', rdpConnectionId: conn.id, displayMode: 'fit' };
+          setTerminalCounter(prev => prev + 1);
+          setPanels(prev => [...prev, p]);
+          setActivePanel(p.id);
+        });
+        setNewTerminalDialogOpen(false);
+        return;
+      } else {
+        return;
+      }
+    } else {
+      newPanel = { id: uuidv4(), terminalId: null, name: termName, type: 'local' };
     }
 
-    const newPanel = {
-      id: uuidv4(),
-      terminalId: null,
-      name: termName,
-      sshConnectionId: sshConnId
-    };
     setTerminalCounter(prev => prev + 1);
     setPanels(prev => [...prev, newPanel]);
     setActivePanel(newPanel.id);
@@ -849,7 +873,15 @@ function TerminalView() {
               onClick={() => setNewTerminalType('ssh')}
               sx={{ flex: 1 }}
             >
-              SSH Connection
+              SSH
+            </Button>
+            <Button
+              variant={newTerminalType === 'rdp' ? 'contained' : 'outlined'}
+              size="small"
+              onClick={() => setNewTerminalType('rdp')}
+              sx={{ flex: 1 }}
+            >
+              RDP
             </Button>
           </Box>
 
@@ -935,15 +967,110 @@ function TerminalView() {
               )}
             </Box>
           )}
+
+          {newTerminalType === 'rdp' && (
+            <Box sx={{ mt: 1 }}>
+              {rdpConnections.length > 0 && (
+                <TextField
+                  select
+                  fullWidth
+                  size="small"
+                  margin="dense"
+                  label="Saved Connection"
+                  value={selectedRdpConnection}
+                  onChange={(e) => {
+                    setSelectedRdpConnection(e.target.value);
+                    if (e.target.value) {
+                      const conn = rdpConnections.find(c => c.id === parseInt(e.target.value));
+                      if (conn) {
+                        setRdpHost(conn.host);
+                        setRdpPort(conn.port.toString());
+                        setRdpUsername(conn.username);
+                      }
+                    }
+                  }}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="">-- New Connection --</option>
+                  {rdpConnections.map(conn => (
+                    <option key={conn.id} value={conn.id}>
+                      {conn.name} ({conn.username}@{conn.host})
+                    </option>
+                  ))}
+                </TextField>
+              )}
+
+              {!selectedRdpConnection && (
+                <>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField
+                      margin="dense"
+                      label="Host"
+                      variant="outlined"
+                      size="small"
+                      value={rdpHost}
+                      onChange={(e) => setRdpHost(e.target.value)}
+                      sx={{ flex: 3 }}
+                      placeholder="10.0.0.12"
+                    />
+                    <TextField
+                      margin="dense"
+                      label="Port"
+                      variant="outlined"
+                      size="small"
+                      value={rdpPort}
+                      onChange={(e) => setRdpPort(e.target.value)}
+                      sx={{ flex: 1 }}
+                    />
+                  </Box>
+                  <TextField
+                    margin="dense"
+                    label="Username"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={rdpUsername}
+                    onChange={(e) => setRdpUsername(e.target.value)}
+                    placeholder="Administrator"
+                  />
+                  <TextField
+                    margin="dense"
+                    label="Password"
+                    type="password"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={rdpPassword}
+                    onChange={(e) => setRdpPassword(e.target.value)}
+                  />
+                  <TextField
+                    margin="dense"
+                    label="Domain (optional)"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={rdpDomain}
+                    onChange={(e) => setRdpDomain(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') handleCreateTerminal();
+                    }}
+                  />
+                </>
+              )}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNewTerminalDialogOpen(false)}>Cancel</Button>
           <Button
             onClick={handleCreateTerminal}
             variant="contained"
-            disabled={newTerminalType === 'ssh' && !selectedSshConnection && !sshHost}
+            disabled={
+              (newTerminalType === 'ssh' && !selectedSshConnection && !sshHost) ||
+              (newTerminalType === 'rdp' && !selectedRdpConnection && !rdpHost)
+            }
           >
-            {newTerminalType === 'ssh' ? 'Connect' : 'Create'}
+            {newTerminalType === 'local' ? 'Create' : 'Connect'}
           </Button>
         </DialogActions>
       </Dialog>

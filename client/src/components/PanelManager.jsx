@@ -7,6 +7,7 @@ import {
 } from '@mui/icons-material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
+import RdpViewer from './RdpViewer';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
@@ -212,20 +213,31 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           </Box>
         </Box>
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-          <Terminal
-          key={`terminal-${panel.id}`}
-          terminalId={panel.terminalId}
-          isActive={isActive}
-          sshConnectionId={panel.sshConnectionId || null}
-          onClose={() => onPanelClose(panel.id)}
-          onTerminalCreated={(newTerminalId) => {
-            if (onTerminalCreated && !panel.terminalId) {
-              onTerminalCreated(panel.id, newTerminalId);
-            }
-          }}
-          panelId={panel.id}
-          onActivityChange={handleActivityChange}
-        />
+          {panel.type === 'rdp' ? (
+            <RdpViewer
+              key={`rdp-${panel.id}`}
+              rdpConnectionId={panel.rdpConnectionId}
+              isActive={isActive}
+              panelId={panel.id}
+              onActivityChange={handleActivityChange}
+              displayMode={panel.displayMode || 'fit'}
+            />
+          ) : (
+            <Terminal
+              key={`terminal-${panel.id}`}
+              terminalId={panel.terminalId}
+              isActive={isActive}
+              sshConnectionId={panel.sshConnectionId || null}
+              onClose={() => onPanelClose(panel.id)}
+              onTerminalCreated={(newTerminalId) => {
+                if (onTerminalCreated && !panel.terminalId) {
+                  onTerminalCreated(panel.id, newTerminalId);
+                }
+              }}
+              panelId={panel.id}
+              onActivityChange={handleActivityChange}
+            />
+          )}
         </Box>
       </Box>
     );

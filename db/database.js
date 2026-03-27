@@ -61,6 +61,20 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS rdp_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL,
+    port INTEGER DEFAULT 3389,
+    username TEXT NOT NULL,
+    password TEXT,
+    domain TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_rdp_connections_user_id ON rdp_connections(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_terminals_session_id ON terminals(session_id);
   CREATE INDEX IF NOT EXISTS idx_ssh_connections_user_id ON ssh_connections(user_id);
@@ -139,7 +153,13 @@ const statements = {
   findSshConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, auth_type, created_at FROM ssh_connections WHERE user_id = ? ORDER BY name'),
   findSshConnectionById: db.prepare('SELECT * FROM ssh_connections WHERE id = ?'),
   updateSshConnection: db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=?, auth_type=?, password=?, private_key=? WHERE id=? AND user_id=?'),
-  deleteSshConnection: db.prepare('DELETE FROM ssh_connections WHERE id = ? AND user_id = ?')
+  deleteSshConnection: db.prepare('DELETE FROM ssh_connections WHERE id = ? AND user_id = ?'),
+
+  // RDP Connections
+  createRdpConnection: db.prepare('INSERT INTO rdp_connections (user_id, name, host, port, username, password, domain) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+  findRdpConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, domain, created_at FROM rdp_connections WHERE user_id = ? ORDER BY name'),
+  findRdpConnectionById: db.prepare('SELECT * FROM rdp_connections WHERE id = ?'),
+  deleteRdpConnection: db.prepare('DELETE FROM rdp_connections WHERE id = ? AND user_id = ?')
 };
 
 // Helper functions
@@ -282,6 +302,25 @@ const dbHelpers = {
 
   deleteSshConnection(id, userId) {
     const result = statements.deleteSshConnection.run(id, userId);
+    return result.changes > 0;
+  },
+
+  // RDP Connections
+  createRdpConnection(userId, name, host, port, username, password, domain) {
+    const result = statements.createRdpConnection.run(userId, name, host, port || 3389, username, password || null, domain || null);
+    return { id: result.lastInsertRowid, name, host, port: port || 3389, username };
+  },
+
+  getRdpConnections(userId) {
+    return statements.findRdpConnectionsByUserId.all(userId);
+  },
+
+  getRdpConnection(id) {
+    return statements.findRdpConnectionById.get(id);
+  },
+
+  deleteRdpConnection(id, userId) {
+    const result = statements.deleteRdpConnection.run(id, userId);
     return result.changes > 0;
   }
 };
