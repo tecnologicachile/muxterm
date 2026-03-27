@@ -520,10 +520,9 @@ io.on('connection', (socket) => {
       }
 
       const token = guacamoleManager.createToken(rdpConfig);
-      const wsProtocol = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
       socket.emit('rdp-token-created', {
         token,
-        wsUrl: `/guacamole/`
+        wsPort: guacamoleManager.guacPort || 4823
       });
     } catch (error) {
       logger.error('Failed to create RDP token:', error);
@@ -605,8 +604,8 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3002;
-// Initialize Guacamole proxy for RDP
-guacamoleManager.init(server);
+// Initialize Guacamole proxy for RDP (separate WebSocket port)
+guacamoleManager.init();
 
 server.listen(PORT, async () => {
   logger.info(`Server running on port ${PORT}`);

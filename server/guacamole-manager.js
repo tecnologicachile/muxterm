@@ -10,10 +10,11 @@ class GuacamoleManager {
     this.guacServer = null;
   }
 
-  init(httpServer) {
+  init() {
     try {
+      this.guacPort = 4823;
       this.guacServer = new GuacamoleLite(
-        { server: httpServer, path: '/guacamole/' },
+        { port: this.guacPort },
         { host: '127.0.0.1', port: 4822 },
         {
           crypt: {
@@ -32,24 +33,24 @@ class GuacamoleManager {
             rdp: ['width', 'height', 'dpi']
           },
           log: {
-            level: 'ERRORS'
+            level: 'VERBOSE'
           }
         }
       );
 
       this.guacServer.on('open', (clientConnection) => {
-        logger.info('Guacamole connection opened');
+        console.log('[GUAC] Connection opened');
       });
 
       this.guacServer.on('close', (clientConnection) => {
-        logger.info('Guacamole connection closed');
+        console.log('[GUAC] Connection closed');
       });
 
       this.guacServer.on('error', (clientConnection, error) => {
-        logger.error('Guacamole error:', error);
+        console.log('[GUAC] Error:', error);
       });
 
-      logger.info('Guacamole proxy initialized on /guacamole/');
+      logger.info(`Guacamole proxy initialized on port ${this.guacPort}`);
     } catch (error) {
       logger.error('Failed to initialize Guacamole proxy:', error);
     }
@@ -72,6 +73,7 @@ class GuacamoleManager {
       }
     };
 
+    console.log('[GUAC] Creating token for:', rdpConfig.host, ':', rdpConfig.port, 'user:', rdpConfig.username);
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(CIPHER, Buffer.from(SECRET_KEY), iv);
     let encrypted = cipher.update(JSON.stringify(tokenObject), 'utf8', 'base64');

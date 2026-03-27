@@ -4,7 +4,8 @@ import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
 function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displayMode = 'fit' }) {
-  const displayRef = useRef(null);
+  const containerRef = useRef(null);
+  const canvasContainerRef = useRef(null);
   const clientRef = useRef(null);
   const keyboardRef = useRef(null);
   const mouseRef = useRef(null);
@@ -36,53 +37,68 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
     return () => {
       socket.off('rdp-token-created', handleToken);
       socket.off('rdp-error', handleError);
+      // Disconnect on cleanup to prevent orphaned connections
+      if (clientRef.current) {
+        try { clientRef.current.disconnect(); } catch (e) {}
+        clientRef.current = null;
+      }
+      tokenRequestedRef.current = false;
     };
   }, [socket, rdpConnectionId]);
 
   const connectRdp = (token) => {
-    if (!displayRef.current) return;
+    if (!canvasContainerRef.current) return;
 
     try {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/guacamole/`;
+      const wsUrl = `${wsProtocol}//${window.location.hostname}:4823/`;
 
       const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
       const client = new Guacamole.Client(tunnel);
       clientRef.current = client;
 
-      // Append display canvas
+      // Append display canvas - constrain within container
       const displayElement = client.getDisplay().getElement();
       displayElement.style.cursor = 'default';
-      displayRef.current.innerHTML = '';
-      displayRef.current.appendChild(displayElement);
+      displayElement.style.position = 'relative';
+      displayElement.style.overflow = 'hidden';
+      displayElement.style.maxWidth = '100%';
+      displayElement.style.maxHeight = '100%';
+      canvasContainerRef.current.innerHTML = '';
+      canvasContainerRef.current.appendChild(displayElement);
 
       // Mouse input
       const mouse = new Guacamole.Mouse(displayElement);
       mouseRef.current = mouse;
-      mouse.onEach(['mousedown', 'mouseup', 'mousemove'], (e) => {
-        client.sendMouseState(e.state);
-      });
+      mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = (mouseState) => {
+        client.sendMouseState(mouseState);
+      };
 
-      // Keyboard input (only when panel is active)
-      const keyboard = new Guacamole.Keyboard(document);
+      // Keyboard input - attach to display element to avoid global capture
+      const keyboard = new Guacamole.Keyboard(displayElement);
       keyboardRef.current = keyboard;
       keyboard.onkeydown = (keysym) => {
-        if (!isActive) return false;
         client.sendKeyEvent(1, keysym);
         return true;
       };
       keyboard.onkeyup = (keysym) => {
-        if (!isActive) return;
         client.sendKeyEvent(0, keysym);
       };
+      // Make display focusable for keyboard events
+      displayElement.tabIndex = 0;
+      displayElement.style.outline = 'none';
 
       // State changes
+      const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
       client.onstatechange = (state) => {
+        console.log('[RDP] State:', stateNames[state] || state);
         if (state === 3) { // CONNECTED
           setConnected(true);
           setError(null);
           if (onActivityChange) onActivityChange(panelId, true);
-          setTimeout(() => rescale(), 500);
+          setTimeout(() => {
+            if (clientRef.current && canvasContainerRef.current) rescale();
+          }, 500);
         } else if (state === 5) { // DISCONNECTED
           setConnected(false);
           if (onActivityChange) onActivityChange(panelId, false);
@@ -90,12 +106,17 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       };
 
       client.onerror = (status) => {
-        logger.error('Guacamole client error:', status);
-        setError(`Connection error: ${status.message || 'Unknown error'}`);
+        console.error('[RDP] Client error:', status);
+        setError(`Connection error: ${status.message || status.code || 'Unknown error'}`);
+      };
+
+      tunnel.onerror = (status) => {
+        console.error('[RDP] Tunnel error:', status);
+        setError(`Tunnel error: ${status.message || status.code || 'Unknown error'}`);
       };
 
       // Connect with token and container dimensions
-      const container = displayRef.current;
+      const container = canvasContainerRef.current;
       const width = container.offsetWidth || 1024;
       const height = container.offsetHeight || 768;
       const connectString = `token=${encodeURIComponent(token)}&GUAC_WIDTH=${width}&GUAC_HEIGHT=${height}&GUAC_DPI=96`;
@@ -110,10 +131,10 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
   // Rescale display based on current mode
   const rescale = () => {
     const client = clientRef.current;
-    if (!client || !displayRef.current) return;
+    if (!client || !canvasContainerRef.current) return;
 
     const display = client.getDisplay();
-    const container = displayRef.current;
+    const container = canvasContainerRef.current;
     const displayWidth = display.getWidth();
     const displayHeight = display.getHeight();
 
@@ -150,9 +171,9 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
 
   // Handle container resize
   useEffect(() => {
-    if (!displayRef.current) return;
+    if (!canvasContainerRef.current) return;
     const observer = new ResizeObserver(() => rescale());
-    observer.observe(displayRef.current);
+    observer.observe(canvasContainerRef.current);
     return () => observer.disconnect();
   }, [currentMode]);
 
@@ -189,23 +210,31 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
 
   return (
     <div
-      ref={displayRef}
+      ref={containerRef}
       style={{
         width: '100%',
         height: '100%',
         backgroundColor: '#000',
         overflow: currentMode === 'native' ? 'auto' : 'hidden',
-        display: 'flex',
-        alignItems: currentMode === 'fit' ? 'center' : 'flex-start',
-        justifyContent: currentMode === 'fit' ? 'center' : 'flex-start',
         position: 'relative'
       }}
     >
-      {!connected && (
+      {/* Canvas container - React does NOT manage children of this div */}
+      <div
+        ref={canvasContainerRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: currentMode === 'fit' ? 'center' : 'flex-start',
+          justifyContent: currentMode === 'fit' ? 'center' : 'flex-start'
+        }}
+      />
+      {!connected && !error && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#888', fontSize: '14px'
+          color: '#888', fontSize: '14px', pointerEvents: 'none'
         }}>
           Connecting to RDP...
         </div>
