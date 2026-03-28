@@ -38,19 +38,12 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
 
     const onTouchStart = (e) => {
       if (e.touches.length === 2) {
-        // Pinch start
         e.preventDefault();
         pinchRef.current.startDist = getTouchDist(e.touches);
         pinchRef.current.startZoom = zoom;
         pinchRef.current.isPinching = true;
-      } else if (e.touches.length === 1 && zoom > 1) {
-        // Pan start (only when zoomed in)
-        panRef.current.startX = e.touches[0].clientX;
-        panRef.current.startY = e.touches[0].clientY;
-        panRef.current.startOffsetX = panOffset.x;
-        panRef.current.startOffsetY = panOffset.y;
-        panRef.current.isPanning = true;
       }
+      // 1 finger: let Guacamole.Mouse.Touchscreen handle it (cursor follows finger)
     };
 
     const onTouchMove = (e) => {
@@ -61,19 +54,12 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         const newZoom = Math.max(1, Math.min(5, pinchRef.current.startZoom * scale));
         setZoom(newZoom);
         if (newZoom <= 1) setPanOffset({ x: 0, y: 0 });
-      } else if (panRef.current.isPanning && e.touches.length === 1 && zoom > 1) {
-        const dx = e.touches[0].clientX - panRef.current.startX;
-        const dy = e.touches[0].clientY - panRef.current.startY;
-        setPanOffset({
-          x: panRef.current.startOffsetX + dx,
-          y: panRef.current.startOffsetY + dy
-        });
       }
+      // 1 finger: let Guacamole.Mouse.Touchscreen handle it
     };
 
     const onTouchEnd = () => {
       pinchRef.current.isPinching = false;
-      panRef.current.isPanning = false;
     };
 
     container.addEventListener('touchstart', onTouchStart, { passive: false });
@@ -85,7 +71,7 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
     };
-  }, [zoom, panOffset]);
+  }, [zoom]);
 
   // Request RDP token and connect
   useEffect(() => {
@@ -161,13 +147,57 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       };
       mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = sendMouse;
 
-      // Touch input for mobile
-      const touch = new Guacamole.Mouse.Touchscreen(displayElement);
-      touch.onmousedown = touch.onmouseup = touch.onmousemove = sendMouse;
+      // Touch input for mobile - trackpad mode
+      // Drag = move cursor, Tap = click
+      let touchStartTime = 0;
+      let touchStartPos = { x: 0, y: 0 };
+      let lastTouchPos = { x: 0, y: 0 };
+      const TAP_THRESHOLD = 200; // ms
+      const MOVE_THRESHOLD = 10; // px
+      let hasMoved = false;
 
-      // Open virtual keyboard on touch
-      displayElement.addEventListener('touchstart', () => {
+      displayElement.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const rect = displayElement.getBoundingClientRect();
+        touchStartTime = Date.now();
+        touchStartPos = { x: t.clientX, y: t.clientY };
+        lastTouchPos = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+        hasMoved = false;
+        // Open virtual keyboard
         if (mobileInputRef.current) mobileInputRef.current.focus();
+      }, { passive: true });
+
+      displayElement.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        const rect = displayElement.getBoundingClientRect();
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+
+        // Check if finger moved enough to count as drag
+        const dx = t.clientX - touchStartPos.x;
+        const dy = t.clientY - touchStartPos.y;
+        if (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD) {
+          hasMoved = true;
+        }
+
+        // Send mousemove without buttons (cursor follows finger)
+        sendMouse(new Guacamole.Mouse.State(x, y, false, false, false, false, false));
+        lastTouchPos = { x, y };
+      }, { passive: false });
+
+      displayElement.addEventListener('touchend', (e) => {
+        const elapsed = Date.now() - touchStartTime;
+        // Tap = quick touch without movement
+        if (elapsed < TAP_THRESHOLD && !hasMoved) {
+          // Send click at last position
+          sendMouse(new Guacamole.Mouse.State(lastTouchPos.x, lastTouchPos.y, true, false, false, false, false));
+          setTimeout(() => {
+            sendMouse(new Guacamole.Mouse.State(lastTouchPos.x, lastTouchPos.y, false, false, false, false, false));
+          }, 50);
+        }
       }, { passive: true });
 
       // Keyboard input - use document, only send when panel is active
