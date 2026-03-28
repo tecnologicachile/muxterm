@@ -17,10 +17,9 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
   const isActiveRef = useRef(isActive);
   const mobileInputRef = useRef(null);
   const [zoom, setZoom] = useState(1);
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const pinchRef = useRef({ startDist: 0, startZoom: 1, isPinching: false });
-  const panRef = useRef({ startX: 0, startY: 0, startOffsetX: 0, startOffsetY: 0, isPanning: false });
+  const baseScaleRef = useRef(1);
 
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
@@ -43,7 +42,6 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         pinchRef.current.startZoom = zoom;
         pinchRef.current.isPinching = true;
       }
-      // 1 finger: let Guacamole.Mouse.Touchscreen handle it (cursor follows finger)
     };
 
     const onTouchMove = (e) => {
@@ -53,9 +51,16 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         const scale = dist / pinchRef.current.startDist;
         const newZoom = Math.max(1, Math.min(5, pinchRef.current.startZoom * scale));
         setZoom(newZoom);
-        if (newZoom <= 1) setPanOffset({ x: 0, y: 0 });
+        // Apply zoom via display.scale() and toggle overflow
+        if (clientRef.current) {
+          const display = clientRef.current.getDisplay();
+          const baseScale = baseScaleRef.current || 1;
+          display.scale(baseScale * newZoom);
+          if (container) {
+            container.style.overflow = newZoom > 1.05 ? 'auto' : 'hidden';
+          }
+        }
       }
-      // 1 finger: let Guacamole.Mouse.Touchscreen handle it
     };
 
     const onTouchEnd = () => {
@@ -147,24 +152,31 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       };
       mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = sendMouse;
 
-      // Touch input for mobile - trackpad mode
-      // Drag = move cursor, Tap = click
+      // Touch input for mobile - relative/trackpad mode
+      // Drag = move cursor by same distance as finger (1:1)
+      // Tap = click at current cursor position
       let touchStartTime = 0;
       let touchStartPos = { x: 0, y: 0 };
-      let lastTouchPos = { x: 0, y: 0 };
-      const TAP_THRESHOLD = 200; // ms
-      const MOVE_THRESHOLD = 10; // px
+      let lastScreenPos = { x: 0, y: 0 };
+      let cursorPos = { x: 0, y: 0 }; // remote cursor position
+      const TAP_THRESHOLD = 200;
+      const MOVE_THRESHOLD = 10;
       let hasMoved = false;
+      let cursorInitialized = false;
 
       displayElement.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
         const t = e.touches[0];
-        const rect = displayElement.getBoundingClientRect();
         touchStartTime = Date.now();
         touchStartPos = { x: t.clientX, y: t.clientY };
-        lastTouchPos = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+        lastScreenPos = { x: t.clientX, y: t.clientY };
         hasMoved = false;
-        // Open virtual keyboard
+        // Initialize cursor to center of display on first touch
+        if (!cursorInitialized) {
+          const display = client.getDisplay();
+          cursorPos = { x: display.getWidth() / 2, y: display.getHeight() / 2 };
+          cursorInitialized = true;
+        }
         if (mobileInputRef.current) mobileInputRef.current.focus();
       }, { passive: true });
 
@@ -172,30 +184,40 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         if (e.touches.length !== 1) return;
         e.preventDefault();
         const t = e.touches[0];
-        const rect = displayElement.getBoundingClientRect();
-        const x = t.clientX - rect.left;
-        const y = t.clientY - rect.top;
+        const display = client.getDisplay();
 
-        // Check if finger moved enough to count as drag
-        const dx = t.clientX - touchStartPos.x;
-        const dy = t.clientY - touchStartPos.y;
-        if (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD) {
+        // Calculate finger delta in screen pixels
+        const dx = t.clientX - lastScreenPos.x;
+        const dy = t.clientY - lastScreenPos.y;
+        lastScreenPos = { x: t.clientX, y: t.clientY };
+
+        // Check if moved enough
+        const totalDx = t.clientX - touchStartPos.x;
+        const totalDy = t.clientY - touchStartPos.y;
+        if (Math.abs(totalDx) > MOVE_THRESHOLD || Math.abs(totalDy) > MOVE_THRESHOLD) {
           hasMoved = true;
         }
 
-        // Send mousemove without buttons (cursor follows finger)
-        sendMouse(new Guacamole.Mouse.State(x, y, false, false, false, false, false));
-        lastTouchPos = { x, y };
+        // Apply delta to cursor (1:1 movement, clamped to display bounds)
+        cursorPos.x = Math.max(0, Math.min(display.getWidth(), cursorPos.x + dx));
+        cursorPos.y = Math.max(0, Math.min(display.getHeight(), cursorPos.y + dy));
+
+        client.sendMouseState(new Guacamole.Mouse.State(
+          cursorPos.x, cursorPos.y, false, false, false, false, false
+        ));
       }, { passive: false });
 
-      displayElement.addEventListener('touchend', (e) => {
+      displayElement.addEventListener('touchend', () => {
         const elapsed = Date.now() - touchStartTime;
-        // Tap = quick touch without movement
         if (elapsed < TAP_THRESHOLD && !hasMoved) {
-          // Send click at last position
-          sendMouse(new Guacamole.Mouse.State(lastTouchPos.x, lastTouchPos.y, true, false, false, false, false));
+          // Tap = click at current cursor position
+          client.sendMouseState(new Guacamole.Mouse.State(
+            cursorPos.x, cursorPos.y, true, false, false, false, false
+          ));
           setTimeout(() => {
-            sendMouse(new Guacamole.Mouse.State(lastTouchPos.x, lastTouchPos.y, false, false, false, false, false));
+            client.sendMouseState(new Guacamole.Mouse.State(
+              cursorPos.x, cursorPos.y, false, false, false, false, false
+            ));
           }, 50);
         }
       }, { passive: true });
@@ -222,7 +244,18 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
           setError(null);
           if (onActivityChange) onActivityChange(panelId, true);
           setTimeout(() => {
-            if (clientRef.current && canvasContainerRef.current) rescale();
+            if (clientRef.current && canvasContainerRef.current) {
+              const display = clientRef.current.getDisplay();
+              const container = canvasContainerRef.current;
+              if (display.getWidth() && container.offsetWidth) {
+                const fitScale = Math.min(
+                  container.offsetWidth / display.getWidth(),
+                  container.offsetHeight / display.getHeight()
+                );
+                baseScaleRef.current = fitScale;
+                display.scale(fitScale);
+              }
+            }
           }, 500);
         } else if (state === 5) { // DISCONNECTED
           setConnected(false);
@@ -367,10 +400,8 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
           width: '100%',
           height: '100%',
           display: 'flex',
-          alignItems: currentMode === 'fit' ? 'center' : 'flex-start',
-          justifyContent: currentMode === 'fit' ? 'center' : 'flex-start',
-          transformOrigin: 'center center',
-          transform: zoom > 1 ? `scale(${zoom}) translate(${panOffset.x / zoom}px, ${panOffset.y / zoom}px)` : 'none'
+          alignItems: 'center',
+          justifyContent: 'center'
         }}
       />
       {/* Zoom reset button - only visible when zoomed */}
