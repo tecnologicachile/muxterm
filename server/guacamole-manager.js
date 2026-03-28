@@ -68,7 +68,8 @@ class GuacamoleManager {
           domain: rdpConfig.domain || '',
           security: 'any',
           'ignore-cert': true,
-          'resize-method': 'display-update'
+          'resize-method': 'display-update',
+          'server-layout': 'failsafe'
         }
       }
     };
