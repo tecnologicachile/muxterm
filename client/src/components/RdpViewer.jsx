@@ -14,6 +14,9 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
   const [error, setError] = useState(null);
   const [currentMode, setCurrentMode] = useState(displayMode);
   const tokenRequestedRef = useRef(false);
+  const isActiveRef = useRef(isActive);
+
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   // Request RDP token and connect
   useEffect(() => {
@@ -67,26 +70,40 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       canvasContainerRef.current.innerHTML = '';
       canvasContainerRef.current.appendChild(displayElement);
 
-      // Mouse input
+      // Mouse input - adjust coordinates for display scale (use copy to avoid mutation)
       const mouse = new Guacamole.Mouse(displayElement);
       mouseRef.current = mouse;
-      mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = (mouseState) => {
-        client.sendMouseState(mouseState);
+      const sendMouse = (mouseState) => {
+        const scale = client.getDisplay().getScale();
+        if (scale && scale !== 1) {
+          const adjusted = new Guacamole.Mouse.State(
+            mouseState.x / scale,
+            mouseState.y / scale,
+            mouseState.left,
+            mouseState.middle,
+            mouseState.right,
+            mouseState.up,
+            mouseState.down
+          );
+          client.sendMouseState(adjusted);
+        } else {
+          client.sendMouseState(mouseState);
+        }
       };
+      mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = sendMouse;
 
-      // Keyboard input - attach to display element to avoid global capture
-      const keyboard = new Guacamole.Keyboard(displayElement);
+      // Keyboard input - use document, only send when panel is active
+      const keyboard = new Guacamole.Keyboard(document);
       keyboardRef.current = keyboard;
       keyboard.onkeydown = (keysym) => {
+        if (!isActiveRef.current) return false;
         client.sendKeyEvent(1, keysym);
         return true;
       };
       keyboard.onkeyup = (keysym) => {
+        if (!isActiveRef.current) return;
         client.sendKeyEvent(0, keysym);
       };
-      // Make display focusable for keyboard events
-      displayElement.tabIndex = 0;
-      displayElement.style.outline = 'none';
 
       // State changes
       const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
