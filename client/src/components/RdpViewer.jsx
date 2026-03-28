@@ -35,39 +35,49 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       return Math.sqrt(dx * dx + dy * dy);
     };
 
+    let twoFingerStartCenter = null;
+
+    const getTouchCenter = (touches) => ({
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2
+    });
+
     const onTouchStart = (e) => {
       if (e.touches.length === 2) {
-        e.preventDefault();
         pinchRef.current.startDist = getTouchDist(e.touches);
         pinchRef.current.startZoom = zoom;
         pinchRef.current.isPinching = true;
+        twoFingerStartCenter = getTouchCenter(e.touches);
       }
     };
 
     const onTouchMove = (e) => {
-      if (pinchRef.current.isPinching && e.touches.length === 2) {
-        e.preventDefault();
+      if (e.touches.length === 2) {
         const dist = getTouchDist(e.touches);
-        const scale = dist / pinchRef.current.startDist;
-        const newZoom = Math.max(1, Math.min(5, pinchRef.current.startZoom * scale));
-        setZoom(newZoom);
-        // Apply zoom via display.scale() and toggle overflow
-        if (clientRef.current) {
-          const display = clientRef.current.getDisplay();
-          const baseScale = baseScaleRef.current || 1;
-          display.scale(baseScale * newZoom);
-          if (container) {
-            container.style.overflow = newZoom > 1.05 ? 'auto' : 'hidden';
+        const distChange = Math.abs(dist - pinchRef.current.startDist);
+
+        // Only handle as pinch if fingers are actually separating/joining
+        if (distChange > 20) {
+          e.preventDefault();
+          const scale = dist / pinchRef.current.startDist;
+          const newZoom = Math.max(1, Math.min(5, pinchRef.current.startZoom * scale));
+          setZoom(newZoom);
+          if (clientRef.current) {
+            const display = clientRef.current.getDisplay();
+            const baseScale = baseScaleRef.current || 1;
+            display.scale(baseScale * newZoom);
           }
         }
+        // If fingers move together (no pinch), let native scroll handle it
       }
     };
 
     const onTouchEnd = () => {
       pinchRef.current.isPinching = false;
+      twoFingerStartCenter = null;
     };
 
-    container.addEventListener('touchstart', onTouchStart, { passive: false });
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
     container.addEventListener('touchmove', onTouchMove, { passive: false });
     container.addEventListener('touchend', onTouchEnd);
 
@@ -123,10 +133,6 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       // Append display canvas - constrain within container
       const displayElement = client.getDisplay().getElement();
       displayElement.style.cursor = 'default';
-      displayElement.style.position = 'relative';
-      displayElement.style.overflow = 'hidden';
-      displayElement.style.maxWidth = '100%';
-      displayElement.style.maxHeight = '100%';
       canvasContainerRef.current.innerHTML = '';
       canvasContainerRef.current.appendChild(displayElement);
 
@@ -373,7 +379,7 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         width: '100%',
         height: '100%',
         backgroundColor: '#000',
-        overflow: currentMode === 'native' ? 'auto' : 'hidden',
+        overflow: zoom > 1 ? 'auto' : 'hidden',
         position: 'relative'
       }}
     >
