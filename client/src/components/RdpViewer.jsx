@@ -166,9 +166,11 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       let lastScreenPos = { x: 0, y: 0 };
       let cursorPos = { x: 0, y: 0 }; // remote cursor position
       const TAP_THRESHOLD = 200;
+      const LONG_PRESS_THRESHOLD = 700;
       const MOVE_THRESHOLD = 10;
       let hasMoved = false;
       let cursorInitialized = false;
+      let longPressTimer = null;
 
       displayElement.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
@@ -177,12 +179,29 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         touchStartPos = { x: t.clientX, y: t.clientY };
         lastScreenPos = { x: t.clientX, y: t.clientY };
         hasMoved = false;
-        // Initialize cursor to center of display on first touch
         if (!cursorInitialized) {
           const display = client.getDisplay();
           cursorPos = { x: display.getWidth() / 2, y: display.getHeight() / 2 };
           cursorInitialized = true;
         }
+        // Long-press timer for right-click
+        if (longPressTimer) clearTimeout(longPressTimer);
+        longPressTimer = setTimeout(() => {
+          if (!hasMoved) {
+            // Vibrate for feedback if available
+            if (navigator.vibrate) navigator.vibrate(50);
+            // Right-click
+            client.sendMouseState(new Guacamole.Mouse.State(
+              cursorPos.x, cursorPos.y, false, false, true, false, false
+            ));
+            setTimeout(() => {
+              client.sendMouseState(new Guacamole.Mouse.State(
+                cursorPos.x, cursorPos.y, false, false, false, false, false
+              ));
+            }, 50);
+            longPressTimer = null;
+          }
+        }, LONG_PRESS_THRESHOLD);
         if (mobileInputRef.current) mobileInputRef.current.focus();
       }, { passive: true });
 
@@ -202,6 +221,7 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         const totalDy = t.clientY - touchStartPos.y;
         if (Math.abs(totalDx) > MOVE_THRESHOLD || Math.abs(totalDy) > MOVE_THRESHOLD) {
           hasMoved = true;
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         }
 
         // Apply delta to cursor (1:1 movement, clamped to display bounds)
@@ -214,6 +234,7 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       }, { passive: false });
 
       displayElement.addEventListener('touchend', () => {
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         const elapsed = Date.now() - touchStartTime;
         if (elapsed < TAP_THRESHOLD && !hasMoved) {
           // Tap = click at current cursor position
@@ -240,6 +261,8 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         if (!isActiveRef.current) return;
         client.sendKeyEvent(0, keysym);
       };
+
+      // Clipboard: requires HTTPS - pending implementation with SSL
 
       // State changes
       const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
@@ -406,8 +429,8 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
           width: '100%',
           height: '100%',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
+          alignItems: zoom > 1 ? 'flex-start' : 'center',
+          justifyContent: zoom > 1 ? 'flex-start' : 'center'
         }}
       />
       {/* Zoom reset button - only visible when zoomed */}
