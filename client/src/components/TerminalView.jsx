@@ -297,9 +297,7 @@ function TerminalView() {
       }
     } else if (newTerminalType === 'sftp') {
       if (sftpHost) {
-        const filestashPort = 8334;
-        const filestashHost = window.location.hostname;
-        const sftpUrl = `${window.location.protocol}//${filestashHost}:${filestashPort}/login?type=sftp&hostname=${sftpHost}&port=${sftpPort}&username=${encodeURIComponent(sftpUsername)}&password=${encodeURIComponent(sftpPassword)}`;
+        const sftpUrl = `/sftp/login?type=sftp&hostname=${sftpHost}&port=${sftpPort}&username=${encodeURIComponent(sftpUsername)}&password=${encodeURIComponent(sftpPassword)}`;
         newPanel = { id: uuidv4(), terminalId: null, name: `${sftpUsername}@${sftpHost}`, type: 'sftp', sftpUrl };
       } else {
         return;
