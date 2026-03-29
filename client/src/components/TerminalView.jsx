@@ -59,6 +59,10 @@ function TerminalView() {
   const [vncHost, setVncHost] = useState('');
   const [vncPort, setVncPort] = useState('5900');
   const [vncPassword, setVncPassword] = useState('');
+  const [sftpHost, setSftpHost] = useState('');
+  const [sftpPort, setSftpPort] = useState('22');
+  const [sftpUsername, setSftpUsername] = useState('');
+  const [sftpPassword, setSftpPassword] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState('');
   const sidebarTimeoutRef = React.useRef(null);
@@ -221,6 +225,10 @@ function TerminalView() {
     setVncHost('');
     setVncPort('5900');
     setVncPassword('');
+    setSftpHost('');
+    setSftpPort('22');
+    setSftpUsername('');
+    setSftpPassword('');
     setNewTerminalDialogOpen(true);
   };
 
@@ -284,6 +292,15 @@ function TerminalView() {
         });
         setNewTerminalDialogOpen(false);
         return;
+      } else {
+        return;
+      }
+    } else if (newTerminalType === 'sftp') {
+      if (sftpHost) {
+        const filestashPort = 8334;
+        const filestashHost = window.location.hostname;
+        const sftpUrl = `${window.location.protocol}//${filestashHost}:${filestashPort}/login?type=sftp&hostname=${sftpHost}&port=${sftpPort}&username=${encodeURIComponent(sftpUsername)}&password=${encodeURIComponent(sftpPassword)}`;
+        newPanel = { id: uuidv4(), terminalId: null, name: `${sftpUsername}@${sftpHost}`, type: 'sftp', sftpUrl };
       } else {
         return;
       }
@@ -923,6 +940,14 @@ function TerminalView() {
             >
               VNC
             </Button>
+            <Button
+              variant={newTerminalType === 'sftp' ? 'contained' : 'outlined'}
+              size="small"
+              onClick={() => setNewTerminalType('sftp')}
+              sx={{ flex: 1 }}
+            >
+              SFTP
+            </Button>
           </Box>
 
           {newTerminalType === 'ssh' && (
@@ -1170,6 +1195,54 @@ function TerminalView() {
               )}
             </Box>
           )}
+          {newTerminalType === 'sftp' && (
+            <Box sx={{ mt: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  margin="dense"
+                  label="Host"
+                  variant="outlined"
+                  size="small"
+                  value={sftpHost}
+                  onChange={(e) => setSftpHost(e.target.value)}
+                  sx={{ flex: 3 }}
+                  placeholder="192.168.1.100"
+                />
+                <TextField
+                  margin="dense"
+                  label="Port"
+                  variant="outlined"
+                  size="small"
+                  value={sftpPort}
+                  onChange={(e) => setSftpPort(e.target.value)}
+                  sx={{ flex: 1 }}
+                />
+              </Box>
+              <TextField
+                margin="dense"
+                label="Username"
+                fullWidth
+                variant="outlined"
+                size="small"
+                value={sftpUsername}
+                onChange={(e) => setSftpUsername(e.target.value)}
+                placeholder="root"
+              />
+              <TextField
+                margin="dense"
+                label="Password"
+                type="password"
+                fullWidth
+                variant="outlined"
+                size="small"
+                value={sftpPassword}
+                onChange={(e) => setSftpPassword(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') handleCreateTerminal();
+                }}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNewTerminalDialogOpen(false)}>Cancel</Button>
@@ -1179,7 +1252,8 @@ function TerminalView() {
             disabled={
               (newTerminalType === 'ssh' && !selectedSshConnection && !sshHost) ||
               (newTerminalType === 'rdp' && !selectedRdpConnection && !rdpHost) ||
-              (newTerminalType === 'vnc' && !selectedVncConnection && !vncHost)
+              (newTerminalType === 'vnc' && !selectedVncConnection && !vncHost) ||
+              (newTerminalType === 'sftp' && !sftpHost)
             }
           >
             {newTerminalType === 'local' ? 'Create' : 'Connect'}
