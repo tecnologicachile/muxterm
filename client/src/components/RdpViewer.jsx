@@ -347,9 +347,8 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       };
 
       // State changes
-      const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
       client.onstatechange = (state) => {
-        console.log('[REMOTE] State:', stateNames[state] || state);
+
         if (state === 3) { // CONNECTED
           setConnected(true);
           setError(null);
@@ -630,7 +629,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             onChange={(e) => setClipboardText(e.target.value)}
             onPaste={(e) => {
               const text = e.clipboardData?.getData('text/plain');
-              console.log('[CLIPBOARD] Paste event, text:', text?.substring(0, 50), 'client:', !!clientRef.current);
+
               if (text && clientRef.current) {
                 setClipboardText(text);
                 try {
@@ -671,7 +670,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
             <button
               onClick={() => {
-                console.log('[CLIPBOARD] Send button, text:', clipboardText?.substring(0, 50), 'client:', !!clientRef.current);
+
                 if (clipboardText && clientRef.current) {
                   try {
                     const stream = clientRef.current.createClipboardStream('text/plain');
