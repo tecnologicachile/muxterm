@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const GuacamoleLite = require('guacamole-lite');
 const logger = require('./utils/logger');
 
@@ -13,8 +15,28 @@ class GuacamoleManager {
   init() {
     try {
       this.guacPort = 4823;
+
+      // Load SSL certs if available (same certs as main server)
+      const certsDir = path.join(__dirname, '..', 'certs');
+      let wsOptions = { port: this.guacPort };
+      if (fs.existsSync(certsDir)) {
+        const files = fs.readdirSync(certsDir);
+        const certFile = files.find(f => f.endsWith('.pem') && !f.includes('-key') && !f.includes('rootCA'));
+        const keyFile = files.find(f => f.endsWith('-key.pem'));
+        if (certFile && keyFile) {
+          const https = require('https');
+          const sslServer = https.createServer({
+            cert: fs.readFileSync(path.join(certsDir, certFile)),
+            key: fs.readFileSync(path.join(certsDir, keyFile))
+          });
+          sslServer.listen(this.guacPort);
+          wsOptions = { server: sslServer };
+          console.log('[GUAC] WSS enabled on port', this.guacPort);
+        }
+      }
+
       this.guacServer = new GuacamoleLite(
-        { port: this.guacPort },
+        wsOptions,
         { host: '127.0.0.1', port: 4822 },
         {
           crypt: {
@@ -69,7 +91,7 @@ class GuacamoleManager {
           security: 'any',
           'ignore-cert': true,
           'resize-method': 'display-update',
-          'server-layout': 'failsafe'
+          'server-layout': 'en-us-qwerty'
         }
       }
     };

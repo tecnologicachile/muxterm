@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const session = require('express-session');
@@ -19,7 +20,30 @@ const httpProxy = require('http-proxy');
 const guacamoleManager = require('./guacamole-manager');
 
 const app = express();
-const server = http.createServer(app);
+
+// Try HTTPS first, fallback to HTTP
+let server;
+try {
+  const certsDir = path.join(__dirname, '..', 'certs');
+  if (fs.existsSync(certsDir)) {
+    const files = fs.readdirSync(certsDir);
+    const certFile = files.find(f => f.endsWith('.pem') && !f.includes('-key'));
+    const keyFile = files.find(f => f.endsWith('-key.pem'));
+    if (certFile && keyFile) {
+      server = https.createServer({
+        cert: fs.readFileSync(path.join(certsDir, certFile)),
+        key: fs.readFileSync(path.join(certsDir, keyFile))
+      }, app);
+      console.log('[HTTPS] Enabled with certificate:', certFile);
+    }
+  }
+} catch (e) {
+  console.log('[HTTPS] Failed to load certs:', e.message);
+}
+if (!server) {
+  server = http.createServer(app);
+  console.log('[HTTP] Running without SSL');
+}
 
 // Socket.io uses /socket.io/ path, ttyd uses /ttyd/ path - no conflict
 const io = socketIo(server, {
@@ -54,6 +78,16 @@ app.use(session({
 }));
 
 app.use('/api/auth', authRoutes);
+
+// Serve CA certificate for easy installation on other devices
+app.get('/ca.pem', (req, res) => {
+  const caPath = path.join(__dirname, '..', 'certs', 'rootCA.pem');
+  if (fs.existsSync(caPath)) {
+    res.download(caPath, 'muxterm-ca.pem');
+  } else {
+    res.status(404).send('CA certificate not available');
+  }
+});
 
 // Simple auth middleware for update endpoint
 const authenticateToken = (req, res, next) => {

@@ -69,3 +69,4 @@ webssh/
 final-panel-test.js
 fix-login.sh
 hide-tmux-bar.sh
+certs/

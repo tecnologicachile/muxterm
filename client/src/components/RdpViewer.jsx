@@ -12,16 +12,21 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
   const { socket } = useSocket();
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
+  const [clipboardOpen, setClipboardOpen] = useState(false);
+  const [clipboardText, setClipboardText] = useState('');
+  const clipboardOpenRef = useRef(false);
   const [currentMode, setCurrentMode] = useState(displayMode);
   const tokenRequestedRef = useRef(false);
   const isActiveRef = useRef(isActive);
   const mobileInputRef = useRef(null);
+  const keyboardSinkRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const pinchRef = useRef({ startDist: 0, startZoom: 1, isPinching: false });
   const baseScaleRef = useRef(1);
 
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
+  useEffect(() => { clipboardOpenRef.current = clipboardOpen; }, [clipboardOpen]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
   // Pinch-to-zoom and pan gesture handler
@@ -136,6 +141,13 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       canvasContainerRef.current.innerHTML = '';
       canvasContainerRef.current.appendChild(displayElement);
 
+      // Click on canvas focuses keyboard sink
+      displayElement.addEventListener('mousedown', () => {
+        if (keyboardSinkRef.current && !clipboardOpenRef.current) {
+          keyboardSinkRef.current.focus();
+        }
+      });
+
       // Mouse input - adjust coordinates for display scale (use copy to avoid mutation)
       const mouse = new Guacamole.Mouse(displayElement);
       mouseRef.current = mouse;
@@ -249,20 +261,41 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         }
       }, { passive: true });
 
-      // Keyboard input - use document, only send when panel is active
-      const keyboard = new Guacamole.Keyboard(document);
-      keyboardRef.current = keyboard;
-      keyboard.onkeydown = (keysym) => {
-        if (!isActiveRef.current) return false;
-        client.sendKeyEvent(1, keysym);
-        return true;
-      };
-      keyboard.onkeyup = (keysym) => {
-        if (!isActiveRef.current) return;
-        client.sendKeyEvent(0, keysym);
+      // Keyboard input - use a dedicated sink div (not document)
+      // This prevents conflicts with clipboard textarea
+      if (keyboardSinkRef.current) {
+        keyboardSinkRef.current.tabIndex = 0;
+        keyboardSinkRef.current.style.outline = 'none';
+        keyboardSinkRef.current.focus();
+        const keyboard = new Guacamole.Keyboard(keyboardSinkRef.current);
+        keyboardRef.current = keyboard;
+        keyboard.onkeydown = (keysym) => {
+          if (!isActiveRef.current) return false;
+          client.sendKeyEvent(1, keysym);
+          return true;
+        };
+        keyboard.onkeyup = (keysym) => {
+          if (!isActiveRef.current) return;
+          client.sendKeyEvent(0, keysym);
+        };
+      }
+
+
+      // Clipboard: remote → local
+      client.onclipboard = (stream, mimetype) => {
+        if (mimetype === 'text/plain') {
+          let clipData = '';
+          const reader = new Guacamole.StringReader(stream);
+          reader.ontext = (text) => { clipData += text; };
+          reader.onend = () => {
+            if (clipData && navigator.clipboard) {
+              navigator.clipboard.writeText(clipData).catch(() => {});
+            }
+          };
+        }
       };
 
-      // Clipboard: requires HTTPS - pending implementation with SSL
+
 
       // State changes
       const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
@@ -406,6 +439,8 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         position: 'relative'
       }}
     >
+      {/* Keyboard sink - receives keyboard focus for RDP input */}
+      <div ref={keyboardSinkRef} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} />
       {/* Canvas container - React does NOT manage children of this div */}
       <textarea
         ref={mobileInputRef}
@@ -433,10 +468,10 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
           justifyContent: zoom > 1 ? 'flex-start' : 'center'
         }}
       />
-      {/* Zoom reset button - only visible when zoomed */}
+      {/* Zoom reset button */}
       {zoom > 1 && (
         <div
-          onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }}
+          onClick={() => setZoom(1)}
           style={{
             position: 'absolute',
             bottom: 8,
@@ -453,6 +488,114 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
           }}
         >
           {Math.round(zoom * 100)}% ✕
+        </div>
+      )}
+      {/* Clipboard button */}
+      {connected && (
+        <div
+          onClick={() => { if (!clipboardOpen) setClipboardText(''); setClipboardOpen(!clipboardOpen); }}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            backgroundColor: clipboardOpen ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 0, 0, 0.6)',
+            color: '#ccc',
+            border: '1px solid #444',
+            borderRadius: '4px',
+            padding: '4px 8px',
+            fontSize: '12px',
+            cursor: 'pointer',
+            zIndex: 10,
+            userSelect: 'none'
+          }}
+        >
+          📋
+        </div>
+      )}
+      {/* Clipboard textarea */}
+      {clipboardOpen && (
+        <div style={{
+          position: 'absolute',
+          top: 36,
+          right: 8,
+          width: '250px',
+          backgroundColor: 'rgba(20, 20, 20, 0.95)',
+          border: '1px solid #444',
+          borderRadius: '6px',
+          padding: '8px',
+          zIndex: 20
+        }}>
+          <textarea
+            value={clipboardText}
+            onChange={(e) => setClipboardText(e.target.value)}
+            onPaste={(e) => {
+              const text = e.clipboardData?.getData('text/plain');
+              console.log('[CLIPBOARD] Paste event, text:', text?.substring(0, 50), 'client:', !!clientRef.current);
+              if (text && clientRef.current) {
+                setClipboardText(text);
+                try {
+                  const stream = clientRef.current.createClipboardStream('text/plain');
+                  const writer = new Guacamole.StringWriter(stream);
+                  writer.sendText(text);
+                  writer.sendEnd();
+                  console.log('[CLIPBOARD] Sent to remote OK');
+                } catch (err) {
+                  console.log('[CLIPBOARD] Error sending to remote:', err.message);
+                }
+                setTimeout(() => setClipboardOpen(false), 500);
+              }
+              e.preventDefault();
+            }}
+            placeholder="Paste here (Ctrl+V) to send to remote"
+            style={{
+              width: '100%',
+              height: '60px',
+              backgroundColor: '#111',
+              color: '#ccc',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              padding: '6px',
+              fontSize: '12px',
+              resize: 'none',
+              fontFamily: 'inherit',
+              boxSizing: 'border-box'
+            }}
+          />
+          <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+            <button
+              onClick={() => {
+                console.log('[CLIPBOARD] Send button, text:', clipboardText?.substring(0, 50), 'client:', !!clientRef.current);
+                if (clipboardText && clientRef.current) {
+                  try {
+                    const stream = clientRef.current.createClipboardStream('text/plain');
+                    const writer = new Guacamole.StringWriter(stream);
+                    writer.sendText(clipboardText);
+                    writer.sendEnd();
+                    console.log('[CLIPBOARD] Sent via button OK');
+                  } catch (err) {
+                    console.log('[CLIPBOARD] Error sending via button:', err.message);
+                  }
+                  setClipboardOpen(false);
+                  if (keyboardSinkRef.current) keyboardSinkRef.current.focus();
+                }
+              }}
+              style={{
+                flex: 1, padding: '4px', backgroundColor: '#00aa00', color: '#fff',
+                border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '11px'
+              }}
+            >
+              Send to Remote
+            </button>
+            <button
+              onClick={() => { setClipboardOpen(false); if (keyboardSinkRef.current) keyboardSinkRef.current.focus(); }}
+              style={{
+                padding: '4px 8px', backgroundColor: '#333', color: '#ccc',
+                border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '11px'
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
       {!connected && !error && (
