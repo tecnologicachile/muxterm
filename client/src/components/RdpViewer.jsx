@@ -525,8 +525,7 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
           zIndex: 20
         }}>
           <div style={{ color: '#aaa', fontSize: '11px', marginBottom: '6px', lineHeight: '1.4' }}>
-            <b style={{ color: '#ccc' }}>Step 1:</b> Paste your text below (Ctrl+V)<br/>
-            <b style={{ color: '#ccc' }}>Step 2:</b> Click "Send" — then Ctrl+V inside Windows
+            Paste your text below, then click <b style={{ color: '#00aa00' }}>Send</b>
           </div>
           <textarea
             value={clipboardText}
@@ -541,11 +540,18 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
                   const writer = new Guacamole.StringWriter(stream);
                   writer.sendText(text);
                   writer.sendEnd();
-                  console.log('[CLIPBOARD] Sent to remote OK');
-                } catch (err) {
-                  console.log('[CLIPBOARD] Error sending to remote:', err.message);
-                }
-                setTimeout(() => setClipboardOpen(false), 500);
+                  // Auto Ctrl+V in remote
+                  setTimeout(() => {
+                    clientRef.current.sendKeyEvent(1, 0xFFE3);
+                    clientRef.current.sendKeyEvent(1, 0x76);
+                    clientRef.current.sendKeyEvent(0, 0x76);
+                    clientRef.current.sendKeyEvent(0, 0xFFE3);
+                  }, 200);
+                } catch (err) {}
+                setTimeout(() => {
+                  setClipboardOpen(false);
+                  if (keyboardSinkRef.current) keyboardSinkRef.current.focus();
+                }, 500);
               }
               e.preventDefault();
             }}
@@ -574,10 +580,14 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
                     const writer = new Guacamole.StringWriter(stream);
                     writer.sendText(clipboardText);
                     writer.sendEnd();
-                    console.log('[CLIPBOARD] Sent via button OK');
-                  } catch (err) {
-                    console.log('[CLIPBOARD] Error sending via button:', err.message);
-                  }
+                    // Auto Ctrl+V in remote after clipboard synced
+                    setTimeout(() => {
+                      clientRef.current.sendKeyEvent(1, 0xFFE3); // Ctrl down
+                      clientRef.current.sendKeyEvent(1, 0x76);   // v down
+                      clientRef.current.sendKeyEvent(0, 0x76);   // v up
+                      clientRef.current.sendKeyEvent(0, 0xFFE3); // Ctrl up
+                    }, 200);
+                  } catch (err) {}
                   setClipboardOpen(false);
                   if (keyboardSinkRef.current) keyboardSinkRef.current.focus();
                 }
