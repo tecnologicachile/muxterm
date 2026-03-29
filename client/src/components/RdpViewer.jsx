@@ -480,16 +480,16 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   return (
     <div
       ref={containerRef}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
+      onDragOver={connectionType === 'rdp' ? (e) => { e.preventDefault(); setDragOver(true); } : undefined}
+      onDragLeave={connectionType === 'rdp' ? () => setDragOver(false) : undefined}
+      onDrop={connectionType === 'rdp' ? (e) => {
         e.preventDefault();
         setDragOver(false);
         const files = e.dataTransfer?.files;
         if (files) {
           for (let i = 0; i < files.length; i++) uploadFile(files[i]);
         }
-      }}
+      } : undefined}
       style={{
         width: '100%',
         height: '100%',
@@ -572,8 +572,8 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           📋
         </div>
       )}
-      {/* Upload button */}
-      {connected && (
+      {/* Upload button - RDP only */}
+      {connected && connectionType === 'rdp' && (
         <>
           <div
             onClick={() => fileInputRef.current?.click()}
@@ -709,8 +709,8 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           </div>
         </div>
       )}
-      {/* Drag overlay */}
-      {dragOver && (
+      {/* Drag overlay - RDP only */}
+      {dragOver && connectionType === 'rdp' && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0, 255, 0, 0.1)',
