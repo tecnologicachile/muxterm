@@ -64,6 +64,7 @@ function TerminalView() {
   const [sftpUsername, setSftpUsername] = useState('');
   const [sftpPassword, setSftpPassword] = useState('');
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
+  const [vaultLoading, setVaultLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
   const [vaultLoginOpen, setVaultLoginOpen] = useState(false);
   const [vaultServerUrl, setVaultServerUrl] = useState(() => localStorage.getItem('vault_url') || '');
@@ -72,6 +73,7 @@ function TerminalView() {
   const [vaultMasterPassword, setVaultMasterPassword] = useState('');
   const [credentialSource, setCredentialSource] = useState('manual'); // 'manual' or 'vault'
   const [selectedVaultItem, setSelectedVaultItem] = useState(null);
+  const [vaultSearch, setVaultSearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState('');
   const sidebarTimeoutRef = React.useRef(null);
@@ -216,6 +218,7 @@ function TerminalView() {
   const getToken = () => localStorage.getItem('token') || '';
 
   const vaultLogin = async () => {
+    setVaultLoading(true);
     try {
       const res = await fetch('/api/vault/login', {
         method: 'POST',
@@ -235,6 +238,7 @@ function TerminalView() {
     } catch (e) {
       alert('Vaultwarden error: ' + e.message);
     }
+    setVaultLoading(false);
   };
 
   const loadVaultItems = async (type) => {
@@ -1069,22 +1073,43 @@ function TerminalView() {
                     🔐 Connect to Vaultwarden
                   </Button>
                 ) : (
-                  <TextField
-                    select fullWidth size="small" margin="dense" label="🔐 Vaultwarden"
-                    value={selectedVaultItem?.id || ''}
-                    onChange={(e) => {
-                      const item = vaultItems.find(i => i.id === e.target.value);
-                      if (item) applyVaultItem(item);
-                    }}
-                    SelectProps={{ native: true }}
-                  >
-                    <option value="">-- Select from vault --</option>
-                    {vaultItems.filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh'))).map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} ({item.connections.map(c => `${c.scheme}://${c.host}`).join(', ')})
-                      </option>
-                    ))}
-                  </TextField>
+                  <Box sx={{ mt: 0.5 }}>
+                    <TextField
+                      fullWidth size="small" margin="dense"
+                      label="🔐 Search Vaultwarden"
+                      placeholder="Type to filter..."
+                      value={vaultSearch}
+                      onChange={(e) => setVaultSearch(e.target.value)}
+                    />
+                    <Box sx={{ maxHeight: '150px', overflow: 'auto', border: '1px solid #333', borderRadius: 1, mt: 0.5 }}>
+                      {vaultItems
+                        .filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh')))
+                        .filter(i => !vaultSearch || i.name.toLowerCase().includes(vaultSearch.toLowerCase()) || i.connections.some(c => c.host.includes(vaultSearch)))
+                        .map(item => (
+                          <Box
+                            key={item.id}
+                            onClick={() => { applyVaultItem(item); setVaultSearch(''); }}
+                            sx={{
+                              p: 0.8, cursor: 'pointer', borderBottom: '1px solid #222',
+                              backgroundColor: selectedVaultItem?.id === item.id ? 'rgba(0,255,0,0.1)' : 'transparent',
+                              '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
+                            }}
+                          >
+                            <Box sx={{ fontSize: '12px', color: '#ccc' }}>{item.name}</Box>
+                            <Box sx={{ fontSize: '10px', color: '#666' }}>
+                              {item.connections.map(c => `${c.scheme}://${c.host}${c.port ? ':' + c.port : ''}`).join(', ')}
+                              {item.username && ` • ${item.username}`}
+                            </Box>
+                          </Box>
+                        ))
+                      }
+                      {vaultItems.filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh'))).length === 0 && (
+                        <Box sx={{ p: 1.5, textAlign: 'center', color: '#555', fontSize: '11px' }}>
+                          No {newTerminalType.toUpperCase()} credentials in vault
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
                 )}
 
                 {/* Vaultwarden login form */}
@@ -1095,8 +1120,8 @@ function TerminalView() {
                     <TextField margin="dense" label="Master Password" type="password" fullWidth variant="outlined" size="small" value={vaultMasterPassword} onChange={(e) => setVaultMasterPassword(e.target.value)}
                       onKeyPress={(e) => { if (e.key === 'Enter') vaultLogin(); }}
                     />
-                    <Button fullWidth variant="contained" size="small" onClick={vaultLogin} sx={{ mt: 1 }}>
-                      Unlock Vault
+                    <Button fullWidth variant="contained" size="small" onClick={vaultLogin} disabled={vaultLoading} sx={{ mt: 1 }}>
+                      {vaultLoading ? 'Connecting...' : 'Unlock Vault'}
                     </Button>
                   </Box>
                 )}
