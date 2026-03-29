@@ -296,7 +296,6 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
       };
 
 
-
       // State changes
       const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
       client.onstatechange = (state) => {
@@ -518,13 +517,17 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
           position: 'absolute',
           top: 36,
           right: 8,
-          width: '250px',
+          width: '280px',
           backgroundColor: 'rgba(20, 20, 20, 0.95)',
           border: '1px solid #444',
           borderRadius: '6px',
-          padding: '8px',
+          padding: '10px',
           zIndex: 20
         }}>
+          <div style={{ color: '#aaa', fontSize: '11px', marginBottom: '6px', lineHeight: '1.4' }}>
+            <b style={{ color: '#ccc' }}>Step 1:</b> Paste your text below (Ctrl+V)<br/>
+            <b style={{ color: '#ccc' }}>Step 2:</b> Click "Send" — then Ctrl+V inside Windows
+          </div>
           <textarea
             value={clipboardText}
             onChange={(e) => setClipboardText(e.target.value)}
@@ -546,7 +549,7 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
               }
               e.preventDefault();
             }}
-            placeholder="Paste here (Ctrl+V) to send to remote"
+            placeholder="Ctrl+V here..."
             style={{
               width: '100%',
               height: '60px',
@@ -584,7 +587,7 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
                 border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '11px'
               }}
             >
-              Send to Remote
+              Send
             </button>
             <button
               onClick={() => { setClipboardOpen(false); if (keyboardSinkRef.current) keyboardSinkRef.current.focus(); }}
