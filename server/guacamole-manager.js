@@ -73,8 +73,68 @@ class GuacamoleManager {
       });
 
       logger.info(`Guacamole proxy initialized on port ${this.guacPort}`);
+
+      // Clean up old drive files every hour
+      setInterval(() => this.cleanupDriveFiles(), 60 * 60 * 1000);
     } catch (error) {
       logger.error('Failed to initialize Guacamole proxy:', error);
+    }
+  }
+
+  cleanupDriveFiles() {
+    const driveRoot = '/tmp/guac-drive';
+    if (!fs.existsSync(driveRoot)) return;
+
+    const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100MB per user
+    const now = Date.now();
+
+    try {
+      const userDirs = fs.readdirSync(driveRoot);
+      for (const userDir of userDirs) {
+        const userPath = path.join(driveRoot, userDir);
+        if (!fs.statSync(userPath).isDirectory()) continue;
+
+        let totalSize = 0;
+        const files = [];
+
+        // Collect files with stats
+        const walkDir = (dir) => {
+          for (const name of fs.readdirSync(dir)) {
+            const filePath = path.join(dir, name);
+            const stat = fs.statSync(filePath);
+            if (stat.isDirectory()) {
+              walkDir(filePath);
+            } else {
+              files.push({ path: filePath, mtime: stat.mtimeMs, size: stat.size });
+              totalSize += stat.size;
+            }
+          }
+        };
+        walkDir(userPath);
+
+        // Delete files older than 24h
+        for (const file of files) {
+          if (now - file.mtime > MAX_AGE_MS) {
+            fs.unlinkSync(file.path);
+            totalSize -= file.size;
+          }
+        }
+
+        // If still over 100MB, delete oldest first
+        if (totalSize > MAX_SIZE_BYTES) {
+          const remaining = files
+            .filter(f => fs.existsSync(f.path))
+            .sort((a, b) => a.mtime - b.mtime);
+          for (const file of remaining) {
+            if (totalSize <= MAX_SIZE_BYTES) break;
+            fs.unlinkSync(file.path);
+            totalSize -= file.size;
+          }
+        }
+      }
+    } catch (e) {
+      // Cleanup errors are non-fatal
     }
   }
 
@@ -91,7 +151,11 @@ class GuacamoleManager {
           security: 'any',
           'ignore-cert': true,
           'resize-method': 'display-update',
-          'server-layout': 'en-us-qwerty'
+          'server-layout': 'en-us-qwerty',
+          'enable-drive': true,
+          'drive-path': `/tmp/guac-drive/${rdpConfig._userId || 'shared'}`,
+          'create-drive-path': true,
+          'drive-name': 'MuxTerm'
         }
       }
     };

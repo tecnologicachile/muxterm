@@ -553,6 +553,7 @@ io.on('connection', (socket) => {
         rdpConfig = { host: data.host, port: data.port, username: data.username, password: data.password, domain: data.domain };
       }
 
+      rdpConfig._userId = socket.userId;
       const token = guacamoleManager.createToken(rdpConfig);
       socket.emit('rdp-token-created', {
         token,

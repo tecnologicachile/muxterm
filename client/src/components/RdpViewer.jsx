@@ -15,6 +15,8 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [clipboardText, setClipboardText] = useState('');
   const clipboardOpenRef = useRef(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
   const [currentMode, setCurrentMode] = useState(displayMode);
   const tokenRequestedRef = useRef(false);
   const isActiveRef = useRef(isActive);
@@ -27,6 +29,35 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
 
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { clipboardOpenRef.current = clipboardOpen; }, [clipboardOpen]);
+
+  const uploadFile = (file) => {
+    if (!clientRef.current || !file) return;
+    const stream = clientRef.current.createFileStream(file.type || 'application/octet-stream', file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const buffer = reader.result;
+      const bytes = new Uint8Array(buffer);
+      const CHUNK = 4096;
+      let offset = 0;
+      const sendChunk = () => {
+        if (offset >= bytes.length) {
+          stream.sendEnd();
+          return;
+        }
+        const chunk = bytes.slice(offset, offset + CHUNK);
+        const base64 = btoa(String.fromCharCode(...chunk));
+        stream.sendBlob(base64);
+        offset += CHUNK;
+      };
+      // Attach onack BEFORE first sendChunk to avoid losing acknowledgment
+      stream.onack = (status) => {
+        if (status.code !== 0) return;
+        sendChunk();
+      };
+      sendChunk();
+    };
+    reader.readAsArrayBuffer(file);
+  };
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
   // Pinch-to-zoom and pan gesture handler
@@ -295,6 +326,20 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         }
       };
 
+      // File download from remote
+      client.onfile = (stream, mimetype, filename) => {
+        const reader = new Guacamole.BlobReader(stream, mimetype);
+        reader.onend = () => {
+          const blob = reader.getBlob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+        stream.sendAck('OK', 0x0000);
+      };
 
       // State changes
       const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
@@ -430,12 +475,23 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
   return (
     <div
       ref={containerRef}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const files = e.dataTransfer?.files;
+        if (files) {
+          for (let i = 0; i < files.length; i++) uploadFile(files[i]);
+        }
+      }}
       style={{
         width: '100%',
         height: '100%',
         backgroundColor: '#000',
         overflow: zoom > 1 ? 'auto' : 'hidden',
-        position: 'relative'
+        position: 'relative',
+        border: dragOver ? '2px dashed #00ff00' : 'none'
       }}
     >
       {/* Keyboard sink - receives keyboard focus for RDP input */}
@@ -510,6 +566,43 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
         >
           📋
         </div>
+      )}
+      {/* Upload button */}
+      {connected && (
+        <>
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 40,
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              color: '#ccc',
+              border: '1px solid #444',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              zIndex: 10,
+              userSelect: 'none'
+            }}
+          >
+            📁
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files) {
+                for (let i = 0; i < files.length; i++) uploadFile(files[i]);
+              }
+              e.target.value = '';
+            }}
+          />
+        </>
       )}
       {/* Clipboard textarea */}
       {clipboardOpen && (
@@ -609,6 +702,18 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
               ✕
             </button>
           </div>
+        </div>
+      )}
+      {/* Drag overlay */}
+      {dragOver && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 255, 0, 0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#00ff00', fontSize: '16px', fontWeight: 'bold',
+          pointerEvents: 'none', zIndex: 15
+        }}>
+          Drop files to upload
         </div>
       )}
       {!connected && !error && (
