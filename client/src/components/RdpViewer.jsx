@@ -124,7 +124,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     };
   }, [zoom]);
 
-  // Request RDP token and connect
+  // Request connection token and connect
   useEffect(() => {
     const connId = connectionType === 'vnc' ? vncConnectionId : rdpConnectionId;
     if (!socket || !connId || tokenRequestedRef.current) return;
@@ -349,7 +349,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       // State changes
       const stateNames = { 0: 'IDLE', 1: 'CONNECTING', 2: 'WAITING', 3: 'CONNECTED', 4: 'DISCONNECTING', 5: 'DISCONNECTED' };
       client.onstatechange = (state) => {
-        console.log('[RDP] State:', stateNames[state] || state);
+        console.log('[REMOTE] State:', stateNames[state] || state);
         if (state === 3) { // CONNECTED
           setConnected(true);
           setError(null);
@@ -375,12 +375,12 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       };
 
       client.onerror = (status) => {
-        console.error('[RDP] Client error:', status);
+        console.error('[REMOTE] Client error:', status);
         setError(`Connection error: ${status.message || status.code || 'Unknown error'}`);
       };
 
       tunnel.onerror = (status) => {
-        console.error('[RDP] Tunnel error:', status);
+        console.error('[REMOTE] Tunnel error:', status);
         setError(`Tunnel error: ${status.message || status.code || 'Unknown error'}`);
       };
 
@@ -471,7 +471,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         backgroundColor: '#000', color: '#ff4444', fontSize: '14px',
         flexDirection: 'column', gap: '8px'
       }}>
-        <span>RDP Error</span>
+        <span>{connectionType === 'vnc' ? 'VNC' : 'RDP'} Error</span>
         <span style={{ color: '#888', fontSize: '12px' }}>{error}</span>
       </div>
     );
@@ -499,7 +499,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         border: dragOver ? '2px dashed #00ff00' : 'none'
       }}
     >
-      {/* Keyboard sink - receives keyboard focus for RDP input */}
+      {/* Keyboard sink - receives keyboard focus for remote desktop input */}
       <div ref={keyboardSinkRef} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} />
       {/* Canvas container - React does NOT manage children of this div */}
       <textarea
@@ -727,7 +727,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: '#888', fontSize: '14px', pointerEvents: 'none'
         }}>
-          Connecting to RDP...
+          Connecting to {connectionType === 'vnc' ? 'VNC' : 'RDP'}...
         </div>
       )}
     </div>
