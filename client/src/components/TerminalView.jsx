@@ -77,6 +77,7 @@ function TerminalView() {
   const [vaultOrgs, setVaultOrgs] = useState([]);
   const [vaultCollections, setVaultCollections] = useState([]);
   const [selectedOrg, setSelectedOrg] = useState(() => localStorage.getItem('vault_org') || '');
+  const [vaultTimeout, setVaultTimeout] = useState(() => parseInt(localStorage.getItem('vault_timeout')) || 30);
   const [selectedCollection, setSelectedCollection] = useState(() => localStorage.getItem('vault_collection') || '');
   const [selectedVaultItem, setSelectedVaultItem] = useState(null);
   const [vaultSearch, setVaultSearch] = useState('');
@@ -1314,6 +1315,30 @@ function TerminalView() {
               <Button fullWidth variant="contained" size="small" onClick={vaultLogin} disabled={vaultLoading} sx={{ mt: 1 }}>
                 {vaultLoading ? 'Connecting...' : 'Unlock Vault'}
               </Button>
+            </Box>
+          )}
+
+          {/* Session timeout */}
+          {vaultLoggedIn && (
+            <Box sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="caption" sx={{ color: '#888', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                Session timeout:
+              </Typography>
+              <TextField size="small" type="number" value={vaultTimeout}
+                onChange={(e) => {
+                  const v = Math.max(5, Math.min(480, parseInt(e.target.value) || 30));
+                  setVaultTimeout(v);
+                  localStorage.setItem('vault_timeout', v);
+                  fetch('/api/vault/timeout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ minutes: v })
+                  }).catch(() => {});
+                }}
+                inputProps={{ min: 5, max: 480, style: { width: '50px', textAlign: 'center' } }}
+                sx={{ width: '80px' }}
+              />
+              <Typography variant="caption" sx={{ color: '#888', fontSize: '11px' }}>min</Typography>
             </Box>
           )}
 

@@ -217,6 +217,16 @@ router.post('/lock', async (req, res) => {
   }
 });
 
+// Set timeout
+let sessionTimeoutMinutes = 30;
+router.post('/timeout', (req, res) => {
+  const { minutes } = req.body;
+  if (minutes >= 5 && minutes <= 480) {
+    sessionTimeoutMinutes = minutes;
+  }
+  res.json({ status: 'ok', minutes: sessionTimeoutMinutes });
+});
+
 // Check status
 router.get('/status', async (req, res) => {
   const session = bwSessions.get(req.userId);
@@ -227,7 +237,7 @@ router.get('/status', async (req, res) => {
 setInterval(() => {
   const now = Date.now();
   for (const [id, session] of bwSessions) {
-    if (now - session.lastUsed > 30 * 60 * 1000) {
+    if (now - session.lastUsed > sessionTimeoutMinutes * 60 * 1000) {
       runBw(['lock', '--session', session.sessionKey], { userId: id }).catch(() => {});
       bwSessions.delete(id);
     }
