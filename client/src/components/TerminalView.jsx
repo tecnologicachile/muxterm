@@ -63,6 +63,15 @@ function TerminalView() {
   const [sftpPort, setSftpPort] = useState('22');
   const [sftpUsername, setSftpUsername] = useState('');
   const [sftpPassword, setSftpPassword] = useState('');
+  const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
+  const [vaultItems, setVaultItems] = useState([]);
+  const [vaultLoginOpen, setVaultLoginOpen] = useState(false);
+  const [vaultServerUrl, setVaultServerUrl] = useState('');
+  const [vaultClientId, setVaultClientId] = useState('');
+  const [vaultClientSecret, setVaultClientSecret] = useState('');
+  const [vaultMasterPassword, setVaultMasterPassword] = useState('');
+  const [credentialSource, setCredentialSource] = useState('manual'); // 'manual' or 'vault'
+  const [selectedVaultItem, setSelectedVaultItem] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState('');
   const sidebarTimeoutRef = React.useRef(null);
@@ -203,6 +212,66 @@ function TerminalView() {
   }, [isMobile, panels.length, minimizedPanels.length, sidebarOpen]);
 
 
+
+  const getToken = () => localStorage.getItem('token') || '';
+
+  const vaultLogin = async () => {
+    try {
+      const res = await fetch('/api/vault/login', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverUrl: vaultServerUrl, clientId: vaultClientId, clientSecret: vaultClientSecret, masterPassword: vaultMasterPassword })
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setVaultLoggedIn(true);
+        setVaultLoginOpen(false);
+        loadVaultItems();
+      } else {
+        alert('Vaultwarden login failed: ' + data.message);
+      }
+    } catch (e) {
+      alert('Vaultwarden error: ' + e.message);
+    }
+  };
+
+  const loadVaultItems = async (type) => {
+    try {
+      const url = type ? `/api/vault/items?type=${type}` : '/api/vault/items';
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (data.status === 'ok') setVaultItems(data.items);
+    } catch (e) {}
+  };
+
+  const applyVaultItem = (item) => {
+    setSelectedVaultItem(item);
+    const conn = item.connections[0];
+    if (conn.scheme === 'ssh') {
+      setNewTerminalType('ssh');
+      setSshHost(conn.host);
+      setSshPort(String(conn.port || 22));
+      setSshUsername(item.username || '');
+      setSshPassword(item.password || '');
+    } else if (conn.scheme === 'rdp') {
+      setNewTerminalType('rdp');
+      setRdpHost(conn.host);
+      setRdpPort(String(conn.port || 3389));
+      setRdpUsername(item.username || '');
+      setRdpPassword(item.password || '');
+    } else if (conn.scheme === 'vnc') {
+      setNewTerminalType('vnc');
+      setVncHost(conn.host);
+      setVncPort(String(conn.port || 5900));
+      setVncPassword(item.password || '');
+    } else if (conn.scheme === 'sftp') {
+      setNewTerminalType('sftp');
+      setSftpHost(conn.host);
+      setSftpPort(String(conn.port || 22));
+      setSftpUsername(item.username || '');
+      setSftpPassword(item.password || '');
+    }
+  };
 
   const handleNewTerminal = () => {
     if (panels.length >= 8) {
@@ -906,7 +975,58 @@ function TerminalView() {
       >
         <DialogTitle>New Terminal</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', gap: 1, mb: 2, mt: 1 }}>
+          {/* Credential source selector */}
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, mt: 1 }}>
+            <Button size="small" variant={credentialSource === 'manual' ? 'contained' : 'outlined'} onClick={() => setCredentialSource('manual')} sx={{ flex: 1, fontSize: '11px' }} color="inherit">
+              Manual
+            </Button>
+            <Button size="small" variant={credentialSource === 'vault' ? 'contained' : 'outlined'} onClick={() => { setCredentialSource('vault'); if (vaultLoggedIn) loadVaultItems(); }} sx={{ flex: 1, fontSize: '11px' }} color="inherit">
+              🔐 Vaultwarden
+            </Button>
+          </Box>
+
+          {/* Vaultwarden login */}
+          {credentialSource === 'vault' && !vaultLoggedIn && (
+            <Box sx={{ mb: 2, p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
+              <TextField margin="dense" label="Server URL" fullWidth variant="outlined" size="small" value={vaultServerUrl} onChange={(e) => setVaultServerUrl(e.target.value)} placeholder="https://vault.example.com" />
+              <TextField margin="dense" label="Client ID" fullWidth variant="outlined" size="small" value={vaultClientId} onChange={(e) => setVaultClientId(e.target.value)} />
+              <TextField margin="dense" label="Client Secret" type="password" fullWidth variant="outlined" size="small" value={vaultClientSecret} onChange={(e) => setVaultClientSecret(e.target.value)} />
+              <TextField margin="dense" label="Master Password" type="password" fullWidth variant="outlined" size="small" value={vaultMasterPassword} onChange={(e) => setVaultMasterPassword(e.target.value)} />
+              <Button fullWidth variant="contained" size="small" onClick={vaultLogin} sx={{ mt: 1 }}>
+                Unlock Vault
+              </Button>
+            </Box>
+          )}
+
+          {/* Vaultwarden items list */}
+          {credentialSource === 'vault' && vaultLoggedIn && (
+            <Box sx={{ mb: 2, maxHeight: '200px', overflow: 'auto', border: '1px solid #333', borderRadius: 1 }}>
+              {vaultItems.length === 0 && (
+                <Box sx={{ p: 2, textAlign: 'center', color: '#666', fontSize: '12px' }}>
+                  No items with ssh://, rdp://, vnc://, or sftp:// URIs found
+                </Box>
+              )}
+              {vaultItems.map(item => (
+                <Box
+                  key={item.id}
+                  onClick={() => applyVaultItem(item)}
+                  sx={{
+                    p: 1, cursor: 'pointer', borderBottom: '1px solid #222',
+                    backgroundColor: selectedVaultItem?.id === item.id ? 'rgba(0,255,0,0.1)' : 'transparent',
+                    '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
+                  }}
+                >
+                  <Box sx={{ fontSize: '13px', color: '#ccc' }}>{item.name}</Box>
+                  <Box sx={{ fontSize: '11px', color: '#666' }}>
+                    {item.connections.map(c => `${c.scheme}://${c.host}${c.port ? ':' + c.port : ''}`).join(', ')}
+                    {item.username && ` (${item.username})`}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
             <Button
               variant={newTerminalType === 'local' ? 'contained' : 'outlined'}
               size="small"
