@@ -97,6 +97,7 @@ function TerminalView() {
           setVaultLoggedIn(true);
           if (data.collectionId) setSelectedCollection(data.collectionId);
           if (data.organizationId) setSelectedOrg(data.organizationId);
+          loadVaultOrgs();
           loadVaultItems();
         }
       })
@@ -255,9 +256,12 @@ function TerminalView() {
         localStorage.setItem('vault_email', vaultClientId);
         setVaultLoggedIn(true);
         setVaultLoginOpen(false);
-        if (data.collectionId) setSelectedCollection(data.collectionId);
-        if (data.organizationId) setSelectedOrg(data.organizationId);
-        loadVaultItems();
+        if (data.organizations) setVaultOrgs(data.organizations);
+        // Auto-select saved org
+        const savedOrg = localStorage.getItem('vault_org');
+        if (savedOrg) {
+          selectOrganization(savedOrg);
+        }
       } else {
         alert('Bitwarden login failed: ' + data.message);
       }
@@ -265,6 +269,25 @@ function TerminalView() {
       alert('Bitwarden error: ' + e.message);
     }
     setVaultLoading(false);
+  };
+
+  const selectOrganization = async (orgId) => {
+    setSelectedOrg(orgId);
+    localStorage.setItem('vault_org', orgId);
+    setVaultOrgLoading(true);
+    try {
+      const res = await fetch('/api/vault/select-org', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId })
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setSelectedCollection(data.collectionId || '');
+        loadVaultItems();
+      }
+    } catch (e) {}
+    setVaultOrgLoading(false);
   };
 
   const loadVaultOrgs = async () => {
@@ -1259,15 +1282,35 @@ function TerminalView() {
                   Disconnect
                 </Button>
               </Box>
-              {/* Collection info */}
-              {selectedCollection && (
-                <Box sx={{ mt: 1, fontSize: '11px', color: '#888' }}>
-                  📁 Collection: Remote Access
-                </Box>
-              )}
-              {!selectedCollection && selectedOrg && (
-                <Box sx={{ mt: 1, fontSize: '11px', color: '#666' }}>
-                  ⚠️ "Remote Access" collection not found — using all items
+              {/* Organization selector */}
+              {vaultOrgs.length > 0 && (
+                <Box sx={{ mt: 1.5 }}>
+                  <Typography variant="caption" sx={{ color: '#888', fontSize: '10px' }}>Organization</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                    <Button size="small" variant={!selectedOrg ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
+                      onClick={() => selectOrganization('')}>
+                      Personal
+                    </Button>
+                    {vaultOrgs.map(org => (
+                      <Button key={org.id} size="small" variant={selectedOrg === org.id ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
+                        onClick={() => selectOrganization(org.id)}>
+                        {org.name}
+                      </Button>
+                    ))}
+                  </Box>
+                  {vaultOrgLoading && (
+                    <Box sx={{ mt: 0.5, fontSize: '11px', color: '#888' }}>Loading...</Box>
+                  )}
+                  {!vaultOrgLoading && selectedOrg && selectedCollection && (
+                    <Box sx={{ mt: 0.5, fontSize: '11px', color: '#00ff00' }}>
+                      ✓ Collection: Remote Access
+                    </Box>
+                  )}
+                  {!vaultOrgLoading && selectedOrg && !selectedCollection && (
+                    <Box sx={{ mt: 0.5, fontSize: '11px', color: '#ff8800' }}>
+                      ⚠️ "Remote Access" collection not found — using all items
+                    </Box>
+                  )}
                 </Box>
               )}
             </Box>

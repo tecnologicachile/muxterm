@@ -62,35 +62,21 @@ router.post('/login', async (req, res) => {
     const loginOutput = await runBw(['login', email, password, '--raw'], { userId: req.userId });
     const sessionKey = loginOutput;
 
-    // Find or create "Remote Access" collection
-    let collectionId = null;
-    let organizationId = null;
+    // List organizations
+    let organizations = [];
     try {
-      // List organizations
       const orgsOutput = await runBw(['list', 'organizations', '--session', sessionKey], { userId: req.userId });
-      const orgs = JSON.parse(orgsOutput);
-      if (orgs.length > 0) {
-        organizationId = orgs[0].id; // Use first organization
-        // List collections in that org
-        const colsOutput = await runBw(['list', 'org-collections', '--organizationid', organizationId, '--session', sessionKey], { userId: req.userId });
-        const cols = JSON.parse(colsOutput);
-        const remoteAccess = cols.find(c => c.name === 'Remote Access');
-        if (remoteAccess) {
-          collectionId = remoteAccess.id;
-        }
-        // Note: creating collections via bw CLI requires admin permissions
-        // If "Remote Access" doesn't exist, items go to personal vault
-      }
-    } catch (e) { /* ignore - use personal vault */ }
+      organizations = JSON.parse(orgsOutput).map(o => ({ id: o.id, name: o.name }));
+    } catch (e) {}
 
     bwSessions.set(req.userId, {
       sessionKey,
       lastUsed: Date.now(),
-      collectionId,
-      organizationId
+      collectionId: null,
+      organizationId: null
     });
 
-    res.json({ status: 'ok', collectionId, organizationId });
+    res.json({ status: 'ok', organizations });
   } catch (e) {
     res.status(401).json({ status: 'error', message: e.message });
   }
@@ -253,6 +239,33 @@ router.post('/lock', async (req, res) => {
   }
 });
 
+// Select organization (auto-finds "Remote Access" collection)
+router.post('/select-org', async (req, res) => {
+  try {
+    const session = bwSessions.get(req.userId);
+    if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
+
+    const { organizationId } = req.body;
+    session.organizationId = organizationId || null;
+    session.collectionId = null;
+
+    if (organizationId) {
+      try {
+        const colsOutput = await runBw(['list', 'org-collections', '--organizationid', organizationId, '--session', session.sessionKey], { userId: req.userId });
+        const cols = JSON.parse(colsOutput);
+        const remoteAccess = cols.find(c => c.name === 'Remote Access');
+        if (remoteAccess) {
+          session.collectionId = remoteAccess.id;
+        }
+      } catch (e) {}
+    }
+
+    res.json({ status: 'ok', collectionId: session.collectionId, hasRemoteAccess: !!session.collectionId });
+  } catch (e) {
+    res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // Set timeout
 let sessionTimeoutMinutes = 30;
 router.post('/timeout', (req, res) => {
@@ -266,7 +279,7 @@ router.post('/timeout', (req, res) => {
 // Check status
 router.get('/status', async (req, res) => {
   const session = bwSessions.get(req.userId);
-  res.json({ status: 'ok', loggedIn: !!session, collectionId: session?.collectionId || null, organizationId: session?.organizationId || null });
+  res.json({ status: 'ok', loggedIn: !!session, collectionId: session?.collectionId || null, organizationId: session?.organizationId || null, hasRemoteAccess: !!session?.collectionId });
 });
 
 // Cleanup stale sessions (30 min idle)
