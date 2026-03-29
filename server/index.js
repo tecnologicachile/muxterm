@@ -80,7 +80,7 @@ app.use(session({
 app.use('/api/auth', authRoutes);
 
 // Serve CA certificate for easy installation on other devices
-// SFTP file browser - TODO: implement with SVAR React File Manager + ssh2-sftp-client
+// SFTP file browser API (mounted after authenticateToken is defined)
 
 app.get('/ca.pem', (req, res) => {
   const caPath = path.join(__dirname, '..', 'certs', 'rootCA.pem');
@@ -110,6 +110,13 @@ const authenticateToken = (req, res, next) => {
     res.status(401).json({ error: 'Invalid token' });
   }
 };
+
+// SFTP file browser API
+const sftpApi = require('./sftp-api');
+app.use('/api/sftp', authenticateToken, (req, res, next) => {
+  req.userId = req.user.id;
+  next();
+}, sftpApi);
 
 // Update check endpoint
 app.get('/api/update-check', async (req, res) => {

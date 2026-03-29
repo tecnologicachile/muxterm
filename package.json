@@ -31,8 +31,10 @@
     "guacamole-lite": "1.2.0",
     "http-proxy": "1.18.1",
     "jsonwebtoken": "^9.0.0",
+    "multer": "2.1.1",
     "node-pty": "^1.0.0",
     "socket.io": "^4.6.1",
+    "ssh2-sftp-client": "12.1.1",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
