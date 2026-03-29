@@ -62,12 +62,35 @@ router.post('/login', async (req, res) => {
     const loginOutput = await runBw(['login', email, password, '--raw'], { userId: req.userId });
     const sessionKey = loginOutput;
 
+    // Find or create "Remote Access" collection
+    let collectionId = null;
+    let organizationId = null;
+    try {
+      // List organizations
+      const orgsOutput = await runBw(['list', 'organizations', '--session', sessionKey], { userId: req.userId });
+      const orgs = JSON.parse(orgsOutput);
+      if (orgs.length > 0) {
+        organizationId = orgs[0].id; // Use first organization
+        // List collections in that org
+        const colsOutput = await runBw(['list', 'org-collections', '--organizationid', organizationId, '--session', sessionKey], { userId: req.userId });
+        const cols = JSON.parse(colsOutput);
+        const remoteAccess = cols.find(c => c.name === 'Remote Access');
+        if (remoteAccess) {
+          collectionId = remoteAccess.id;
+        }
+        // Note: creating collections via bw CLI requires admin permissions
+        // If "Remote Access" doesn't exist, items go to personal vault
+      }
+    } catch (e) { /* ignore - use personal vault */ }
+
     bwSessions.set(req.userId, {
       sessionKey,
-      lastUsed: Date.now()
+      lastUsed: Date.now(),
+      collectionId,
+      organizationId
     });
 
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', collectionId, organizationId });
   } catch (e) {
     res.status(401).json({ status: 'error', message: e.message });
   }
@@ -108,14 +131,14 @@ router.get('/items', async (req, res) => {
     if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in to Vaultwarden' });
 
     session.lastUsed = Date.now();
-    const { type, collectionId } = req.query;
+    const { type } = req.query;
 
     // Sync first
     try { await runBw(['sync', '--session', session.sessionKey], { userId: req.userId }); } catch (e) { /* ignore */ }
 
-    // List items (optionally filtered by collection)
+    // List items (auto-filter by "Remote Access" collection if found)
     const args = ['list', 'items', '--session', session.sessionKey];
-    if (collectionId) { args.push('--collectionid', collectionId); }
+    if (session.collectionId) { args.push('--collectionid', session.collectionId); }
     const output = await runBw(args, { userId: req.userId });
     const items = JSON.parse(output);
 
@@ -188,7 +211,7 @@ router.post('/create', async (req, res) => {
     const session = bwSessions.get(req.userId);
     if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
 
-    const { name, type, host, port, username, password, organizationId, collectionId } = req.body;
+    const { name, type, host, port, username, password } = req.body;
     const uri = `${type}://${host}${port ? ':' + port : ''}`;
 
     const item = {
@@ -201,13 +224,13 @@ router.post('/create', async (req, res) => {
       }
     };
 
-    // If organization + collection specified, assign item to them
-    if (organizationId) item.organizationId = organizationId;
-    if (collectionId) item.collectionIds = [collectionId];
+    // Auto-assign to "Remote Access" collection if available
+    if (session.organizationId) item.organizationId = session.organizationId;
+    if (session.collectionId) item.collectionIds = [session.collectionId];
 
     const encoded = Buffer.from(JSON.stringify(item)).toString('base64');
     const args = ['create', 'item', encoded, '--session', session.sessionKey];
-    if (organizationId) { args.push('--organizationid', organizationId); }
+    if (session.organizationId) { args.push('--organizationid', session.organizationId); }
     await runBw(args, { userId: req.userId });
 
     res.json({ status: 'ok' });
@@ -243,7 +266,7 @@ router.post('/timeout', (req, res) => {
 // Check status
 router.get('/status', async (req, res) => {
   const session = bwSessions.get(req.userId);
-  res.json({ status: 'ok', loggedIn: !!session });
+  res.json({ status: 'ok', loggedIn: !!session, collectionId: session?.collectionId || null, organizationId: session?.organizationId || null });
 });
 
 // Cleanup stale sessions (30 min idle)

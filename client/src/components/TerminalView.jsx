@@ -95,7 +95,8 @@ function TerminalView() {
       .then(data => {
         if (data.loggedIn) {
           setVaultLoggedIn(true);
-          loadVaultOrgs();
+          if (data.collectionId) setSelectedCollection(data.collectionId);
+          if (data.organizationId) setSelectedOrg(data.organizationId);
           loadVaultItems();
         }
       })
@@ -254,7 +255,8 @@ function TerminalView() {
         localStorage.setItem('vault_email', vaultClientId);
         setVaultLoggedIn(true);
         setVaultLoginOpen(false);
-        loadVaultOrgs();
+        if (data.collectionId) setSelectedCollection(data.collectionId);
+        if (data.organizationId) setSelectedOrg(data.organizationId);
         loadVaultItems();
       } else {
         alert('Bitwarden login failed: ' + data.message);
@@ -341,7 +343,7 @@ function TerminalView() {
       const res = await fetch('/api/vault/create', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type, host, port, username, password, organizationId: selectedOrg || undefined, collectionId: selectedCollection || undefined })
+        body: JSON.stringify({ name, type, host, port, username, password })
       });
       const data = await res.json();
       if (data.status === 'ok') {
@@ -1257,44 +1259,15 @@ function TerminalView() {
                   Disconnect
                 </Button>
               </Box>
-              {/* Organization + Collection selectors */}
-              {vaultOrgLoading && (
-                <Box sx={{ mt: 1.5, textAlign: 'center', color: '#888', fontSize: '12px' }}>
-                  Loading organizations...
+              {/* Collection info */}
+              {selectedCollection && (
+                <Box sx={{ mt: 1, fontSize: '11px', color: '#888' }}>
+                  📁 Collection: Remote Access
                 </Box>
               )}
-              {!vaultOrgLoading && vaultOrgs.length > 0 && (
-                <Box sx={{ mt: 1.5 }}>
-                  <Typography variant="caption" sx={{ color: '#888', fontSize: '10px' }}>Organization</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                    <Button size="small" variant={!selectedOrg ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
-                      onClick={() => { setSelectedOrg(''); localStorage.setItem('vault_org', ''); setSelectedCollection(''); localStorage.setItem('vault_collection', ''); setVaultCollections([]); loadVaultItems(); }}>
-                      Personal
-                    </Button>
-                    {vaultOrgs.map(org => (
-                      <Button key={org.id} size="small" variant={selectedOrg === org.id ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
-                        onClick={() => { setSelectedOrg(org.id); localStorage.setItem('vault_org', org.id); setSelectedCollection(''); localStorage.setItem('vault_collection', ''); loadVaultCollections(org.id); }}>
-                        {org.name}
-                      </Button>
-                    ))}
-                  </Box>
-                  {vaultCollections.length > 0 && (
-                    <>
-                      <Typography variant="caption" sx={{ color: '#888', fontSize: '10px', mt: 1, display: 'block' }}>Collection</Typography>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                        <Button size="small" variant={!selectedCollection ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
-                          onClick={() => { setSelectedCollection(''); localStorage.setItem('vault_collection', ''); loadVaultItems(); }}>
-                          All
-                        </Button>
-                        {vaultCollections.map(col => (
-                          <Button key={col.id} size="small" variant={selectedCollection === col.id ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
-                            onClick={() => { setSelectedCollection(col.id); localStorage.setItem('vault_collection', col.id); loadVaultItems(); }}>
-                            {col.name}
-                          </Button>
-                        ))}
-                      </Box>
-                    </>
-                  )}
+              {!selectedCollection && selectedOrg && (
+                <Box sx={{ mt: 1, fontSize: '11px', color: '#666' }}>
+                  ⚠️ "Remote Access" collection not found — using all items
                 </Box>
               )}
             </Box>
