@@ -66,8 +66,8 @@ function TerminalView() {
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
   const [vaultLoginOpen, setVaultLoginOpen] = useState(false);
-  const [vaultServerUrl, setVaultServerUrl] = useState('');
-  const [vaultClientId, setVaultClientId] = useState('');
+  const [vaultServerUrl, setVaultServerUrl] = useState(() => localStorage.getItem('vault_url') || '');
+  const [vaultClientId, setVaultClientId] = useState(() => localStorage.getItem('vault_email') || '');
   const [vaultClientSecret, setVaultClientSecret] = useState('');
   const [vaultMasterPassword, setVaultMasterPassword] = useState('');
   const [credentialSource, setCredentialSource] = useState('manual'); // 'manual' or 'vault'
@@ -220,10 +220,12 @@ function TerminalView() {
       const res = await fetch('/api/vault/login', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverUrl: vaultServerUrl, clientId: vaultClientId, clientSecret: vaultClientSecret, masterPassword: vaultMasterPassword })
+        body: JSON.stringify({ serverUrl: vaultServerUrl, email: vaultClientId, password: vaultMasterPassword })
       });
       const data = await res.json();
       if (data.status === 'ok') {
+        localStorage.setItem('vault_url', vaultServerUrl);
+        localStorage.setItem('vault_email', vaultClientId);
         setVaultLoggedIn(true);
         setVaultLoginOpen(false);
         loadVaultItems();
@@ -966,362 +968,139 @@ function TerminalView() {
         </DialogActions>
       </Dialog>
 
-      {/* New Terminal Dialog */}
+      {/* New Connection Dialog */}
       <Dialog
         open={newTerminalDialogOpen}
         onClose={() => setNewTerminalDialogOpen(false)}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>New Terminal</DialogTitle>
+        <DialogTitle>New Connection</DialogTitle>
         <DialogContent>
-          {/* Credential source selector */}
-          <Box sx={{ display: 'flex', gap: 1, mb: 1, mt: 1 }}>
-            <Button size="small" variant={credentialSource === 'manual' ? 'contained' : 'outlined'} onClick={() => setCredentialSource('manual')} sx={{ flex: 1, fontSize: '11px' }} color="inherit">
-              Manual
-            </Button>
-            <Button size="small" variant={credentialSource === 'vault' ? 'contained' : 'outlined'} onClick={() => { setCredentialSource('vault'); if (vaultLoggedIn) loadVaultItems(); }} sx={{ flex: 1, fontSize: '11px' }} color="inherit">
-              🔐 Vaultwarden
-            </Button>
-          </Box>
+          {/* Type selector */}
+          <TextField
+            select
+            fullWidth
+            size="small"
+            margin="dense"
+            label="Type"
+            value={newTerminalType}
+            onChange={(e) => setNewTerminalType(e.target.value)}
+            SelectProps={{ native: true }}
+          >
+            <option value="local">Local Terminal</option>
+            <option value="ssh">SSH Terminal</option>
+            <option value="rdp">RDP Desktop</option>
+            <option value="vnc">VNC Desktop</option>
+            <option value="sftp">SFTP Files</option>
+          </TextField>
 
-          {/* Vaultwarden login */}
-          {credentialSource === 'vault' && !vaultLoggedIn && (
-            <Box sx={{ mb: 2, p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
-              <TextField margin="dense" label="Server URL" fullWidth variant="outlined" size="small" value={vaultServerUrl} onChange={(e) => setVaultServerUrl(e.target.value)} placeholder="https://vault.example.com" />
-              <TextField margin="dense" label="Client ID" fullWidth variant="outlined" size="small" value={vaultClientId} onChange={(e) => setVaultClientId(e.target.value)} />
-              <TextField margin="dense" label="Client Secret" type="password" fullWidth variant="outlined" size="small" value={vaultClientSecret} onChange={(e) => setVaultClientSecret(e.target.value)} />
-              <TextField margin="dense" label="Master Password" type="password" fullWidth variant="outlined" size="small" value={vaultMasterPassword} onChange={(e) => setVaultMasterPassword(e.target.value)} />
-              <Button fullWidth variant="contained" size="small" onClick={vaultLogin} sx={{ mt: 1 }}>
-                Unlock Vault
-              </Button>
-            </Box>
-          )}
-
-          {/* Vaultwarden items list */}
-          {credentialSource === 'vault' && vaultLoggedIn && (
-            <Box sx={{ mb: 2, maxHeight: '200px', overflow: 'auto', border: '1px solid #333', borderRadius: 1 }}>
-              {vaultItems.length === 0 && (
-                <Box sx={{ p: 2, textAlign: 'center', color: '#666', fontSize: '12px' }}>
-                  No items with ssh://, rdp://, vnc://, or sftp:// URIs found
-                </Box>
-              )}
-              {vaultItems.map(item => (
-                <Box
-                  key={item.id}
-                  onClick={() => applyVaultItem(item)}
-                  sx={{
-                    p: 1, cursor: 'pointer', borderBottom: '1px solid #222',
-                    backgroundColor: selectedVaultItem?.id === item.id ? 'rgba(0,255,0,0.1)' : 'transparent',
-                    '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
-                  }}
-                >
-                  <Box sx={{ fontSize: '13px', color: '#ccc' }}>{item.name}</Box>
-                  <Box sx={{ fontSize: '11px', color: '#666' }}>
-                    {item.connections.map(c => `${c.scheme}://${c.host}${c.port ? ':' + c.port : ''}`).join(', ')}
-                    {item.username && ` (${item.username})`}
-                  </Box>
-                </Box>
-              ))}
-            </Box>
-          )}
-
-          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-            <Button
-              variant={newTerminalType === 'local' ? 'contained' : 'outlined'}
-              size="small"
-              onClick={() => setNewTerminalType('local')}
-              sx={{ flex: 1 }}
-            >
-              Local Terminal
-            </Button>
-            <Button
-              variant={newTerminalType === 'ssh' ? 'contained' : 'outlined'}
-              size="small"
-              onClick={() => setNewTerminalType('ssh')}
-              sx={{ flex: 1 }}
-            >
-              SSH
-            </Button>
-            <Button
-              variant={newTerminalType === 'rdp' ? 'contained' : 'outlined'}
-              size="small"
-              onClick={() => setNewTerminalType('rdp')}
-              sx={{ flex: 1 }}
-            >
-              RDP
-            </Button>
-            <Button
-              variant={newTerminalType === 'vnc' ? 'contained' : 'outlined'}
-              size="small"
-              onClick={() => setNewTerminalType('vnc')}
-              sx={{ flex: 1 }}
-            >
-              VNC
-            </Button>
-            <Button
-              variant={newTerminalType === 'sftp' ? 'contained' : 'outlined'}
-              size="small"
-              onClick={() => setNewTerminalType('sftp')}
-              sx={{ flex: 1 }}
-            >
-              SFTP
-            </Button>
-          </Box>
-
-          {newTerminalType === 'ssh' && (
+          {/* Connection fields (hidden for local) */}
+          {newTerminalType !== 'local' && (
             <Box sx={{ mt: 1 }}>
-              {sshConnections.length > 0 && (
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
-                  margin="dense"
-                  label="Saved Connection"
-                  value={selectedSshConnection}
-                  onChange={(e) => {
-                    setSelectedSshConnection(e.target.value);
-                    if (e.target.value) {
-                      const conn = sshConnections.find(c => c.id === parseInt(e.target.value));
-                      if (conn) {
-                        setSshHost(conn.host);
-                        setSshPort(conn.port.toString());
-                        setSshUsername(conn.username);
-                      }
-                    }
-                  }}
-                  SelectProps={{ native: true }}
-                >
-                  <option value="">-- New Connection --</option>
-                  {sshConnections.map(conn => (
-                    <option key={conn.id} value={conn.id}>
-                      {conn.name} ({conn.username}@{conn.host})
-                    </option>
-                  ))}
-                </TextField>
-              )}
-
-              {!selectedSshConnection && (
-                <>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField
-                      margin="dense"
-                      label="Host"
-                      variant="outlined"
-                      size="small"
-                      value={sshHost}
-                      onChange={(e) => setSshHost(e.target.value)}
-                      sx={{ flex: 3 }}
-                      placeholder="192.168.1.100"
-                    />
-                    <TextField
-                      margin="dense"
-                      label="Port"
-                      variant="outlined"
-                      size="small"
-                      value={sshPort}
-                      onChange={(e) => setSshPort(e.target.value)}
-                      sx={{ flex: 1 }}
-                    />
-                  </Box>
-                  <TextField
-                    margin="dense"
-                    label="Username"
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    value={sshUsername}
-                    onChange={(e) => setSshUsername(e.target.value)}
-                    placeholder="root"
-                  />
-                  <TextField
-                    margin="dense"
-                    label="Password"
-                    type="password"
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    value={sshPassword}
-                    onChange={(e) => setSshPassword(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') handleCreateTerminal();
-                    }}
-                  />
-                </>
-              )}
-            </Box>
-          )}
-
-          {newTerminalType === 'rdp' && (
-            <Box sx={{ mt: 1 }}>
-              {rdpConnections.length > 0 && (
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
-                  margin="dense"
-                  label="Saved Connection"
-                  value={selectedRdpConnection}
-                  onChange={(e) => {
-                    setSelectedRdpConnection(e.target.value);
-                    if (e.target.value) {
-                      const conn = rdpConnections.find(c => c.id === parseInt(e.target.value));
-                      if (conn) {
-                        setRdpHost(conn.host);
-                        setRdpPort(conn.port.toString());
-                        setRdpUsername(conn.username);
-                      }
-                    }
-                  }}
-                  SelectProps={{ native: true }}
-                >
-                  <option value="">-- New Connection --</option>
-                  {rdpConnections.map(conn => (
-                    <option key={conn.id} value={conn.id}>
-                      {conn.name} ({conn.username}@{conn.host})
-                    </option>
-                  ))}
-                </TextField>
-              )}
-
-              {!selectedRdpConnection && (
-                <>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField
-                      margin="dense"
-                      label="Host"
-                      variant="outlined"
-                      size="small"
-                      value={rdpHost}
-                      onChange={(e) => setRdpHost(e.target.value)}
-                      sx={{ flex: 3 }}
-                      placeholder="10.0.0.12"
-                    />
-                    <TextField
-                      margin="dense"
-                      label="Port"
-                      variant="outlined"
-                      size="small"
-                      value={rdpPort}
-                      onChange={(e) => setRdpPort(e.target.value)}
-                      sx={{ flex: 1 }}
-                    />
-                  </Box>
-                  <TextField
-                    margin="dense"
-                    label="Username"
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    value={rdpUsername}
-                    onChange={(e) => setRdpUsername(e.target.value)}
-                    placeholder="Administrator"
-                  />
-                  <TextField
-                    margin="dense"
-                    label="Password"
-                    type="password"
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    value={rdpPassword}
-                    onChange={(e) => setRdpPassword(e.target.value)}
-                  />
-                  <TextField
-                    margin="dense"
-                    label="Domain (optional)"
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    value={rdpDomain}
-                    onChange={(e) => setRdpDomain(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') handleCreateTerminal();
-                    }}
-                  />
-                </>
-              )}
-            </Box>
-          )}
-          {newTerminalType === 'vnc' && (
-            <Box sx={{ mt: 1 }}>
-              {vncConnections.length > 0 && (
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
-                  margin="dense"
-                  label="Saved Connection"
-                  value={selectedVncConnection}
-                  onChange={(e) => {
-                    setSelectedVncConnection(e.target.value);
-                    if (e.target.value) {
-                      const conn = vncConnections.find(c => c.id === parseInt(e.target.value));
-                      if (conn) {
-                        setVncHost(conn.host);
-                        setVncPort(conn.port.toString());
-                      }
-                    }
-                  }}
-                  SelectProps={{ native: true }}
-                >
-                  <option value="">-- New Connection --</option>
-                  {vncConnections.map(conn => (
-                    <option key={conn.id} value={conn.id}>
-                      {conn.name} ({conn.host}:{conn.port})
-                    </option>
-                  ))}
-                </TextField>
-              )}
-
-              {!selectedVncConnection && (
-                <>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField
-                      margin="dense"
-                      label="Host"
-                      variant="outlined"
-                      size="small"
-                      value={vncHost}
-                      onChange={(e) => setVncHost(e.target.value)}
-                      sx={{ flex: 3 }}
-                      placeholder="192.168.1.100"
-                    />
-                    <TextField
-                      margin="dense"
-                      label="Port"
-                      variant="outlined"
-                      size="small"
-                      value={vncPort}
-                      onChange={(e) => setVncPort(e.target.value)}
-                      sx={{ flex: 1 }}
-                    />
-                  </Box>
-                  <TextField
-                    margin="dense"
-                    label="Password (optional)"
-                    type="password"
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    value={vncPassword}
-                    onChange={(e) => setVncPassword(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') handleCreateTerminal();
-                    }}
-                  />
-                </>
-              )}
-            </Box>
-          )}
-          {newTerminalType === 'sftp' && (
-            <Box sx={{ mt: 1 }}>
+              {/* Host + Port */}
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField margin="dense" label="Host" variant="outlined" size="small" value={sftpHost} onChange={(e) => setSftpHost(e.target.value)} sx={{ flex: 3 }} placeholder="192.168.1.100" />
-                <TextField margin="dense" label="Port" variant="outlined" size="small" value={sftpPort} onChange={(e) => setSftpPort(e.target.value)} sx={{ flex: 1 }} />
+                <TextField margin="dense" label="Host" variant="outlined" size="small"
+                  value={newTerminalType === 'rdp' ? rdpHost : newTerminalType === 'vnc' ? vncHost : newTerminalType === 'sftp' ? sftpHost : sshHost}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (newTerminalType === 'rdp') setRdpHost(v);
+                    else if (newTerminalType === 'vnc') setVncHost(v);
+                    else if (newTerminalType === 'sftp') setSftpHost(v);
+                    else setSshHost(v);
+                  }}
+                  sx={{ flex: 3 }} placeholder="192.168.1.100"
+                />
+                <TextField margin="dense" label="Port" variant="outlined" size="small"
+                  value={newTerminalType === 'rdp' ? rdpPort : newTerminalType === 'vnc' ? vncPort : newTerminalType === 'sftp' ? sftpPort : sshPort}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (newTerminalType === 'rdp') setRdpPort(v);
+                    else if (newTerminalType === 'vnc') setVncPort(v);
+                    else if (newTerminalType === 'sftp') setSftpPort(v);
+                    else setSshPort(v);
+                  }}
+                  sx={{ flex: 1 }}
+                />
               </Box>
-              <TextField margin="dense" label="Username" fullWidth variant="outlined" size="small" value={sftpUsername} onChange={(e) => setSftpUsername(e.target.value)} placeholder="root" />
-              <TextField margin="dense" label="Password" type="password" fullWidth variant="outlined" size="small" value={sftpPassword} onChange={(e) => setSftpPassword(e.target.value)} onKeyPress={(e) => { if (e.key === 'Enter') handleCreateTerminal(); }} />
+
+              {/* Username (not for VNC) */}
+              {newTerminalType !== 'vnc' && (
+                <TextField margin="dense" label="Username" fullWidth variant="outlined" size="small"
+                  value={newTerminalType === 'rdp' ? rdpUsername : newTerminalType === 'sftp' ? sftpUsername : sshUsername}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (newTerminalType === 'rdp') setRdpUsername(v);
+                    else if (newTerminalType === 'sftp') setSftpUsername(v);
+                    else setSshUsername(v);
+                  }}
+                  placeholder="root"
+                />
+              )}
+
+              {/* Password */}
+              <TextField margin="dense" label="Password" type="password" fullWidth variant="outlined" size="small"
+                value={newTerminalType === 'rdp' ? rdpPassword : newTerminalType === 'vnc' ? vncPassword : newTerminalType === 'sftp' ? sftpPassword : sshPassword}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (newTerminalType === 'rdp') setRdpPassword(v);
+                  else if (newTerminalType === 'vnc') setVncPassword(v);
+                  else if (newTerminalType === 'sftp') setSftpPassword(v);
+                  else setSshPassword(v);
+                }}
+                onKeyPress={(e) => { if (e.key === 'Enter') handleCreateTerminal(); }}
+              />
+
+              {/* Domain (RDP only) */}
+              {newTerminalType === 'rdp' && (
+                <TextField margin="dense" label="Domain (optional)" fullWidth variant="outlined" size="small"
+                  value={rdpDomain} onChange={(e) => setRdpDomain(e.target.value)}
+                />
+              )}
+
+              {/* Vaultwarden section */}
+              <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333' }}>
+                <Typography variant="caption" sx={{ color: '#666', fontSize: '11px' }}>
+                  Or use saved credentials
+                </Typography>
+
+                {!vaultLoggedIn ? (
+                  <Button size="small" fullWidth variant="outlined" onClick={() => setVaultLoginOpen(!vaultLoginOpen)} sx={{ mt: 0.5, fontSize: '11px', textTransform: 'none' }}>
+                    🔐 Connect to Vaultwarden
+                  </Button>
+                ) : (
+                  <TextField
+                    select fullWidth size="small" margin="dense" label="🔐 Vaultwarden"
+                    value={selectedVaultItem?.id || ''}
+                    onChange={(e) => {
+                      const item = vaultItems.find(i => i.id === e.target.value);
+                      if (item) applyVaultItem(item);
+                    }}
+                    SelectProps={{ native: true }}
+                  >
+                    <option value="">-- Select from vault --</option>
+                    {vaultItems.filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh'))).map(item => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.connections.map(c => `${c.scheme}://${c.host}`).join(', ')})
+                      </option>
+                    ))}
+                  </TextField>
+                )}
+
+                {/* Vaultwarden login form */}
+                {vaultLoginOpen && !vaultLoggedIn && (
+                  <Box sx={{ mt: 1, p: 1, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
+                    <TextField margin="dense" label="Server URL" fullWidth variant="outlined" size="small" value={vaultServerUrl} onChange={(e) => setVaultServerUrl(e.target.value)} placeholder="https://vault.example.com" />
+                    <TextField margin="dense" label="Email" fullWidth variant="outlined" size="small" value={vaultClientId} onChange={(e) => setVaultClientId(e.target.value)} placeholder="user@example.com" />
+                    <TextField margin="dense" label="Master Password" type="password" fullWidth variant="outlined" size="small" value={vaultMasterPassword} onChange={(e) => setVaultMasterPassword(e.target.value)}
+                      onKeyPress={(e) => { if (e.key === 'Enter') vaultLogin(); }}
+                    />
+                    <Button fullWidth variant="contained" size="small" onClick={vaultLogin} sx={{ mt: 1 }}>
+                      Unlock Vault
+                    </Button>
+                  </Box>
+                )}
+              </Box>
             </Box>
           )}
         </DialogContent>
@@ -1330,12 +1109,12 @@ function TerminalView() {
           <Button
             onClick={handleCreateTerminal}
             variant="contained"
-            disabled={
-              (newTerminalType === 'ssh' && !selectedSshConnection && !sshHost) ||
-              (newTerminalType === 'rdp' && !selectedRdpConnection && !rdpHost) ||
-              (newTerminalType === 'vnc' && !selectedVncConnection && !vncHost) ||
-              (newTerminalType === 'sftp' && !sftpHost)
-            }
+            disabled={newTerminalType !== 'local' && !(
+              (newTerminalType === 'ssh' && (selectedSshConnection || sshHost)) ||
+              (newTerminalType === 'rdp' && (selectedRdpConnection || rdpHost)) ||
+              (newTerminalType === 'vnc' && (selectedVncConnection || vncHost)) ||
+              (newTerminalType === 'sftp' && sftpHost)
+            )}
           >
             {newTerminalType === 'local' ? 'Create' : 'Connect'}
           </Button>

@@ -9,9 +9,9 @@ const VAULT_URL = process.env.VAULTWARDEN_URL || '';
 
 function runBw(args, options = {}) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default') };
+    const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default'), NODE_TLS_REJECT_UNAUTHORIZED: '0' };
     execFile('bw', args, { env, timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr || err.message));
+      if (err) reject(new Error(stdout.trim() || stderr.trim() || err.message));
       else resolve(stdout.trim());
     });
   });
@@ -33,24 +33,21 @@ router.post('/config', async (req, res) => {
 // Login with API Key
 router.post('/login', async (req, res) => {
   try {
-    const { clientId, clientSecret, masterPassword, serverUrl } = req.body;
+    const { email, password, serverUrl } = req.body;
 
-    // Configure server if provided
+    // Clean slate: remove old bw data and logout
+    const fs = require('fs');
+    const bwDir = '/tmp/bw-' + req.userId;
+    try { fs.rmSync(bwDir, { recursive: true, force: true }); } catch (e) {}
+    try { await runBw(['logout'], { userId: req.userId }); } catch (e) { /* ignore */ }
+
     if (serverUrl) {
       await runBw(['config', 'server', serverUrl], { userId: req.userId });
     }
 
-    // Logout first (in case already logged in)
-    try { await runBw(['logout'], { userId: req.userId }); } catch (e) { /* ignore */ }
-
-    // Login with API key
-    await runBw(['login', '--apikey'], {
-      userId: req.userId,
-      env: { BW_CLIENTID: clientId, BW_CLIENTSECRET: clientSecret }
-    });
-
-    // Unlock with master password
-    const sessionKey = await runBw(['unlock', '--raw', masterPassword], { userId: req.userId });
+    // Login with email + password
+    const loginOutput = await runBw(['login', email, password, '--raw'], { userId: req.userId });
+    const sessionKey = loginOutput;
 
     bwSessions.set(req.userId, {
       sessionKey,
