@@ -75,6 +75,19 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_rdp_connections_user_id ON rdp_connections(user_id);
+
+  CREATE TABLE IF NOT EXISTS vnc_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL,
+    port INTEGER DEFAULT 5900,
+    password TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_vnc_connections_user_id ON vnc_connections(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_terminals_session_id ON terminals(session_id);
   CREATE INDEX IF NOT EXISTS idx_ssh_connections_user_id ON ssh_connections(user_id);
@@ -159,7 +172,13 @@ const statements = {
   createRdpConnection: db.prepare('INSERT INTO rdp_connections (user_id, name, host, port, username, password, domain) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   findRdpConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, domain, created_at FROM rdp_connections WHERE user_id = ? ORDER BY name'),
   findRdpConnectionById: db.prepare('SELECT * FROM rdp_connections WHERE id = ?'),
-  deleteRdpConnection: db.prepare('DELETE FROM rdp_connections WHERE id = ? AND user_id = ?')
+  deleteRdpConnection: db.prepare('DELETE FROM rdp_connections WHERE id = ? AND user_id = ?'),
+
+  // VNC Connections
+  createVncConnection: db.prepare('INSERT INTO vnc_connections (user_id, name, host, port, password) VALUES (?, ?, ?, ?, ?)'),
+  findVncConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, created_at FROM vnc_connections WHERE user_id = ? ORDER BY name'),
+  findVncConnectionById: db.prepare('SELECT * FROM vnc_connections WHERE id = ?'),
+  deleteVncConnection: db.prepare('DELETE FROM vnc_connections WHERE id = ? AND user_id = ?')
 };
 
 // Helper functions
@@ -321,6 +340,25 @@ const dbHelpers = {
 
   deleteRdpConnection(id, userId) {
     const result = statements.deleteRdpConnection.run(id, userId);
+    return result.changes > 0;
+  },
+
+  // VNC Connections
+  createVncConnection(userId, name, host, port, password) {
+    const result = statements.createVncConnection.run(userId, name, host, port || 5900, password || null);
+    return { id: result.lastInsertRowid, name, host, port: port || 5900 };
+  },
+
+  getVncConnections(userId) {
+    return statements.findVncConnectionsByUserId.all(userId);
+  },
+
+  getVncConnection(id) {
+    return statements.findVncConnectionById.get(id);
+  },
+
+  deleteVncConnection(id, userId) {
+    const result = statements.deleteVncConnection.run(id, userId);
     return result.changes > 0;
   }
 };

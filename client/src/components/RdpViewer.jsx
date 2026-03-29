@@ -3,7 +3,7 @@ import Guacamole from 'guacamole-common-js';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displayMode = 'fit' }) {
+function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', isActive, panelId, onActivityChange, displayMode = 'fit' }) {
   const containerRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const clientRef = useRef(null);
@@ -126,34 +126,39 @@ function RdpViewer({ rdpConnectionId, isActive, panelId, onActivityChange, displ
 
   // Request RDP token and connect
   useEffect(() => {
-    if (!socket || !rdpConnectionId || tokenRequestedRef.current) return;
+    const connId = connectionType === 'vnc' ? vncConnectionId : rdpConnectionId;
+    if (!socket || !connId || tokenRequestedRef.current) return;
     tokenRequestedRef.current = true;
 
+    const tokenEvent = connectionType === 'vnc' ? 'vnc-token-created' : 'rdp-token-created';
+    const errorEvent = connectionType === 'vnc' ? 'vnc-error' : 'rdp-error';
+    const emitEvent = connectionType === 'vnc' ? 'create-vnc-token' : 'create-rdp-token';
+    const emitData = connectionType === 'vnc' ? { vncConnectionId: connId } : { rdpConnectionId: connId };
+
     const handleToken = (data) => {
-      socket.off('rdp-token-created', handleToken);
+      socket.off(tokenEvent, handleToken);
       connectRdp(data.token);
     };
 
     const handleError = (data) => {
-      socket.off('rdp-error', handleError);
+      socket.off(errorEvent, handleError);
       setError(data.message);
     };
 
-    socket.on('rdp-token-created', handleToken);
-    socket.on('rdp-error', handleError);
-    socket.emit('create-rdp-token', { rdpConnectionId });
+    socket.on(tokenEvent, handleToken);
+    socket.on(errorEvent, handleError);
+    socket.emit(emitEvent, emitData);
 
     return () => {
-      socket.off('rdp-token-created', handleToken);
-      socket.off('rdp-error', handleError);
-      // Disconnect on cleanup to prevent orphaned connections
+      socket.off(tokenEvent, handleToken);
+      socket.off(errorEvent, handleError);
       if (clientRef.current) {
         try { clientRef.current.disconnect(); } catch (e) {}
         clientRef.current = null;
       }
       tokenRequestedRef.current = false;
     };
-  }, [socket, rdpConnectionId]);
+  }, [socket, rdpConnectionId, vncConnectionId, connectionType]);
 
   const connectRdp = (token) => {
     if (!canvasContainerRef.current) return;

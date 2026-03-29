@@ -565,6 +565,54 @@ io.on('connection', (socket) => {
     }
   });
 
+  // VNC Connection management
+  socket.on('get-vnc-connections', () => {
+    socket.emit('vnc-connections', database.getVncConnections(socket.userId));
+  });
+
+  socket.on('create-vnc-connection', (data) => {
+    try {
+      const conn = database.createVncConnection(
+        socket.userId, data.name, data.host, data.port, data.password
+      );
+      socket.emit('vnc-connection-created', conn);
+      socket.emit('vnc-connections', database.getVncConnections(socket.userId));
+    } catch (error) {
+      socket.emit('vnc-error', { message: 'Failed to create VNC connection', error: error.message });
+    }
+  });
+
+  socket.on('delete-vnc-connection', (data) => {
+    const deleted = database.deleteVncConnection(data.id, socket.userId);
+    if (deleted) {
+      socket.emit('vnc-connections', database.getVncConnections(socket.userId));
+    }
+  });
+
+  socket.on('create-vnc-token', (data) => {
+    try {
+      let vncConfig;
+      if (data.vncConnectionId) {
+        const conn = database.getVncConnection(data.vncConnectionId);
+        if (!conn || conn.user_id !== socket.userId) {
+          socket.emit('vnc-error', { message: 'VNC connection not found' });
+          return;
+        }
+        vncConfig = conn;
+      } else {
+        vncConfig = { host: data.host, port: data.port, password: data.password };
+      }
+
+      vncConfig._type = 'vnc';
+      vncConfig._userId = socket.userId;
+      const token = guacamoleManager.createToken(vncConfig);
+      socket.emit('vnc-token-created', { token });
+    } catch (error) {
+      logger.error('Failed to create VNC token:', error);
+      socket.emit('vnc-error', { message: 'Failed to create VNC token', error: error.message });
+    }
+  });
+
   socket.on('restore-terminal', async (data) => {
     try {
       const sessionId = data.sessionId || `ws_${socket.userId}`;

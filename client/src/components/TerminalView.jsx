@@ -54,6 +54,11 @@ function TerminalView() {
   const [rdpUsername, setRdpUsername] = useState('');
   const [rdpPassword, setRdpPassword] = useState('');
   const [rdpDomain, setRdpDomain] = useState('');
+  const [vncConnections, setVncConnections] = useState([]);
+  const [selectedVncConnection, setSelectedVncConnection] = useState('');
+  const [vncHost, setVncHost] = useState('');
+  const [vncPort, setVncPort] = useState('5900');
+  const [vncPassword, setVncPassword] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState('');
   const sidebarTimeoutRef = React.useRef(null);
@@ -64,13 +69,17 @@ function TerminalView() {
     if (!socket) return;
     const handleSshConnections = (conns) => setSshConnections(conns);
     const handleRdpConnections = (conns) => setRdpConnections(conns);
+    const handleVncConnections = (conns) => setVncConnections(conns);
     socket.on('ssh-connections', handleSshConnections);
     socket.on('rdp-connections', handleRdpConnections);
+    socket.on('vnc-connections', handleVncConnections);
     socket.emit('get-ssh-connections');
     socket.emit('get-rdp-connections');
+    socket.emit('get-vnc-connections');
     return () => {
       socket.off('ssh-connections', handleSshConnections);
       socket.off('rdp-connections', handleRdpConnections);
+      socket.off('vnc-connections', handleVncConnections);
     };
   }, [socket]);
 
@@ -208,6 +217,10 @@ function TerminalView() {
     setRdpUsername('');
     setRdpPassword('');
     setRdpDomain('');
+    setSelectedVncConnection('');
+    setVncHost('');
+    setVncPort('5900');
+    setVncPassword('');
     setNewTerminalDialogOpen(true);
   };
 
@@ -246,6 +259,25 @@ function TerminalView() {
         });
         socket.once('rdp-connection-created', (conn) => {
           const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'rdp', rdpConnectionId: conn.id, displayMode: 'fit' };
+          setTerminalCounter(prev => prev + 1);
+          setPanels(prev => [...prev, p]);
+          setActivePanel(p.id);
+        });
+        setNewTerminalDialogOpen(false);
+        return;
+      } else {
+        return;
+      }
+    } else if (newTerminalType === 'vnc') {
+      if (selectedVncConnection) {
+        const conn = vncConnections.find(c => c.id === parseInt(selectedVncConnection));
+        newPanel = { id: uuidv4(), terminalId: null, name: conn?.name || termName, type: 'vnc', vncConnectionId: parseInt(selectedVncConnection) };
+      } else if (vncHost) {
+        socket.emit('create-vnc-connection', {
+          name: `VNC ${vncHost}`, host: vncHost, port: parseInt(vncPort) || 5900, password: vncPassword
+        });
+        socket.once('vnc-connection-created', (conn) => {
+          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'vnc', vncConnectionId: conn.id };
           setTerminalCounter(prev => prev + 1);
           setPanels(prev => [...prev, p]);
           setActivePanel(p.id);
@@ -883,6 +915,14 @@ function TerminalView() {
             >
               RDP
             </Button>
+            <Button
+              variant={newTerminalType === 'vnc' ? 'contained' : 'outlined'}
+              size="small"
+              onClick={() => setNewTerminalType('vnc')}
+              sx={{ flex: 1 }}
+            >
+              VNC
+            </Button>
           </Box>
 
           {newTerminalType === 'ssh' && (
@@ -1059,6 +1099,77 @@ function TerminalView() {
               )}
             </Box>
           )}
+          {newTerminalType === 'vnc' && (
+            <Box sx={{ mt: 1 }}>
+              {vncConnections.length > 0 && (
+                <TextField
+                  select
+                  fullWidth
+                  size="small"
+                  margin="dense"
+                  label="Saved Connection"
+                  value={selectedVncConnection}
+                  onChange={(e) => {
+                    setSelectedVncConnection(e.target.value);
+                    if (e.target.value) {
+                      const conn = vncConnections.find(c => c.id === parseInt(e.target.value));
+                      if (conn) {
+                        setVncHost(conn.host);
+                        setVncPort(conn.port.toString());
+                      }
+                    }
+                  }}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="">-- New Connection --</option>
+                  {vncConnections.map(conn => (
+                    <option key={conn.id} value={conn.id}>
+                      {conn.name} ({conn.host}:{conn.port})
+                    </option>
+                  ))}
+                </TextField>
+              )}
+
+              {!selectedVncConnection && (
+                <>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField
+                      margin="dense"
+                      label="Host"
+                      variant="outlined"
+                      size="small"
+                      value={vncHost}
+                      onChange={(e) => setVncHost(e.target.value)}
+                      sx={{ flex: 3 }}
+                      placeholder="192.168.1.100"
+                    />
+                    <TextField
+                      margin="dense"
+                      label="Port"
+                      variant="outlined"
+                      size="small"
+                      value={vncPort}
+                      onChange={(e) => setVncPort(e.target.value)}
+                      sx={{ flex: 1 }}
+                    />
+                  </Box>
+                  <TextField
+                    margin="dense"
+                    label="Password (optional)"
+                    type="password"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={vncPassword}
+                    onChange={(e) => setVncPassword(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') handleCreateTerminal();
+                    }}
+                  />
+                </>
+              )}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNewTerminalDialogOpen(false)}>Cancel</Button>
@@ -1067,7 +1178,8 @@ function TerminalView() {
             variant="contained"
             disabled={
               (newTerminalType === 'ssh' && !selectedSshConnection && !sshHost) ||
-              (newTerminalType === 'rdp' && !selectedRdpConnection && !rdpHost)
+              (newTerminalType === 'rdp' && !selectedRdpConnection && !rdpHost) ||
+              (newTerminalType === 'vnc' && !selectedVncConnection && !vncHost)
             }
           >
             {newTerminalType === 'local' ? 'Create' : 'Connect'}

@@ -213,10 +213,12 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           </Box>
         </Box>
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-          {panel.type === 'rdp' ? (
+          {(panel.type === 'rdp' || panel.type === 'vnc') ? (
             <RdpViewer
-              key={`rdp-${panel.id}`}
+              key={`remote-${panel.id}`}
+              connectionType={panel.type}
               rdpConnectionId={panel.rdpConnectionId}
+              vncConnectionId={panel.vncConnectionId}
               isActive={isActive}
               panelId={panel.id}
               onActivityChange={handleActivityChange}

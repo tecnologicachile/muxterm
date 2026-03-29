@@ -138,35 +138,53 @@ class GuacamoleManager {
     }
   }
 
-  createToken(rdpConfig) {
-    const tokenObject = {
-      connection: {
-        type: 'rdp',
-        settings: {
-          hostname: rdpConfig.host,
-          port: rdpConfig.port || 3389,
-          username: rdpConfig.username,
-          password: rdpConfig.password || '',
-          domain: rdpConfig.domain || '',
-          security: 'any',
-          'ignore-cert': true,
-          'resize-method': 'display-update',
-          'server-layout': 'en-us-qwerty',
-          'enable-drive': true,
-          'drive-path': `/tmp/guac-drive/${rdpConfig._userId || 'shared'}`,
-          'create-drive-path': true,
-          'drive-name': 'MuxTerm'
-        }
-      }
-    };
-
-    console.log('[GUAC] Creating token for:', rdpConfig.host, ':', rdpConfig.port, 'user:', rdpConfig.username);
+  _encryptToken(tokenObject) {
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(CIPHER, Buffer.from(SECRET_KEY), iv);
     let encrypted = cipher.update(JSON.stringify(tokenObject), 'utf8', 'base64');
     encrypted += cipher.final('base64');
     const data = { iv: iv.toString('base64'), value: encrypted };
     return Buffer.from(JSON.stringify(data)).toString('base64');
+  }
+
+  createToken(config) {
+    const type = config._type || 'rdp';
+    console.log(`[GUAC] Creating ${type} token for:`, config.host, ':', config.port, 'user:', config.username);
+
+    if (type === 'vnc') {
+      return this._encryptToken({
+        connection: {
+          type: 'vnc',
+          settings: {
+            hostname: config.host,
+            port: config.port || 5900,
+            password: config.password || ''
+          }
+        }
+      });
+    }
+
+    // RDP
+    return this._encryptToken({
+      connection: {
+        type: 'rdp',
+        settings: {
+          hostname: config.host,
+          port: config.port || 3389,
+          username: config.username,
+          password: config.password || '',
+          domain: config.domain || '',
+          security: 'any',
+          'ignore-cert': true,
+          'resize-method': 'display-update',
+          'server-layout': 'en-us-qwerty',
+          'enable-drive': true,
+          'drive-path': `/tmp/guac-drive/${config._userId || 'shared'}`,
+          'create-drive-path': true,
+          'drive-name': 'MuxTerm'
+        }
+      }
+    });
   }
 }
 
