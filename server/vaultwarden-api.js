@@ -253,7 +253,17 @@ router.post('/select-org', async (req, res) => {
       try {
         const colsOutput = await runBw(['list', 'org-collections', '--organizationid', organizationId, '--session', session.sessionKey], { userId: req.userId });
         const cols = JSON.parse(colsOutput);
-        const remoteAccess = cols.find(c => c.name === 'Remote Access');
+        let remoteAccess = cols.find(c => c.name === 'Remote Access');
+        if (!remoteAccess) {
+          // Create "Remote Access" collection
+          try {
+            const newCol = JSON.stringify({ organizationId, name: 'Remote Access' });
+            const encoded = Buffer.from(newCol).toString('base64');
+            const createOutput = await runBw(['create', 'org-collection', encoded, '--organizationid', organizationId, '--session', session.sessionKey], { userId: req.userId });
+            const created = JSON.parse(createOutput);
+            remoteAccess = { id: created.id, name: created.name };
+          } catch (e) { /* may not have permission to create collections */ }
+        }
         if (remoteAccess) {
           session.collectionId = remoteAccess.id;
         }
