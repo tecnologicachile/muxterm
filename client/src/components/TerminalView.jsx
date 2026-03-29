@@ -66,6 +66,7 @@ function TerminalView() {
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [vaultOrgLoading, setVaultOrgLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
   const [vaultLoginOpen, setVaultLoginOpen] = useState(false);
   const [vaultServerUrl, setVaultServerUrl] = useState(() => localStorage.getItem('vault_url') || '');
@@ -264,23 +265,26 @@ function TerminalView() {
   };
 
   const loadVaultOrgs = async () => {
+    setVaultOrgLoading(true);
     try {
       const res = await fetch('/api/vault/organizations', { headers: { 'Authorization': `Bearer ${getToken()}` } });
       const data = await res.json();
       if (data.status === 'ok') {
         setVaultOrgs(data.items);
-        // Load collections for selected org
-        if (selectedOrg) loadVaultCollections(selectedOrg);
+        if (selectedOrg) await loadVaultCollections(selectedOrg);
       }
     } catch (e) {}
+    setVaultOrgLoading(false);
   };
 
   const loadVaultCollections = async (orgId) => {
+    setVaultOrgLoading(true);
     try {
       const res = await fetch(`/api/vault/collections?organizationId=${orgId}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
       const data = await res.json();
       if (data.status === 'ok') setVaultCollections(data.items);
     } catch (e) {}
+    setVaultOrgLoading(false);
   };
 
   const loadVaultItems = async (type) => {
@@ -1253,7 +1257,12 @@ function TerminalView() {
                 </Button>
               </Box>
               {/* Organization + Collection selectors */}
-              {vaultOrgs.length > 0 && (
+              {vaultOrgLoading && (
+                <Box sx={{ mt: 1.5, textAlign: 'center', color: '#888', fontSize: '12px' }}>
+                  Loading organizations...
+                </Box>
+              )}
+              {!vaultOrgLoading && vaultOrgs.length > 0 && (
                 <Box sx={{ mt: 1.5 }}>
                   <Typography variant="caption" sx={{ color: '#888', fontSize: '10px' }}>Organization</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
