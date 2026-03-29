@@ -296,12 +296,8 @@ function TerminalView() {
         return;
       }
     } else if (newTerminalType === 'sftp') {
-      if (sftpHost) {
-        const sftpUrl = `/sftp/login?type=sftp&hostname=${sftpHost}&port=${sftpPort}&username=${encodeURIComponent(sftpUsername)}&password=${encodeURIComponent(sftpPassword)}`;
-        newPanel = { id: uuidv4(), terminalId: null, name: `${sftpUsername}@${sftpHost}`, type: 'sftp', sftpUrl };
-      } else {
-        return;
-      }
+      // Open Filestash login page in iframe - user authenticates there
+      newPanel = { id: uuidv4(), terminalId: null, name: 'SFTP Files', type: 'sftp', sftpUrl: '/sftp/login' };
     } else {
       newPanel = { id: uuidv4(), terminalId: null, name: termName, type: 'local' };
     }
@@ -1194,51 +1190,8 @@ function TerminalView() {
             </Box>
           )}
           {newTerminalType === 'sftp' && (
-            <Box sx={{ mt: 1 }}>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField
-                  margin="dense"
-                  label="Host"
-                  variant="outlined"
-                  size="small"
-                  value={sftpHost}
-                  onChange={(e) => setSftpHost(e.target.value)}
-                  sx={{ flex: 3 }}
-                  placeholder="192.168.1.100"
-                />
-                <TextField
-                  margin="dense"
-                  label="Port"
-                  variant="outlined"
-                  size="small"
-                  value={sftpPort}
-                  onChange={(e) => setSftpPort(e.target.value)}
-                  sx={{ flex: 1 }}
-                />
-              </Box>
-              <TextField
-                margin="dense"
-                label="Username"
-                fullWidth
-                variant="outlined"
-                size="small"
-                value={sftpUsername}
-                onChange={(e) => setSftpUsername(e.target.value)}
-                placeholder="root"
-              />
-              <TextField
-                margin="dense"
-                label="Password"
-                type="password"
-                fullWidth
-                variant="outlined"
-                size="small"
-                value={sftpPassword}
-                onChange={(e) => setSftpPassword(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') handleCreateTerminal();
-                }}
-              />
+            <Box sx={{ mt: 1, color: '#888', fontSize: '13px' }}>
+              Opens a file browser panel. You will enter SFTP credentials there.
             </Box>
           )}
         </DialogContent>
@@ -1250,8 +1203,7 @@ function TerminalView() {
             disabled={
               (newTerminalType === 'ssh' && !selectedSshConnection && !sshHost) ||
               (newTerminalType === 'rdp' && !selectedRdpConnection && !rdpHost) ||
-              (newTerminalType === 'vnc' && !selectedVncConnection && !vncHost) ||
-              (newTerminalType === 'sftp' && !sftpHost)
+              (newTerminalType === 'vnc' && !selectedVncConnection && !vncHost)
             }
           >
             {newTerminalType === 'local' ? 'Create' : 'Connect'}

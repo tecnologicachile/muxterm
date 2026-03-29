@@ -214,13 +214,18 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Box>
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
           {panel.type === 'sftp' ? (
-            <iframe
+            <div
               key={`sftp-${panel.id}`}
-              src={panel.sftpUrl}
-              style={{ width: '100%', height: '100%', border: 'none', backgroundColor: '#1a1a2e' }}
-              allow="clipboard-read; clipboard-write"
-              title={`SFTP ${panel.name}`}
-            />
+              style={{
+                width: '100%', height: '100%', backgroundColor: '#111',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#888', fontSize: '14px', flexDirection: 'column', gap: '8px'
+              }}
+            >
+              <span style={{ fontSize: '32px' }}>📁</span>
+              <span>SFTP File Browser</span>
+              <span style={{ fontSize: '11px', color: '#555' }}>Coming soon</span>
+            </div>
           ) : (panel.type === 'rdp' || panel.type === 'vnc') ? (
             <RdpViewer
               key={`remote-${panel.id}`}

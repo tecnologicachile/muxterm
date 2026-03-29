@@ -80,10 +80,7 @@ app.use(session({
 app.use('/api/auth', authRoutes);
 
 // Serve CA certificate for easy installation on other devices
-// Proxy Filestash (SFTP file browser) through same origin to avoid mixed content
-const filestashProxy = httpProxy.createProxyServer({ target: 'http://127.0.0.1:8334', ws: true });
-filestashProxy.on('error', (err, req, res) => { res.status(502).send('SFTP service unavailable'); });
-app.use('/sftp', (req, res) => { filestashProxy.web(req, res); });
+// SFTP file browser - TODO: implement with SVAR React File Manager + ssh2-sftp-client
 
 app.get('/ca.pem', (req, res) => {
   const caPath = path.join(__dirname, '..', 'certs', 'rootCA.pem');
