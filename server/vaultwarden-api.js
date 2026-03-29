@@ -139,6 +139,35 @@ router.get('/item/:id', async (req, res) => {
   }
 });
 
+// Create item in vault
+router.post('/create', async (req, res) => {
+  try {
+    const session = bwSessions.get(req.userId);
+    if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
+
+    const { name, type, host, port, username, password } = req.body;
+    const uri = `${type}://${host}${port ? ':' + port : ''}`;
+
+    const item = JSON.stringify({
+      type: 1, // Login
+      name: name,
+      login: {
+        username: username || null,
+        password: password || null,
+        uris: [{ uri: uri, match: null }]
+      }
+    });
+
+    // bw create item expects base64 encoded JSON
+    const encoded = Buffer.from(item).toString('base64');
+    await runBw(['create', 'item', encoded, '--session', session.sessionKey], { userId: req.userId });
+
+    res.json({ status: 'ok' });
+  } catch (e) {
+    res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // Lock vault
 router.post('/lock', async (req, res) => {
   try {

@@ -65,6 +65,7 @@ function TerminalView() {
   const [sftpPassword, setSftpPassword] = useState('');
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
   const [vaultLoginOpen, setVaultLoginOpen] = useState(false);
   const [vaultServerUrl, setVaultServerUrl] = useState(() => localStorage.getItem('vault_url') || '');
@@ -276,6 +277,34 @@ function TerminalView() {
       setSftpPort(String(conn.port || 22));
       setSftpUsername(item.username || '');
       setSftpPassword(item.password || '');
+    }
+  };
+
+  const saveToVault = async () => {
+    if (!vaultLoggedIn) { alert('Connect to Vaultwarden first'); return; }
+    const type = newTerminalType;
+    const host = type === 'rdp' ? rdpHost : type === 'vnc' ? vncHost : type === 'sftp' ? sftpHost : sshHost;
+    const port = type === 'rdp' ? rdpPort : type === 'vnc' ? vncPort : type === 'sftp' ? sftpPort : sshPort;
+    const username = type === 'rdp' ? rdpUsername : type === 'sftp' ? sftpUsername : sshUsername;
+    const password = type === 'rdp' ? rdpPassword : type === 'vnc' ? vncPassword : type === 'sftp' ? sftpPassword : sshPassword;
+    if (!host) { alert('Fill in at least the host'); return; }
+    const name = prompt('Name for this credential:', `${username || ''}@${host}`);
+    if (!name) return;
+    try {
+      const res = await fetch('/api/vault/create', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, type, host, port, username, password })
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert('Saved to Vaultwarden!');
+        loadVaultItems(newTerminalType);
+      } else {
+        alert('Failed: ' + data.message);
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
     }
   };
 
@@ -525,6 +554,16 @@ function TerminalView() {
               </IconButton>
             )}
 
+            {/* Vault status + Settings */}
+            <IconButton
+              color="inherit"
+              size="small"
+              onClick={() => setSettingsOpen(true)}
+              sx={{ ml: 1 }}
+              title={vaultLoggedIn ? 'Vault connected' : 'Settings'}
+            >
+              <Typography sx={{ fontSize: '16px' }}>{vaultLoggedIn ? '🔐' : '⚙️'}</Typography>
+            </IconButton>
           </>
         }
       />
@@ -1062,17 +1101,12 @@ function TerminalView() {
                 />
               )}
 
-              {/* Vaultwarden section */}
-              <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333' }}>
-                <Typography variant="caption" sx={{ color: '#666', fontSize: '11px' }}>
-                  Or use saved credentials
-                </Typography>
-
-                {!vaultLoggedIn ? (
-                  <Button size="small" fullWidth variant="outlined" onClick={() => setVaultLoginOpen(!vaultLoginOpen)} sx={{ mt: 0.5, fontSize: '11px', textTransform: 'none' }}>
-                    🔐 Connect to Vaultwarden
-                  </Button>
-                ) : (
+              {/* Vaultwarden credentials */}
+              {vaultLoggedIn && (
+                <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333' }}>
+                  <Typography variant="caption" sx={{ color: '#666', fontSize: '11px' }}>
+                    Or use saved credentials
+                  </Typography>
                   <Box sx={{ mt: 0.5 }}>
                     <TextField
                       fullWidth size="small" margin="dense"
@@ -1110,27 +1144,25 @@ function TerminalView() {
                       )}
                     </Box>
                   </Box>
-                )}
-
-                {/* Vaultwarden login form */}
-                {vaultLoginOpen && !vaultLoggedIn && (
-                  <Box sx={{ mt: 1, p: 1, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
-                    <TextField margin="dense" label="Server URL" fullWidth variant="outlined" size="small" value={vaultServerUrl} onChange={(e) => setVaultServerUrl(e.target.value)} placeholder="https://vault.example.com" />
-                    <TextField margin="dense" label="Email" fullWidth variant="outlined" size="small" value={vaultClientId} onChange={(e) => setVaultClientId(e.target.value)} placeholder="user@example.com" />
-                    <TextField margin="dense" label="Master Password" type="password" fullWidth variant="outlined" size="small" value={vaultMasterPassword} onChange={(e) => setVaultMasterPassword(e.target.value)}
-                      onKeyPress={(e) => { if (e.key === 'Enter') vaultLogin(); }}
-                    />
-                    <Button fullWidth variant="contained" size="small" onClick={vaultLogin} disabled={vaultLoading} sx={{ mt: 1 }}>
-                      {vaultLoading ? 'Connecting...' : 'Unlock Vault'}
-                    </Button>
-                  </Box>
-                )}
-              </Box>
+                </Box>
+              )}
+              {!vaultLoggedIn && (
+                <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333', textAlign: 'center' }}>
+                  <Typography variant="caption" sx={{ color: '#555', fontSize: '11px' }}>
+                    Connect to Vaultwarden in ⚙️ Settings for saved credentials
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNewTerminalDialogOpen(false)}>Cancel</Button>
+          {vaultLoggedIn && newTerminalType !== 'local' && (
+            <Button onClick={saveToVault} size="small" sx={{ fontSize: '11px', textTransform: 'none' }}>
+              🔐 Save to Vault
+            </Button>
+          )}
           <Button
             onClick={handleCreateTerminal}
             variant="contained"
@@ -1143,6 +1175,65 @@ function TerminalView() {
           >
             {newTerminalType === 'local' ? 'Create' : 'Connect'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Settings Dialog */}
+      <Dialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Settings</DialogTitle>
+        <DialogContent>
+          {/* Vaultwarden Integration */}
+          <Typography variant="subtitle2" sx={{ mt: 1, mb: 1, color: '#aaa' }}>
+            🔐 Vaultwarden Integration
+          </Typography>
+
+          {vaultLoggedIn ? (
+            <Box sx={{ p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography sx={{ fontSize: '13px', color: '#00ff00' }}>✓ Connected</Typography>
+                  <Typography sx={{ fontSize: '11px', color: '#666' }}>{vaultClientId}</Typography>
+                </Box>
+                <Button size="small" variant="outlined" color="error" onClick={async () => {
+                  await fetch('/api/vault/lock', { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` } });
+                  setVaultLoggedIn(false);
+                  setVaultItems([]);
+                }}>
+                  Disconnect
+                </Button>
+              </Box>
+            </Box>
+          ) : (
+            <Box sx={{ p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
+              <TextField margin="dense" label="Server URL" fullWidth variant="outlined" size="small"
+                value={vaultServerUrl} onChange={(e) => setVaultServerUrl(e.target.value)}
+                placeholder="https://vault.example.com"
+              />
+              <TextField margin="dense" label="Email" fullWidth variant="outlined" size="small"
+                value={vaultClientId} onChange={(e) => setVaultClientId(e.target.value)}
+                placeholder="user@example.com"
+              />
+              <TextField margin="dense" label="Master Password" type="password" fullWidth variant="outlined" size="small"
+                value={vaultMasterPassword} onChange={(e) => setVaultMasterPassword(e.target.value)}
+                onKeyPress={(e) => { if (e.key === 'Enter') vaultLogin(); }}
+              />
+              <Button fullWidth variant="contained" size="small" onClick={vaultLogin} disabled={vaultLoading} sx={{ mt: 1 }}>
+                {vaultLoading ? 'Connecting...' : 'Unlock Vault'}
+              </Button>
+            </Box>
+          )}
+
+          <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#555', fontSize: '10px' }}>
+            Credentials are fetched from Vaultwarden on demand. Nothing is stored in MuxTerm.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 
