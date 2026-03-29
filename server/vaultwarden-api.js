@@ -5,6 +5,19 @@ const router = express.Router();
 // Store active bw sessions per muxterm user
 const bwSessions = new Map();
 
+// Keep session alive on any vault API call
+router.use((req, res, next) => {
+  const session = bwSessions.get(req.userId);
+  if (session) session.lastUsed = Date.now();
+  next();
+});
+
+// Public method to refresh session from outside (called by other routes)
+router.keepAlive = (userId) => {
+  const session = bwSessions.get(userId);
+  if (session) session.lastUsed = Date.now();
+};
+
 const VAULT_URL = process.env.VAULTWARDEN_URL || '';
 
 function runBw(args, options = {}) {

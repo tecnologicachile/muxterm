@@ -445,6 +445,11 @@ io.use(authenticateSocket);
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
 
+  // Keep vault session alive on any socket activity
+  socket.onAny(() => {
+    if (vaultwardenApi.keepAlive) vaultwardenApi.keepAlive(socket.userId);
+  });
+
   // Send workspace layout on connect
   const workspace = database.getWorkspaceLayout(socket.userId);
   socket.emit('workspace', workspace || { panels: [], activePanel: null, minimizedPanels: [] });

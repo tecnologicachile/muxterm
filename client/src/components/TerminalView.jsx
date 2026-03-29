@@ -257,10 +257,10 @@ function TerminalView() {
         loadVaultOrgs();
         loadVaultItems();
       } else {
-        alert('Vaultwarden login failed: ' + data.message);
+        alert('Bitwarden login failed: ' + data.message);
       }
     } catch (e) {
-      alert('Vaultwarden error: ' + e.message);
+      alert('Bitwarden error: ' + e.message);
     }
     setVaultLoading(false);
   };
@@ -328,7 +328,7 @@ function TerminalView() {
   };
 
   const saveToVault = async () => {
-    if (!vaultLoggedIn) { alert('Connect to Vaultwarden first'); return; }
+    if (!vaultLoggedIn) { alert('Connect to Bitwarden first'); return; }
     const type = newTerminalType;
     const host = type === 'rdp' ? rdpHost : type === 'vnc' ? vncHost : type === 'sftp' ? sftpHost : sshHost;
     const port = type === 'rdp' ? rdpPort : type === 'vnc' ? vncPort : type === 'sftp' ? sftpPort : sshPort;
@@ -345,7 +345,7 @@ function TerminalView() {
       });
       const data = await res.json();
       if (data.status === 'ok') {
-        alert('Saved to Vaultwarden!');
+        alert('Saved to Bitwarden!');
         loadVaultItems(newTerminalType);
       } else {
         alert('Failed: ' + data.message);
@@ -1149,7 +1149,7 @@ function TerminalView() {
                 />
               )}
 
-              {/* Vaultwarden credentials */}
+              {/* Bitwarden credentials */}
               {vaultLoggedIn && (
                 <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333' }}>
                   <Typography variant="caption" sx={{ color: '#666', fontSize: '11px' }}>
@@ -1158,7 +1158,7 @@ function TerminalView() {
                   <Box sx={{ mt: 0.5 }}>
                     <TextField
                       fullWidth size="small" margin="dense"
-                      label="🔐 Search Vaultwarden"
+                      label="🔐 Search Bitwarden"
                       placeholder="Type to filter..."
                       value={vaultSearch}
                       onChange={(e) => setVaultSearch(e.target.value)}
@@ -1197,7 +1197,7 @@ function TerminalView() {
               {!vaultLoggedIn && (
                 <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333', textAlign: 'center' }}>
                   <Typography variant="caption" sx={{ color: '#555', fontSize: '11px' }}>
-                    Connect to Vaultwarden in ⚙️ Settings for saved credentials
+                    Connect to Bitwarden in ⚙️ Settings for saved credentials
                   </Typography>
                 </Box>
               )}
@@ -1235,9 +1235,9 @@ function TerminalView() {
       >
         <DialogTitle>Settings</DialogTitle>
         <DialogContent>
-          {/* Vaultwarden Integration */}
+          {/* Bitwarden Integration */}
           <Typography variant="subtitle2" sx={{ mt: 1, mb: 1, color: '#aaa' }}>
-            🔐 Vaultwarden Integration
+            🔐 Bitwarden Integration
           </Typography>
 
           {vaultLoggedIn ? (
@@ -1343,7 +1343,7 @@ function TerminalView() {
           )}
 
           <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#555', fontSize: '10px' }}>
-            Credentials are fetched from Vaultwarden on demand. Nothing is stored in MuxTerm.
+            Credentials are fetched from Bitwarden on demand. Nothing is stored in MuxTerm.
           </Typography>
         </DialogContent>
         <DialogActions>
