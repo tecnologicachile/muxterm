@@ -84,6 +84,22 @@ function TerminalView() {
   const sidebarTimeoutRef = React.useRef(null);
   const sidebarFilterRef = React.useRef(null);
 
+  // Check vault status on mount
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    fetch('/api/vault/status', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.loggedIn) {
+          setVaultLoggedIn(true);
+          loadVaultOrgs();
+          loadVaultItems();
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Load SSH and RDP connections
   useEffect(() => {
     if (!socket) return;
@@ -1047,22 +1063,23 @@ function TerminalView() {
         <DialogTitle>New Connection</DialogTitle>
         <DialogContent>
           {/* Type selector */}
-          <TextField
-            select
-            fullWidth
-            size="small"
-            margin="dense"
-            label="Type"
-            value={newTerminalType}
-            onChange={(e) => setNewTerminalType(e.target.value)}
-            SelectProps={{ native: true }}
-          >
-            <option value="local">Local Terminal</option>
-            <option value="ssh">SSH Terminal</option>
-            <option value="rdp">RDP Desktop</option>
-            <option value="vnc">VNC Desktop</option>
-            <option value="sftp">SFTP Files</option>
-          </TextField>
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 1, flexWrap: 'wrap' }}>
+            {[
+              { value: 'local', label: 'Local' },
+              { value: 'ssh', label: 'SSH' },
+              { value: 'rdp', label: 'RDP' },
+              { value: 'vnc', label: 'VNC' },
+              { value: 'sftp', label: 'SFTP' }
+            ].map(t => (
+              <Button key={t.value} size="small"
+                variant={newTerminalType === t.value ? 'contained' : 'outlined'}
+                onClick={() => { setNewTerminalType(t.value); if (vaultLoggedIn) loadVaultItems(t.value); }}
+                sx={{ flex: 1, minWidth: '50px', fontSize: '12px' }}
+              >
+                {t.label}
+              </Button>
+            ))}
+          </Box>
 
           {/* Connection fields (hidden for local) */}
           {newTerminalType !== 'local' && (
@@ -1238,38 +1255,35 @@ function TerminalView() {
               {/* Organization + Collection selectors */}
               {vaultOrgs.length > 0 && (
                 <Box sx={{ mt: 1.5 }}>
-                  <TextField select fullWidth size="small" margin="dense" label="Organization"
-                    value={selectedOrg}
-                    onChange={(e) => {
-                      setSelectedOrg(e.target.value);
-                      localStorage.setItem('vault_org', e.target.value);
-                      setSelectedCollection('');
-                      localStorage.setItem('vault_collection', '');
-                      if (e.target.value) loadVaultCollections(e.target.value);
-                      else setVaultCollections([]);
-                    }}
-                    SelectProps={{ native: true }}
-                  >
-                    <option value="">Personal vault</option>
+                  <Typography variant="caption" sx={{ color: '#888', fontSize: '10px' }}>Organization</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                    <Button size="small" variant={!selectedOrg ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
+                      onClick={() => { setSelectedOrg(''); localStorage.setItem('vault_org', ''); setSelectedCollection(''); localStorage.setItem('vault_collection', ''); setVaultCollections([]); loadVaultItems(); }}>
+                      Personal
+                    </Button>
                     {vaultOrgs.map(org => (
-                      <option key={org.id} value={org.id}>{org.name}</option>
+                      <Button key={org.id} size="small" variant={selectedOrg === org.id ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
+                        onClick={() => { setSelectedOrg(org.id); localStorage.setItem('vault_org', org.id); setSelectedCollection(''); localStorage.setItem('vault_collection', ''); loadVaultCollections(org.id); }}>
+                        {org.name}
+                      </Button>
                     ))}
-                  </TextField>
+                  </Box>
                   {vaultCollections.length > 0 && (
-                    <TextField select fullWidth size="small" margin="dense" label="Collection"
-                      value={selectedCollection}
-                      onChange={(e) => {
-                        setSelectedCollection(e.target.value);
-                        localStorage.setItem('vault_collection', e.target.value);
-                        loadVaultItems();
-                      }}
-                      SelectProps={{ native: true }}
-                    >
-                      <option value="">All collections</option>
-                      {vaultCollections.map(col => (
-                        <option key={col.id} value={col.id}>{col.name}</option>
-                      ))}
-                    </TextField>
+                    <>
+                      <Typography variant="caption" sx={{ color: '#888', fontSize: '10px', mt: 1, display: 'block' }}>Collection</Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                        <Button size="small" variant={!selectedCollection ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
+                          onClick={() => { setSelectedCollection(''); localStorage.setItem('vault_collection', ''); loadVaultItems(); }}>
+                          All
+                        </Button>
+                        {vaultCollections.map(col => (
+                          <Button key={col.id} size="small" variant={selectedCollection === col.id ? 'contained' : 'outlined'} sx={{ fontSize: '11px', textTransform: 'none', py: 0.3 }}
+                            onClick={() => { setSelectedCollection(col.id); localStorage.setItem('vault_collection', col.id); loadVaultItems(); }}>
+                            {col.name}
+                          </Button>
+                        ))}
+                      </Box>
+                    </>
                   )}
                 </Box>
               )}
