@@ -60,6 +60,34 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// List organizations
+router.get('/organizations', async (req, res) => {
+  try {
+    const session = bwSessions.get(req.userId);
+    if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
+    const output = await runBw(['list', 'organizations', '--session', session.sessionKey], { userId: req.userId });
+    const orgs = JSON.parse(output);
+    res.json({ status: 'ok', items: orgs.map(o => ({ id: o.id, name: o.name })) });
+  } catch (e) {
+    res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// List collections (for an organization)
+router.get('/collections', async (req, res) => {
+  try {
+    const session = bwSessions.get(req.userId);
+    if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
+    const { organizationId } = req.query;
+    const args = ['list', 'org-collections', '--organizationid', organizationId, '--session', session.sessionKey];
+    const output = await runBw(args, { userId: req.userId });
+    const cols = JSON.parse(output);
+    res.json({ status: 'ok', items: cols.map(c => ({ id: c.id, name: c.name })) });
+  } catch (e) {
+    res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // List items filtered by URI scheme
 router.get('/items', async (req, res) => {
   try {
@@ -67,13 +95,15 @@ router.get('/items', async (req, res) => {
     if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in to Vaultwarden' });
 
     session.lastUsed = Date.now();
-    const { type } = req.query; // ssh, rdp, vnc, sftp, or empty for all
+    const { type, collectionId } = req.query;
 
     // Sync first
     try { await runBw(['sync', '--session', session.sessionKey], { userId: req.userId }); } catch (e) { /* ignore */ }
 
-    // List items
-    const output = await runBw(['list', 'items', '--session', session.sessionKey], { userId: req.userId });
+    // List items (optionally filtered by collection)
+    const args = ['list', 'items', '--session', session.sessionKey];
+    if (collectionId) { args.push('--collectionid', collectionId); }
+    const output = await runBw(args, { userId: req.userId });
     const items = JSON.parse(output);
 
     // Filter login items with URIs
@@ -145,22 +175,27 @@ router.post('/create', async (req, res) => {
     const session = bwSessions.get(req.userId);
     if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
 
-    const { name, type, host, port, username, password } = req.body;
+    const { name, type, host, port, username, password, organizationId, collectionId } = req.body;
     const uri = `${type}://${host}${port ? ':' + port : ''}`;
 
-    const item = JSON.stringify({
-      type: 1, // Login
+    const item = {
+      type: 1,
       name: name,
       login: {
         username: username || null,
         password: password || null,
         uris: [{ uri: uri, match: null }]
       }
-    });
+    };
 
-    // bw create item expects base64 encoded JSON
-    const encoded = Buffer.from(item).toString('base64');
-    await runBw(['create', 'item', encoded, '--session', session.sessionKey], { userId: req.userId });
+    // If organization + collection specified, assign item to them
+    if (organizationId) item.organizationId = organizationId;
+    if (collectionId) item.collectionIds = [collectionId];
+
+    const encoded = Buffer.from(JSON.stringify(item)).toString('base64');
+    const args = ['create', 'item', encoded, '--session', session.sessionKey];
+    if (organizationId) { args.push('--organizationid', organizationId); }
+    await runBw(args, { userId: req.userId });
 
     res.json({ status: 'ok' });
   } catch (e) {

@@ -72,7 +72,11 @@ function TerminalView() {
   const [vaultClientId, setVaultClientId] = useState(() => localStorage.getItem('vault_email') || '');
   const [vaultClientSecret, setVaultClientSecret] = useState('');
   const [vaultMasterPassword, setVaultMasterPassword] = useState('');
-  const [credentialSource, setCredentialSource] = useState('manual'); // 'manual' or 'vault'
+  const [credentialSource, setCredentialSource] = useState('manual');
+  const [vaultOrgs, setVaultOrgs] = useState([]);
+  const [vaultCollections, setVaultCollections] = useState([]);
+  const [selectedOrg, setSelectedOrg] = useState(() => localStorage.getItem('vault_org') || '');
+  const [selectedCollection, setSelectedCollection] = useState(() => localStorage.getItem('vault_collection') || '');
   const [selectedVaultItem, setSelectedVaultItem] = useState(null);
   const [vaultSearch, setVaultSearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -232,6 +236,7 @@ function TerminalView() {
         localStorage.setItem('vault_email', vaultClientId);
         setVaultLoggedIn(true);
         setVaultLoginOpen(false);
+        loadVaultOrgs();
         loadVaultItems();
       } else {
         alert('Vaultwarden login failed: ' + data.message);
@@ -242,9 +247,30 @@ function TerminalView() {
     setVaultLoading(false);
   };
 
+  const loadVaultOrgs = async () => {
+    try {
+      const res = await fetch('/api/vault/organizations', { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setVaultOrgs(data.items);
+        // Load collections for selected org
+        if (selectedOrg) loadVaultCollections(selectedOrg);
+      }
+    } catch (e) {}
+  };
+
+  const loadVaultCollections = async (orgId) => {
+    try {
+      const res = await fetch(`/api/vault/collections?organizationId=${orgId}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (data.status === 'ok') setVaultCollections(data.items);
+    } catch (e) {}
+  };
+
   const loadVaultItems = async (type) => {
     try {
-      const url = type ? `/api/vault/items?type=${type}` : '/api/vault/items';
+      let url = type ? `/api/vault/items?type=${type}` : '/api/vault/items';
+      if (selectedCollection) url += `${url.includes('?') ? '&' : '?'}collectionId=${selectedCollection}`;
       const res = await fetch(url, { headers: { 'Authorization': `Bearer ${getToken()}` } });
       const data = await res.json();
       if (data.status === 'ok') setVaultItems(data.items);
@@ -294,7 +320,7 @@ function TerminalView() {
       const res = await fetch('/api/vault/create', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type, host, port, username, password })
+        body: JSON.stringify({ name, type, host, port, username, password, organizationId: selectedOrg || undefined, collectionId: selectedCollection || undefined })
       });
       const data = await res.json();
       if (data.status === 'ok') {
@@ -1203,10 +1229,50 @@ function TerminalView() {
                   await fetch('/api/vault/lock', { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` } });
                   setVaultLoggedIn(false);
                   setVaultItems([]);
+                  setVaultOrgs([]);
+                  setVaultCollections([]);
                 }}>
                   Disconnect
                 </Button>
               </Box>
+              {/* Organization + Collection selectors */}
+              {vaultOrgs.length > 0 && (
+                <Box sx={{ mt: 1.5 }}>
+                  <TextField select fullWidth size="small" margin="dense" label="Organization"
+                    value={selectedOrg}
+                    onChange={(e) => {
+                      setSelectedOrg(e.target.value);
+                      localStorage.setItem('vault_org', e.target.value);
+                      setSelectedCollection('');
+                      localStorage.setItem('vault_collection', '');
+                      if (e.target.value) loadVaultCollections(e.target.value);
+                      else setVaultCollections([]);
+                    }}
+                    SelectProps={{ native: true }}
+                  >
+                    <option value="">Personal vault</option>
+                    {vaultOrgs.map(org => (
+                      <option key={org.id} value={org.id}>{org.name}</option>
+                    ))}
+                  </TextField>
+                  {vaultCollections.length > 0 && (
+                    <TextField select fullWidth size="small" margin="dense" label="Collection"
+                      value={selectedCollection}
+                      onChange={(e) => {
+                        setSelectedCollection(e.target.value);
+                        localStorage.setItem('vault_collection', e.target.value);
+                        loadVaultItems();
+                      }}
+                      SelectProps={{ native: true }}
+                    >
+                      <option value="">All collections</option>
+                      {vaultCollections.map(col => (
+                        <option key={col.id} value={col.id}>{col.name}</option>
+                      ))}
+                    </TextField>
+                  )}
+                </Box>
+              )}
             </Box>
           ) : (
             <Box sx={{ p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
