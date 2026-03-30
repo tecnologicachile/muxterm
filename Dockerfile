@@ -49,7 +49,7 @@ FROM node:20-bookworm-slim
 
 # Install runtime + build dependencies (node-pty, better-sqlite3 need compilation)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tmux bash curl ca-certificates \
+    tmux bash curl ca-certificates openssh-client \
     build-essential python3 \
     libcairo2 libjpeg62-turbo libpng16-16 \
     libpango-1.0-0 libpangocairo-1.0-0 \
