@@ -44,11 +44,9 @@ async function runBw(args, options = {}) {
         try {
           const newKey = await runBwRaw(['unlock', session.masterPassword, '--raw'], options);
           session.sessionKey = newKey;
-          // Retry with new session key
-          const newArgs = args.map(a => a === session.sessionKey ? newKey : a);
           // Replace old session key in args
           const sessionIdx = args.indexOf('--session');
-          if (sessionIdx >= 0 && args[sessionIdx + 1]) {
+          if (sessionIdx >= 0) {
             args[sessionIdx + 1] = newKey;
           }
           return await runBwRaw(args, options);
