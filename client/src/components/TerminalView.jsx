@@ -455,7 +455,7 @@ function TerminalView() {
         newPanel = { id: uuidv4(), terminalId: null, name: conn?.name || termName, type: 'ssh', sshConnectionId: parseInt(selectedSshConnection) };
       } else if (sshHost) {
         socket.emit('create-ssh-connection', {
-          name: `${sshUsername}@${sshHost}`, host: sshHost, port: parseInt(sshPort) || 22,
+          name: selectedVaultItem?.name || `${sshUsername}@${sshHost}`, host: sshHost, port: parseInt(sshPort) || 22,
           username: sshUsername, authType: 'password', password: sshPassword
         });
         socket.once('ssh-connection-created', (conn) => {
@@ -475,7 +475,7 @@ function TerminalView() {
         newPanel = { id: uuidv4(), terminalId: null, name: conn?.name || termName, type: 'rdp', rdpConnectionId: parseInt(selectedRdpConnection), displayMode: 'fit' };
       } else if (rdpHost) {
         socket.emit('create-rdp-connection', {
-          name: `${rdpUsername}@${rdpHost}`, host: rdpHost, port: parseInt(rdpPort) || 3389,
+          name: selectedVaultItem?.name || `${rdpUsername}@${rdpHost}`, host: rdpHost, port: parseInt(rdpPort) || 3389,
           username: rdpUsername, password: rdpPassword, domain: rdpDomain
         });
         socket.once('rdp-connection-created', (conn) => {
@@ -495,7 +495,7 @@ function TerminalView() {
         newPanel = { id: uuidv4(), terminalId: null, name: conn?.name || termName, type: 'vnc', vncConnectionId: parseInt(selectedVncConnection) };
       } else if (vncHost) {
         socket.emit('create-vnc-connection', {
-          name: `VNC ${vncHost}`, host: vncHost, port: parseInt(vncPort) || 5900, password: vncPassword
+          name: selectedVaultItem?.name || `VNC ${vncHost}`, host: vncHost, port: parseInt(vncPort) || 5900, password: vncPassword
         });
         socket.once('vnc-connection-created', (conn) => {
           const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'vnc', vncConnectionId: conn.id };
@@ -512,7 +512,7 @@ function TerminalView() {
       if (!sftpHost) return;
       newPanel = {
         id: uuidv4(), terminalId: null,
-        name: `${sftpUsername}@${sftpHost}`,
+        name: selectedVaultItem?.name || `${sftpUsername}@${sftpHost}`,
         type: 'sftp',
         sftpConfig: { host: sftpHost, port: parseInt(sftpPort) || 22, username: sftpUsername, password: sftpPassword }
       };
@@ -1133,7 +1133,7 @@ function TerminalView() {
       {/* New Connection Dialog */}
       <Dialog
         open={newTerminalDialogOpen}
-        onClose={() => setNewTerminalDialogOpen(false)}
+        onClose={() => { setNewTerminalDialogOpen(false); setSelectedVaultItem(null); }}
         maxWidth="sm"
         fullWidth
       >
