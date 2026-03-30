@@ -16,6 +16,8 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   const [clipboardText, setClipboardText] = useState('');
   const clipboardOpenRef = useRef(false);
   const [dragOver, setDragOver] = useState(false);
+  const [toolbarOpen, setToolbarOpen] = useState(false);
+  const toolbarTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const [currentMode, setCurrentMode] = useState(displayMode);
   const tokenRequestedRef = useRef(false);
@@ -549,65 +551,75 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           {Math.round(zoom * 100)}% ✕
         </div>
       )}
-      {/* Clipboard button */}
-      {connected && (
+      {/* Toolbar tab - right edge, like sidebar pattern */}
+      {connected && !toolbarOpen && (
         <div
-          onClick={() => { if (!clipboardOpen) setClipboardText(''); setClipboardOpen(!clipboardOpen); }}
+          onMouseEnter={() => { clearTimeout(toolbarTimeoutRef.current); setToolbarOpen(true); }}
+          onClick={() => setToolbarOpen(true)}
           style={{
             position: 'absolute',
-            top: 8,
-            right: 8,
-            backgroundColor: clipboardOpen ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 0, 0, 0.6)',
-            color: '#ccc',
-            border: '1px solid #444',
-            borderRadius: '4px',
-            padding: '4px 8px',
-            fontSize: '12px',
-            cursor: 'pointer',
+            top: '50%',
+            right: 0,
+            transform: 'translateY(-50%)',
+            width: '14px',
+            height: '48px',
+            backgroundColor: 'rgba(30, 30, 30, 0.9)',
+            borderRadius: '6px 0 0 6px',
+            border: '1px solid #333',
+            borderRight: 'none',
             zIndex: 10,
-            userSelect: 'none'
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.15s ease'
           }}
         >
-          📋
+          <div style={{ width: '3px', height: '20px', backgroundColor: '#555', borderRadius: '2px' }} />
         </div>
       )}
-      {/* Upload button - RDP only */}
-      {connected && connectionType === 'rdp' && (
-        <>
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              position: 'absolute',
-              top: 8,
-              right: 40,
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              color: '#ccc',
-              border: '1px solid #444',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              zIndex: 10,
-              userSelect: 'none'
-            }}
-          >
-            📁
+      {connected && toolbarOpen && (
+        <div
+          onMouseEnter={() => clearTimeout(toolbarTimeoutRef.current)}
+          onMouseLeave={() => { toolbarTimeoutRef.current = setTimeout(() => { if (!clipboardOpen) setToolbarOpen(false); }, 400); }}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            right: 0,
+            transform: 'translateY(-50%)',
+            backgroundColor: 'rgba(18, 18, 18, 0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid #333',
+            borderRight: 'none',
+            borderRadius: '8px 0 0 8px',
+            padding: '8px 6px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+            zIndex: 10,
+            animation: 'slideInRight 0.15s ease-out'
+          }}
+        >
+          <style>{`@keyframes slideInRight { from { opacity:0; transform: translateY(-50%) translateX(10px); } to { opacity:1; transform: translateY(-50%) translateX(0); }}`}</style>
+          <div onClick={() => { if (!clipboardOpen) setClipboardText(''); setClipboardOpen(!clipboardOpen); }}
+            title="Clipboard"
+            style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', backgroundColor: clipboardOpen ? 'rgba(0,255,0,0.15)' : 'transparent', border: '1px solid #333', fontSize: '14px', transition: 'all 0.1s' }}>
+            📋
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const files = e.target.files;
-              if (files) {
-                for (let i = 0; i < files.length; i++) uploadFile(files[i]);
-              }
-              e.target.value = '';
-            }}
-          />
-        </>
+          {connectionType === 'rdp' && (
+            <div onClick={() => fileInputRef.current?.click()}
+              title="Upload file"
+              style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid #333', fontSize: '14px', transition: 'all 0.1s' }}>
+              📁
+            </div>
+          )}
+        </div>
       )}
+      <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => {
+        const files = e.target.files;
+        if (files) { for (let i = 0; i < files.length; i++) uploadFile(files[i]); }
+        e.target.value = '';
+      }} />
       {/* Clipboard textarea */}
       {clipboardOpen && (
         <div style={{
