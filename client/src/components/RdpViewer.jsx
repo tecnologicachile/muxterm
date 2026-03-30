@@ -252,22 +252,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             longPressTimer = null;
           }
         }, LONG_PRESS_THRESHOLD);
-        // Focus keyboard sink on mobile to enable virtual keyboard
-        if (mobileInputRef.current) {
-          mobileInputRef.current.style.zIndex = '1';
-          mobileInputRef.current.style.width = '100%';
-          mobileInputRef.current.style.height = '100%';
-          mobileInputRef.current.style.opacity = '0';
-          mobileInputRef.current.focus();
-          // Reset size after focus
-          setTimeout(function() {
-            if (mobileInputRef.current) {
-              mobileInputRef.current.style.width = '1px';
-              mobileInputRef.current.style.height = '1px';
-              mobileInputRef.current.style.zIndex = '-1';
-            }
-          }, 500);
-        }
+        if (mobileInputRef.current) mobileInputRef.current.focus();
       }, { passive: true });
 
       displayElement.addEventListener('touchmove', (e) => {
@@ -526,11 +511,12 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         style={{
           position: 'absolute',
           opacity: 0,
-          width: '1px',
-          height: '1px',
-          top: '50%',
-          left: '50%',
-          zIndex: -1
+          width: '100%',
+          height: '100%',
+          top: 0,
+          left: 0,
+          zIndex: 1,
+          pointerEvents: 'none'
         }}
         autoComplete="off"
         autoCorrect="off"
