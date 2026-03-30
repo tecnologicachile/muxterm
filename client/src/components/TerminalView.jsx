@@ -85,6 +85,8 @@ function TerminalView() {
   const [sidebarFilter, setSidebarFilter] = useState('');
   const sidebarTimeoutRef = React.useRef(null);
   const sidebarFilterRef = React.useRef(null);
+  const [mobilePanelListOpen, setMobilePanelListOpen] = useState(false);
+  const mobileSwipeRef = React.useRef({ startX: 0, startY: 0 });
 
   // Check vault status on mount
   useEffect(() => {
@@ -122,6 +124,33 @@ function TerminalView() {
       socket.off('vnc-connections', handleVncConnections);
     };
   }, [socket]);
+
+  // Mobile swipe between panels
+  useEffect(function() {
+    if (!isMobile || panels.length <= 1) return;
+    function onStart(e) {
+      if (e.touches.length === 1) {
+        mobileSwipeRef.current.startX = e.touches[0].clientX;
+        mobileSwipeRef.current.startY = e.touches[0].clientY;
+      }
+    }
+    function onEnd(e) {
+      if (e.changedTouches.length !== 1) return;
+      var dx = e.changedTouches[0].clientX - mobileSwipeRef.current.startX;
+      var dy = e.changedTouches[0].clientY - mobileSwipeRef.current.startY;
+      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
+        var idx = panels.findIndex(function(p) { return p.id === activePanel; });
+        if (dx < 0 && idx < panels.length - 1) setActivePanel(panels[idx + 1].id);
+        else if (dx > 0 && idx > 0) setActivePanel(panels[idx - 1].id);
+      }
+    }
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchend', onEnd, { passive: true });
+    return function() {
+      document.removeEventListener('touchstart', onStart);
+      document.removeEventListener('touchend', onEnd);
+    };
+  }, [isMobile, panels, activePanel]);
 
   // Detect mobile
   useEffect(() => {
@@ -704,55 +733,80 @@ function TerminalView() {
               }
             }}
           />
-          {/* Tab bar */}
+          {/* Panel dots */}
           {panels.length > 1 && (
-            <Box
-              sx={{
-                display: 'flex',
-                overflowX: 'auto',
-                borderTop: '1px solid #333',
-                height: '40px',
-                alignItems: 'stretch',
-                '&::-webkit-scrollbar': { height: '2px' },
-                '&::-webkit-scrollbar-thumb': { backgroundColor: '#555' }
-              }}
-            >
-              {panels.map((panel, idx) => (
-                <Box
-                  key={`tab-${panel.id}`}
-                  onClick={() => setActivePanel(panel.id)}
-                  sx={{
-                    flex: '1 0 auto',
-                    minWidth: '60px',
-                    maxWidth: '120px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '4px 12px',
-                    cursor: 'pointer',
-                    borderRight: '1px solid #333',
-                    backgroundColor: panel.id === activePanel ? '#1a1a1a' : 'transparent',
-                    borderTop: panel.id === activePanel ? '2px solid #00ff00' : '2px solid transparent',
-                    '&:hover': { backgroundColor: '#222' }
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: panel.id === activePanel ? '#00ff00' : '#888',
-                      fontSize: '11px',
-                      fontWeight: panel.id === activePanel ? 'bold' : 'normal',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {panel.name || `T${idx + 1}`}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
+            <div style={{ display: 'flex', alignItems: 'center', height: 28, borderTop: '1px solid #222', padding: '0 8px' }}>
+              <div style={{ display: 'flex', gap: 6, flex: 1, justifyContent: 'center' }}>
+                {panels.map(function(panel) {
+                  return (
+                    <div key={'dot-' + panel.id}
+                      onClick={function() { setActivePanel(panel.id); }}
+                      style={{
+                        width: panel.id === activePanel ? 16 : 6, height: 6, borderRadius: 3,
+                        backgroundColor: panel.id === activePanel ? '#00ff00' : '#444',
+                        cursor: 'pointer', transition: 'all 0.2s'
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <span style={{ fontSize: 10, color: '#666', marginLeft: 8 }}>
+                {panels.findIndex(function(p) { return p.id === activePanel; }) + 1}/{panels.length}
+              </span>
+            </div>
           )}
         </Box>
       )}
+
+      {/* Mobile FAB */}
+      {isMobile && (panels.length + minimizedPanels.length) > 1 && !mobilePanelListOpen ? (
+        <div onClick={function() { setMobilePanelListOpen(true); }}
+          style={{ position: 'fixed', bottom: 70, right: 12, width: 44, height: 44, borderRadius: '50%',
+            backgroundColor: 'rgba(0,200,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.5)', zIndex: 1000, cursor: 'pointer', fontSize: 13, color: '#fff', fontWeight: 'bold' }}>
+          {panels.findIndex(function(p) { return p.id === activePanel; }) + 1}/{panels.length + minimizedPanels.length}
+        </div>
+      ) : null}
+
+      {/* Mobile panel drawer */}
+      {isMobile && mobilePanelListOpen ? (
+        <div>
+          <div onClick={function() { setMobilePanelListOpen(false); }}
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999 }} />
+          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '60vh', backgroundColor: '#1a1a1a',
+            borderTop: '2px solid #00ff00', borderRadius: '16px 16px 0 0', overflow: 'auto', zIndex: 1001, padding: '12px 0' }}>
+            <div style={{ padding: '0 16px 8px', fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>Panels</div>
+            {panels.map(function(panel, idx) {
+              return (
+                <div key={'mp-' + panel.id} onClick={function() { setActivePanel(panel.id); setMobilePanelListOpen(false); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
+                    backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.08)' : 'transparent',
+                    borderLeft: panel.id === activePanel ? '3px solid #00ff00' : '3px solid transparent' }}>
+                  <span style={{ fontSize: 16 }}>{panel.type === 'rdp' || panel.type === 'vnc' ? '🖥️' : panel.type === 'sftp' ? '📁' : '⬛'}</span>
+                  <div>
+                    <div style={{ fontSize: 13, color: panel.id === activePanel ? '#00ff00' : '#ccc' }}>{panel.name || 'Panel ' + (idx + 1)}</div>
+                    <div style={{ fontSize: 10, color: '#555' }}>{(panel.type || 'local').toUpperCase()}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {minimizedPanels.length > 0 ? (
+              <div>
+                <div style={{ padding: '8px 16px 4px', fontSize: 11, color: '#555', textTransform: 'uppercase' }}>Minimized</div>
+                {minimizedPanels.map(function(panel) {
+                  return (
+                    <div key={'mpm-' + panel.id} onClick={function() { handleRestorePanel(panel); setMobilePanelListOpen(false); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', opacity: 0.5 }}>
+                      <span style={{ fontSize: 16 }}>⬛</span>
+                      <div style={{ fontSize: 13, color: '#888' }}>{panel.name || 'Panel'}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Sidebar colapsable izquierdo - navegación de terminales */}
       {!isMobile && (panels.length + minimizedPanels.length) > 1 && (() => {
