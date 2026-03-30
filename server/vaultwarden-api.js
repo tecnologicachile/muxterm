@@ -22,10 +22,19 @@ const VAULT_URL = process.env.VAULTWARDEN_URL || '';
 
 function runBw(args, options = {}) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default'), NODE_TLS_REJECT_UNAUTHORIZED: '0' };
+    const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default'), NODE_TLS_REJECT_UNAUTHORIZED: '0', BW_NOINTERACTION: 'true' };
     execFile('bw', args, { env, timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stdout.trim() || stderr.trim() || err.message));
-      else resolve(stdout.trim());
+      const output = (stdout || '').trim();
+      const errOutput = (stderr || '').trim();
+      // Detect expired/locked vault
+      if (output.includes('Vault is locked') || errOutput.includes('Vault is locked') ||
+          output.includes('not logged in') || errOutput.includes('not logged in') ||
+          output.includes('Master password') || errOutput.includes('Master password')) {
+        reject(new Error('SESSION_EXPIRED'));
+        return;
+      }
+      if (err) reject(new Error(output || errOutput || err.message));
+      else resolve(output);
     });
   });
 }
@@ -120,12 +129,26 @@ router.get('/items', async (req, res) => {
     const { type } = req.query;
 
     // Sync first
-    try { await runBw(['sync', '--session', session.sessionKey], { userId: req.userId }); } catch (e) { /* ignore */ }
+    try { await runBw(['sync', '--session', session.sessionKey], { userId: req.userId }); } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') {
+        bwSessions.delete(req.userId);
+        return res.status(401).json({ status: 'error', message: 'Vault session expired' });
+      }
+    }
 
     // List items (auto-filter by "Remote Access" collection if found)
     const args = ['list', 'items', '--session', session.sessionKey];
     if (session.collectionId) { args.push('--collectionid', session.collectionId); }
-    const output = await runBw(args, { userId: req.userId });
+    let output;
+    try {
+      output = await runBw(args, { userId: req.userId });
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') {
+        bwSessions.delete(req.userId);
+        return res.status(401).json({ status: 'error', message: 'Vault session expired' });
+      }
+      throw e;
+    }
     const items = JSON.parse(output);
 
     // Filter login items with URIs
