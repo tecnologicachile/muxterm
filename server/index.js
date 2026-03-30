@@ -267,11 +267,13 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'No update available' });
     }
     
-    // Check if muxterm command exists
+    // Check if update mechanism exists
     const muxTermCommand = '/usr/local/bin/muxterm';
-    if (!fs.existsSync(muxTermCommand)) {
-      logger.error('muxterm command not found at /usr/local/bin/muxterm');
-      return res.status(500).json({ error: 'muxterm command not found' });
+    const muxTermDir = path.join(__dirname, '..');
+    const updateScript = path.join(muxTermDir, 'scripts', 'update-independent.sh');
+    if (!fs.existsSync(muxTermCommand) && !fs.existsSync(updateScript)) {
+      logger.error('No update mechanism found (muxterm command or update-independent.sh)');
+      return res.status(500).json({ error: 'No update mechanism available' });
     }
     
     logger.info(`Update initiated by user ${req.user.username} from ${updateInfo.current} to ${updateInfo.latest}`);
@@ -279,17 +281,11 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
     // Execute update in background using muxterm update command
     const { spawn } = require('child_process');
     
-    // Create a script to run muxterm update with auto-yes
-    // First cd to the muxterm directory to ensure we're in the right place
-    const muxTermDir = path.join(__dirname, '..');
-    
-    // Instead of calling muxterm command which detects service environment,
-    // call the update-independent.sh script directly if it exists
-    const updateIndependentScript = path.join(muxTermDir, 'scripts', 'update-independent.sh');
+    // Determine update command
     let updateCommand;
     
-    if (fs.existsSync(updateIndependentScript)) {
-      updateCommand = `${updateIndependentScript} "${muxTermDir}"`;
+    if (fs.existsSync(updateScript)) {
+      updateCommand = `${updateScript} "${muxTermDir}"`;
       logger.info(`Using update-independent.sh script`);
     } else {
       updateCommand = `cd "${muxTermDir}" && timeout 300 ${muxTermCommand} update --yes`;
