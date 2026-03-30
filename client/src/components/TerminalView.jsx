@@ -125,32 +125,8 @@ function TerminalView() {
     };
   }, [socket]);
 
-  // Mobile swipe between panels
-  useEffect(function() {
-    if (!isMobile || panels.length <= 1) return;
-    function onStart(e) {
-      if (e.touches.length === 1) {
-        mobileSwipeRef.current.startX = e.touches[0].clientX;
-        mobileSwipeRef.current.startY = e.touches[0].clientY;
-      }
-    }
-    function onEnd(e) {
-      if (e.changedTouches.length !== 1) return;
-      var dx = e.changedTouches[0].clientX - mobileSwipeRef.current.startX;
-      var dy = e.changedTouches[0].clientY - mobileSwipeRef.current.startY;
-      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
-        var idx = panels.findIndex(function(p) { return p.id === activePanel; });
-        if (dx < 0 && idx < panels.length - 1) setActivePanel(panels[idx + 1].id);
-        else if (dx > 0 && idx > 0) setActivePanel(panels[idx - 1].id);
-      }
-    }
-    document.addEventListener('touchstart', onStart, { passive: true });
-    document.addEventListener('touchend', onEnd, { passive: true });
-    return function() {
-      document.removeEventListener('touchstart', onStart);
-      document.removeEventListener('touchend', onEnd);
-    };
-  }, [isMobile, panels, activePanel]);
+  // Mobile swipe between panels (only on panel headers, not on terminal/input areas)
+  // Removed document-level touch handlers to avoid interfering with keyboard input
 
   // Detect mobile
   useEffect(() => {
