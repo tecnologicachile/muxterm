@@ -130,7 +130,8 @@ app.get('/api/update-check', async (req, res) => {
   // Force check if manual=true query param
   const forceCheck = req.query.manual === 'true';
   const updateInfo = await updateChecker.checkForUpdates(forceCheck);
-  res.json({ update: updateInfo });
+  const isDocker = fs.existsSync('/.dockerenv') || fs.existsSync('/app/start.sh');
+  res.json({ update: updateInfo, isDocker });
 });
 
 // Debug endpoint for update system
@@ -727,25 +728,27 @@ server.listen(PORT, async () => {
     ttydManager.cleanupOrphanedTmuxSessions();
   }
   
-  // Create default user if no users exist
+  // Create default admin user if no users exist
   const users = database.getAllUsers();
   if (!users || users.length === 0) {
     const bcrypt = require('bcryptjs');
-    const hashedPassword = bcrypt.hashSync('test123', 10);
-    const user = database.createUser('test', hashedPassword);
+    const hashedPassword = bcrypt.hashSync('admin', 10);
+    const user = database.createUser('admin', hashedPassword);
     if (user) {
-      logger.info('Default user created: username=test, password=test123');
-      logger.info('⚠️  IMPORTANT: Change the default password or create a new user!');
+      // Mark as must change password on first login
+      try { db.exec(`UPDATE users SET must_change_password = 1 WHERE id = ${user.id}`); } catch (e) {}
+      logger.info('Default admin user created: username=admin, password=admin');
+      logger.info('⚠️  Password change required on first login');
     }
   } else if (process.env.NODE_ENV !== 'production') {
-    // In development, always ensure test user exists
-    const testUser = database.findUserByUsername('test');
-    if (!testUser) {
+    // In development, always ensure admin user exists
+    const adminUser = database.findUserByUsername('admin');
+    if (!adminUser) {
       const bcrypt = require('bcryptjs');
-      const hashedPassword = bcrypt.hashSync('test123', 10);
-      const user = database.createUser('test', hashedPassword);
+      const hashedPassword = bcrypt.hashSync('admin', 10);
+      const user = database.createUser('admin', hashedPassword);
       if (user) {
-        console.log('Test user created for development');
+        console.log('Admin user created for development');
       }
     }
   }

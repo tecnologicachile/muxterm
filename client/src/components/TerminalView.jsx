@@ -30,7 +30,15 @@ import logger from '../utils/logger';
 
 function TerminalView() {
   const navigate = useNavigate();
-  const { logout, isAdmin } = useAuth();
+  const { user: authUser, logout, isAdmin } = useAuth();
+  const [forceChangePassword, setForceChangePassword] = useState(false);
+
+  // Check if user must change password on first login
+  useEffect(() => {
+    if (authUser?.must_change_password === 1) {
+      setForceChangePassword(true);
+    }
+  }, [authUser]);
   const { socket } = useSocket();
   const [panels, setPanels] = useState([]);
   const [activePanel, setActivePanel] = useState(null);
@@ -1542,6 +1550,49 @@ function TerminalView() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSettingsOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Forced password change dialog */}
+      <Dialog open={forceChangePassword} maxWidth="xs" fullWidth
+        onClose={(e, reason) => { if (reason) return; }}
+        disableEscapeKeyDown
+      >
+        <DialogTitle>Change Password Required</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: '13px', color: '#aaa', mb: 2 }}>
+            You must change your password before continuing.
+          </Typography>
+          <TextField margin="dense" label="New Password" type="password" fullWidth variant="outlined" size="small"
+            id="force-new-password"
+          />
+          <TextField margin="dense" label="Confirm Password" type="password" fullWidth variant="outlined" size="small"
+            id="force-confirm-password"
+            onKeyPress={(e) => { if (e.key === 'Enter') document.getElementById('btn-force-change').click(); }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button id="btn-force-change" variant="contained" onClick={async () => {
+            const newPw = document.getElementById('force-new-password').value;
+            const confirmPw = document.getElementById('force-confirm-password').value;
+            if (!newPw || newPw.length < 4) return alert('Password must be at least 4 characters');
+            if (newPw !== confirmPw) return alert('Passwords do not match');
+            try {
+              const res = await fetch('/api/auth/change-password', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ currentPassword: 'admin', newPassword: newPw })
+              });
+              const data = await res.json();
+              if (data.success) {
+                setForceChangePassword(false);
+              } else {
+                alert(data.message || 'Failed to change password');
+              }
+            } catch (e) { alert('Error changing password'); }
+          }}>
+            Change Password
+          </Button>
         </DialogActions>
       </Dialog>
 

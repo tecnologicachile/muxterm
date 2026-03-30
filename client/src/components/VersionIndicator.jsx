@@ -46,6 +46,7 @@ function VersionIndicator() {
   const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [logs, setLogs] = useState(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [isDocker, setIsDocker] = useState(false);
 
   useEffect(() => {
     // Check on mount
@@ -63,6 +64,7 @@ function VersionIndicator() {
       const response = await axios.get('/api/update-check', {
         params: { manual: isManual ? 'true' : 'false' }
       });
+      if (response.data.isDocker) setIsDocker(true);
       if (response.data.update) {
         setUpdateInfo(response.data.update);
         logger.info('Update available:', response.data.update);
@@ -210,7 +212,7 @@ function VersionIndicator() {
                 
                 <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                   <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                    muxterm update
+                    {isDocker ? 'docker pull muxterm:latest && docker restart muxterm' : 'muxterm update'}
                   </Typography>
                 </Box>
               </>
@@ -292,7 +294,7 @@ function VersionIndicator() {
           <Button onClick={() => setDialogOpen(false)}>
             Close
           </Button>
-          {hasUpdate && (
+          {hasUpdate && !isDocker && (
             <Button
               variant="contained"
               color="warning"

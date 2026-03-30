@@ -131,16 +131,24 @@ try {
   db.exec('UPDATE users SET is_admin = 1 WHERE id = 1');
 } catch (e) {}
 
+// Add must_change_password column
+try {
+  db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0');
+} catch (e) {
+  // Column already exists
+}
+
 // Prepared statements
 const statements = {
   // Users
   createUser: db.prepare('INSERT INTO users (username, password) VALUES (?, ?)'),
   findUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
-  findUserById: db.prepare('SELECT id, username, is_admin, created_at FROM users WHERE id = ?'),
+  findUserById: db.prepare('SELECT id, username, is_admin, must_change_password, created_at FROM users WHERE id = ?'),
   updateUserPassword: db.prepare('UPDATE users SET password = ? WHERE id = ?'),
   updateUserAdmin: db.prepare('UPDATE users SET is_admin = ? WHERE id = ?'),
   deleteUserById: db.prepare('DELETE FROM users WHERE id = ?'),
-  getAllUsers: db.prepare('SELECT id, username, is_admin, created_at FROM users'),
+  getAllUsers: db.prepare('SELECT id, username, is_admin, must_change_password, created_at FROM users'),
+  clearMustChangePassword: db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?'),
   
   // Sessions
   createSession: db.prepare('INSERT INTO sessions (id, user_id, name, tmux_session) VALUES (?, ?, ?, ?)'),
@@ -217,6 +225,10 @@ const dbHelpers = {
 
   updateUserPassword(userId, hashedPassword) {
     statements.updateUserPassword.run(hashedPassword, userId);
+  },
+
+  clearMustChangePassword(userId) {
+    statements.clearMustChangePassword.run(userId);
   },
 
   findUserById(id) {

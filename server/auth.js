@@ -96,7 +96,8 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        is_admin: user.is_admin || 0
+        is_admin: user.is_admin || 0,
+        must_change_password: user.must_change_password || 0
       }
     });
   } catch (error) {
@@ -122,6 +123,7 @@ router.post('/change-password', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     database.updateUserPassword(user.id, hashedPassword);
+    database.clearMustChangePassword(user.id);
     res.json({ success: true });
   } catch (error) {
     logger.error('Change password error:', error);
