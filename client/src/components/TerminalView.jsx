@@ -605,31 +605,27 @@ function TerminalView() {
               )
             )}
 
-            {isMobile && (
-              <IconButton 
-                color="inherit" 
-                onClick={() => {
-                  // Force focus on active terminal's mobile input
-                  // First click on the terminal to ensure it's active
-                  const activeTerminal = document.querySelector(`[data-panel-id="${activePanel}"] .xterm`);
-                  if (activeTerminal) {
-                    activeTerminal.click();
-                  }
-                  // Then try to focus the hidden mobile textarea
-                  setTimeout(() => {
-                    const mobileInput = document.querySelector(`[data-panel-id="${activePanel}"] textarea`);
-                    if (mobileInput) {
-                      mobileInput.focus();
-                      mobileInput.click();
-                    }
-                  }, 100);
-                }}
-                size="small"
-                sx={{ ml: 1 }}
-              >
-                <KeyboardIcon />
-              </IconButton>
-            )}
+            {isMobile && (() => {
+              const ap = panels.find(function(p) { return p.id === activePanel; });
+              if (ap && (ap.type === 'rdp' || ap.type === 'vnc')) return null;
+              return (
+                <IconButton
+                  color="inherit"
+                  onClick={() => {
+                    const activeTerminal = document.querySelector(`[data-panel-id="${activePanel}"] .xterm`);
+                    if (activeTerminal) activeTerminal.click();
+                    setTimeout(() => {
+                      const mobileInput = document.querySelector(`[data-panel-id="${activePanel}"] textarea`);
+                      if (mobileInput) { mobileInput.focus(); mobileInput.click(); }
+                    }, 100);
+                  }}
+                  size="small"
+                  sx={{ ml: 1 }}
+                >
+                  <KeyboardIcon />
+                </IconButton>
+              );
+            })()}
 
             {/* Vault status + Settings */}
             <IconButton

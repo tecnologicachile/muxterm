@@ -450,16 +450,29 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     return () => observer.disconnect();
   }, [currentMode]);
 
-  // Prevent viewport scroll when mobile keyboard opens
+  // Set viewport to overlay mode when RDP/VNC panel is active
   useEffect(function() {
-    if (!window.visualViewport) return;
+    if (!isActive) return;
+    // Change viewport to overlays-content for RDP/VNC
+    var meta = document.querySelector('meta[name=viewport]');
+    var original = meta ? meta.getAttribute('content') : '';
+    if (meta) {
+      meta.setAttribute('content', original.replace('resizes-content', 'overlays-content'));
+    }
     if ('virtualKeyboard' in navigator) {
       navigator.virtualKeyboard.overlaysContent = true;
     }
     function onScroll() { window.scrollTo(0, 0); }
-    window.visualViewport.addEventListener('scroll', onScroll);
-    return function() { window.visualViewport.removeEventListener('scroll', onScroll); };
-  }, []);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('scroll', onScroll);
+    }
+    return function() {
+      // Restore to resizes-content when leaving RDP/VNC
+      if (meta) meta.setAttribute('content', original.replace('overlays-content', 'resizes-content'));
+      if ('virtualKeyboard' in navigator) navigator.virtualKeyboard.overlaysContent = false;
+      if (window.visualViewport) window.visualViewport.removeEventListener('scroll', onScroll);
+    };
+  }, [isActive]);
 
   // Cleanup on unmount
   useEffect(() => {
