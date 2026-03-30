@@ -252,9 +252,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             longPressTimer = null;
           }
         }, LONG_PRESS_THRESHOLD);
-        if (mobileInputRef.current && document.activeElement !== mobileInputRef.current) {
-          mobileInputRef.current.focus();
-        }
+        // Keyboard opened via dedicated button, not auto-focus on touch
       }, { passive: true });
 
       displayElement.addEventListener('touchmove', (e) => {
@@ -557,6 +555,31 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           {Math.round(zoom * 100)}% ✕
         </div>
       )}
+      {/* Mobile keyboard toggle button */}
+      {connected && 'ontouchstart' in window && (
+        <div
+          onClick={function() {
+            if (mobileInputRef.current) {
+              if (document.activeElement === mobileInputRef.current) {
+                mobileInputRef.current.blur();
+              } else {
+                mobileInputRef.current.focus();
+              }
+            }
+          }}
+          style={{
+            position: 'absolute', bottom: 8, left: 8,
+            width: 36, height: 36, borderRadius: '50%',
+            backgroundColor: 'rgba(30,30,30,0.8)',
+            border: '1px solid #444',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', zIndex: 10, fontSize: 18
+          }}
+        >
+          ⌨️
+        </div>
+      )}
+
       {/* Toolbar tab - right edge, like sidebar pattern */}
       {connected && !toolbarOpen && (
         <div
