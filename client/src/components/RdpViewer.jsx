@@ -179,11 +179,12 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       canvasContainerRef.current.innerHTML = '';
       canvasContainerRef.current.appendChild(displayElement);
 
-      // Click on canvas focuses keyboard sink
+      // Click on canvas focuses keyboard sink and closes toolbar
       displayElement.addEventListener('mousedown', () => {
         if (keyboardSinkRef.current && !clipboardOpenRef.current) {
           keyboardSinkRef.current.focus();
         }
+        setToolbarOpen(false);
       });
 
       // Mouse input - adjust coordinates for display scale (use copy to avoid mutation)
