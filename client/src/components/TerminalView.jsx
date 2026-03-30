@@ -758,13 +758,21 @@ function TerminalView() {
         </Box>
       )}
 
-      {/* Mobile FAB */}
+      {/* Mobile pill indicator - tap to open drawer */}
       {isMobile && (panels.length + minimizedPanels.length) > 1 && !mobilePanelListOpen ? (
         <div onClick={function() { setMobilePanelListOpen(true); }}
-          style={{ position: 'fixed', bottom: 70, right: 12, width: 44, height: 44, borderRadius: '50%',
-            backgroundColor: 'rgba(0,200,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.5)', zIndex: 1000, cursor: 'pointer', fontSize: 13, color: '#fff', fontWeight: 'bold' }}>
-          {panels.findIndex(function(p) { return p.id === activePanel; }) + 1}/{panels.length + minimizedPanels.length}
+          style={{ position: 'fixed', bottom: 4, left: '50%', transform: 'translateX(-50%)',
+            height: 20, padding: '0 12px', borderRadius: 10,
+            backgroundColor: 'rgba(30,30,30,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 6, zIndex: 1000, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+          {panels.map(function(p) {
+            return (
+              <div key={'pill-' + p.id} style={{
+                width: p.id === activePanel ? 12 : 5, height: 5, borderRadius: 3,
+                backgroundColor: p.id === activePanel ? '#00ff00' : '#555', transition: 'all 0.2s'
+              }} />
+            );
+          })}
         </div>
       ) : null}
 
