@@ -103,7 +103,7 @@ function TerminalView() {
   const [mobilePanelListOpen, setMobilePanelListOpen] = useState(false);
   const mobileSwipeRef = React.useRef({ startX: 0, startY: 0 });
 
-  // Check vault status on mount
+  // Check vault status on mount — server is source of truth
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -116,9 +116,17 @@ function TerminalView() {
           if (data.organizationId) setSelectedOrg(data.organizationId);
           loadVaultOrgs();
           loadVaultItems();
+        } else {
+          // Server session expired — clear local state
+          setVaultLoggedIn(false);
+          setVaultItems([]);
+          setVaultOrgs([]);
+          setVaultCollections([]);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setVaultLoggedIn(false);
+      });
   }, []);
 
   // Load SSH and RDP connections
@@ -291,6 +299,18 @@ function TerminalView() {
     setVaultLoading(false);
   };
 
+  // Helper: check vault response for expired session
+  const vaultSessionCheck = (res) => {
+    if (res.status === 401) {
+      setVaultLoggedIn(false);
+      setVaultItems([]);
+      setVaultOrgs([]);
+      setVaultCollections([]);
+      return false;
+    }
+    return true;
+  };
+
   const selectOrganization = async (orgId) => {
     setSelectedOrg(orgId);
     localStorage.setItem('vault_org', orgId);
@@ -301,6 +321,7 @@ function TerminalView() {
         headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ organizationId: orgId })
       });
+      if (!vaultSessionCheck(res)) return;
       const data = await res.json();
       if (data.status === 'ok') {
         setSelectedCollection(data.collectionId || '');
@@ -314,6 +335,7 @@ function TerminalView() {
     setVaultOrgLoading(true);
     try {
       const res = await fetch('/api/vault/organizations', { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      if (!vaultSessionCheck(res)) return;
       const data = await res.json();
       if (data.status === 'ok') {
         setVaultOrgs(data.items);
@@ -327,6 +349,7 @@ function TerminalView() {
     setVaultOrgLoading(true);
     try {
       const res = await fetch(`/api/vault/collections?organizationId=${orgId}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      if (!vaultSessionCheck(res)) return;
       const data = await res.json();
       if (data.status === 'ok') setVaultCollections(data.items);
     } catch (e) {}
@@ -340,6 +363,7 @@ function TerminalView() {
       let url = type ? `/api/vault/items?type=${type}` : '/api/vault/items';
       if (selectedCollection) url += `${url.includes('?') ? '&' : '?'}collectionId=${selectedCollection}`;
       const res = await fetch(url, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      if (!vaultSessionCheck(res)) { setVaultItemsLoading(false); return; }
       const data = await res.json();
       if (data.status === 'ok') setVaultItems(data.items);
     } catch (e) {}
@@ -397,6 +421,10 @@ function TerminalView() {
         headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, type, host, port, username, password })
       });
+      if (!vaultSessionCheck(res)) {
+        alert('Bitwarden session expired. Please reconnect in Settings.');
+        return;
+      }
       const data = await res.json();
       if (data.status === 'ok') {
         alert('Saved to Bitwarden!');
