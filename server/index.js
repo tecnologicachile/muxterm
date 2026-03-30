@@ -736,7 +736,7 @@ server.listen(PORT, async () => {
     const user = database.createUser('admin', hashedPassword);
     if (user) {
       // Mark as must change password on first login
-      try { db.exec(`UPDATE users SET must_change_password = 1 WHERE id = ${user.id}`); } catch (e) {}
+      try { database.db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(user.id); } catch (e) {}
       logger.info('Default admin user created: username=admin, password=admin');
       logger.info('⚠️  Password change required on first login');
     }
