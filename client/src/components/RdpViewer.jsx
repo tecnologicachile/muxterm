@@ -509,14 +509,15 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       <textarea
         ref={mobileInputRef}
         style={{
-          position: 'absolute',
+          position: 'fixed',
           opacity: 0,
-          width: '100%',
-          height: '100%',
-          top: 0,
-          left: 0,
-          zIndex: 1,
-          pointerEvents: 'none'
+          width: '1px',
+          height: '1px',
+          bottom: '50%',
+          left: '50%',
+          zIndex: -1,
+          pointerEvents: 'none',
+          fontSize: '16px'
         }}
         autoComplete="off"
         autoCorrect="off"
