@@ -28,6 +28,10 @@ RUN cd /tmp && \
 # Stage 2: Build Node.js app + client
 FROM node:20-bookworm-slim AS app-builder
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential python3 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Server dependencies
@@ -43,9 +47,10 @@ RUN cd client && npm run build
 # Stage 3: Production image
 FROM node:20-bookworm-slim
 
-# Install runtime dependencies
+# Install runtime + build dependencies (node-pty, better-sqlite3 need compilation)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tmux bash curl \
+    tmux bash curl ca-certificates \
+    build-essential python3 \
     libcairo2 libjpeg62-turbo libpng16-16 \
     libpango-1.0-0 libpangocairo-1.0-0 \
     libssh2-1 libwebsockets17 libwebp7 \
@@ -57,16 +62,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
 
-ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 NODE_ENV=production
 
-# Copy guacd from builder
+# Copy guacd and all guacamole libs from builder
 COPY --from=guacd-builder /usr/local/sbin/guacd /usr/local/sbin/guacd
-COPY --from=guacd-builder /usr/local/lib/libguac* /usr/local/lib/
-COPY --from=guacd-builder /usr/local/lib/freerdp2/ /usr/local/lib/freerdp2/
+COPY --from=guacd-builder /usr/local/lib/ /usr/local/lib/
 RUN ldconfig
 
 # Install ttyd
-RUN curl -sL https://github.com/nickolaev/ttyd/releases/download/1.7.7/ttyd.x86_64 -o /usr/local/bin/ttyd \
+RUN curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
     && chmod +x /usr/local/bin/ttyd
 
 # Install Bitwarden CLI
@@ -90,14 +94,19 @@ COPY --from=app-builder /app/client/dist ./client/dist
 # Copy server code
 COPY server/ ./server/
 COPY db/ ./db/
+COPY utils/ ./utils/
 COPY scripts/ ./scripts/
 COPY .tmux.webssh.conf ./
 
-# Create directories
-RUN mkdir -p data logs certs /tmp/muxterm /tmp/guac-drive
+# Create directories and symlink public -> client/dist
+RUN mkdir -p data logs certs /tmp/muxterm /tmp/guac-drive \
+    && ln -s /app/client/dist /app/public
 
-# Startup script
+# Startup script (auto-generates secrets if not provided via env)
 RUN echo '#!/bin/bash\n\
+export SESSION_SECRET=${SESSION_SECRET:-$(cat /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)}\n\
+export JWT_SECRET=${JWT_SECRET:-$(cat /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)}\n\
+export GUAC_SECRET=${GUAC_SECRET:-$(cat /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)}\n\
 guacd -b 127.0.0.1 -l 4822 -L info &\n\
 sleep 1\n\
 exec node server/index.js' > /app/start.sh && chmod +x /app/start.sh
