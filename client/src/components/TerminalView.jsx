@@ -82,6 +82,8 @@ function TerminalView() {
   const [selectedVaultItem, setSelectedVaultItem] = useState(null);
   const [vaultSearch, setVaultSearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobilePanelListOpen, setMobilePanelListOpen] = useState(false);
+  const swipeRef = useRef({ startX: 0, startY: 0 });
   const [sidebarFilter, setSidebarFilter] = useState('');
   const sidebarTimeoutRef = React.useRef(null);
   const sidebarFilterRef = React.useRef(null);
@@ -122,6 +124,38 @@ function TerminalView() {
       socket.off('vnc-connections', handleVncConnections);
     };
   }, [socket]);
+
+  // Mobile swipe to change panels
+  useEffect(() => {
+    if (!isMobile || panels.length <= 1) return;
+    const handleTouchStart = (e) => {
+      if (e.touches.length !== 1) return;
+      swipeRef.current.startX = e.touches[0].clientX;
+      swipeRef.current.startY = e.touches[0].clientY;
+    };
+    const handleTouchEnd = (e) => {
+      if (e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - swipeRef.current.startX;
+      const dy = e.changedTouches[0].clientY - swipeRef.current.startY;
+      // Only horizontal swipes (dx > dy) with enough distance
+      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
+        const currentIdx = panels.findIndex(p => p.id === activePanel);
+        if (dx < 0 && currentIdx < panels.length - 1) {
+          // Swipe left → next panel
+          setActivePanel(panels[currentIdx + 1].id);
+        } else if (dx > 0 && currentIdx > 0) {
+          // Swipe right → previous panel
+          setActivePanel(panels[currentIdx - 1].id);
+        }
+      }
+    };
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isMobile, panels, activePanel]);
 
   // Detect mobile
   useEffect(() => {
@@ -704,54 +738,119 @@ function TerminalView() {
               }
             }}
           />
-          {/* Tab bar */}
+          {/* Panel indicator + swipe hint */}
           {panels.length > 1 && (
-            <Box
-              sx={{
-                display: 'flex',
-                overflowX: 'auto',
-                borderTop: '1px solid #333',
-                height: '40px',
-                alignItems: 'stretch',
-                '&::-webkit-scrollbar': { height: '2px' },
-                '&::-webkit-scrollbar-thumb': { backgroundColor: '#555' }
-              }}
-            >
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '24px', gap: '6px', borderTop: '1px solid #222' }}>
               {panels.map((panel, idx) => (
                 <Box
-                  key={`tab-${panel.id}`}
+                  key={`dot-${panel.id}`}
                   onClick={() => setActivePanel(panel.id)}
                   sx={{
-                    flex: '1 0 auto',
-                    minWidth: '60px',
-                    maxWidth: '120px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '4px 12px',
+                    width: panel.id === activePanel ? '16px' : '6px',
+                    height: '6px',
+                    borderRadius: '3px',
+                    backgroundColor: panel.id === activePanel ? '#00ff00' : '#444',
                     cursor: 'pointer',
-                    borderRight: '1px solid #333',
-                    backgroundColor: panel.id === activePanel ? '#1a1a1a' : 'transparent',
-                    borderTop: panel.id === activePanel ? '2px solid #00ff00' : '2px solid transparent',
-                    '&:hover': { backgroundColor: '#222' }
+                    transition: 'all 0.2s'
                   }}
-                >
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: panel.id === activePanel ? '#00ff00' : '#888',
-                      fontSize: '11px',
-                      fontWeight: panel.id === activePanel ? 'bold' : 'normal',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {panel.name || `T${idx + 1}`}
-                  </Typography>
-                </Box>
+                />
               ))}
             </Box>
           )}
         </Box>
+      )}
+
+      {/* Mobile FAB + panel drawer */}
+      {isMobile && panels.length > 1 && (
+        <>
+          <Box
+            onClick={() => setMobilePanelListOpen(!mobilePanelListOpen)}
+            sx={{
+              position: 'fixed',
+              bottom: 70,
+              right: 12,
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(0, 200, 0, 0.9)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+              zIndex: 1000,
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#fff',
+              fontWeight: 'bold'
+            }}
+          >
+            {panels.findIndex(p => p.id === activePanel) + 1}/{panels.length + minimizedPanels.length}
+          </Box>
+
+          {mobilePanelListOpen && (
+            <>
+              <Box onClick={() => setMobilePanelListOpen(false)}
+                sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999 }}
+              />
+              <Box sx={{
+                position: 'fixed',
+                bottom: 0, left: 0, right: 0,
+                maxHeight: '60vh',
+                backgroundColor: '#1a1a1a',
+                borderTop: '2px solid #00ff00',
+                borderRadius: '16px 16px 0 0',
+                overflow: 'auto',
+                zIndex: 1001,
+                padding: '12px 0',
+                animation: 'slideUp 0.2s ease-out',
+                '@keyframes slideUp': { from: { transform: 'translateY(100%)' }, to: { transform: 'translateY(0)' } }
+              }}>
+                <Typography sx={{ px: 2, pb: 1, fontSize: '12px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  Panels
+                </Typography>
+                {panels.map((panel, idx) => (
+                  <Box key={`mp-${panel.id}`}
+                    onClick={() => { setActivePanel(panel.id); setMobilePanelListOpen(false); }}
+                    sx={{
+                      display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
+                      backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.08)' : 'transparent',
+                      borderLeft: panel.id === activePanel ? '3px solid #00ff00' : '3px solid transparent',
+                      '&:active': { backgroundColor: 'rgba(255,255,255,0.1)' }
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '16px' }}>
+                      {panel.type === 'rdp' || panel.type === 'vnc' ? '🖥️' : panel.type === 'sftp' ? '📁' : '⬛'}
+                    </Typography>
+                    <Box>
+                      <Typography sx={{ fontSize: '13px', color: panel.id === activePanel ? '#00ff00' : '#ccc' }}>
+                        {panel.name || `Panel ${idx + 1}`}
+                      </Typography>
+                      <Typography sx={{ fontSize: '10px', color: '#555' }}>
+                        {panel.type?.toUpperCase()}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}
+                {minimizedPanels.length > 0 && (
+                  <>
+                    <Typography sx={{ px: 2, pt: 1, pb: 0.5, fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>
+                      Minimized
+                    </Typography>
+                    {minimizedPanels.map(panel => (
+                      <Box key={`mpm-${panel.id}`}
+                        onClick={() => { handleRestorePanel(panel); setMobilePanelListOpen(false); }}
+                        sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, opacity: 0.5, '&:active': { opacity: 1 } }}
+                      >
+                        <Typography sx={{ fontSize: '16px' }}>⬛</Typography>
+                        <Typography sx={{ fontSize: '13px', color: '#888' }}>{panel.name || 'Panel'}</Typography>
+                      </Box>
+                    ))}
+                  </>
+                )}
+              </Box>
+            </>
+          )}
+        </>
       )}
 
       {/* Sidebar colapsable izquierdo - navegación de terminales */}
