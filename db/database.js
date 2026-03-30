@@ -120,12 +120,27 @@ try {
   // Index already exists or column not ready
 }
 
+// Add is_admin column to users
+try {
+  db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0');
+} catch (e) {
+  // Column already exists
+}
+// First user is always admin
+try {
+  db.exec('UPDATE users SET is_admin = 1 WHERE id = 1');
+} catch (e) {}
+
 // Prepared statements
 const statements = {
   // Users
   createUser: db.prepare('INSERT INTO users (username, password) VALUES (?, ?)'),
   findUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
-  getAllUsers: db.prepare('SELECT id, username FROM users'),
+  findUserById: db.prepare('SELECT id, username, is_admin, created_at FROM users WHERE id = ?'),
+  updateUserPassword: db.prepare('UPDATE users SET password = ? WHERE id = ?'),
+  updateUserAdmin: db.prepare('UPDATE users SET is_admin = ? WHERE id = ?'),
+  deleteUserById: db.prepare('DELETE FROM users WHERE id = ?'),
+  getAllUsers: db.prepare('SELECT id, username, is_admin, created_at FROM users'),
   
   // Sessions
   createSession: db.prepare('INSERT INTO sessions (id, user_id, name, tmux_session) VALUES (?, ?, ?, ?)'),
@@ -199,7 +214,31 @@ const dbHelpers = {
   findUserByUsername(username) {
     return statements.findUserByUsername.get(username);
   },
-  
+
+  updateUserPassword(userId, hashedPassword) {
+    statements.updateUserPassword.run(hashedPassword, userId);
+  },
+
+  findUserById(id) {
+    return statements.findUserById.get(id);
+  },
+
+  setUserAdmin(userId, isAdmin) {
+    statements.updateUserAdmin.run(isAdmin ? 1 : 0, userId);
+  },
+
+  deleteUser(userId) {
+    const del = db.transaction(() => {
+      db.prepare('DELETE FROM ssh_connections WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM rdp_connections WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM vnc_connections WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM terminals WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM workspace_layouts WHERE user_id = ?').run(userId);
+      statements.deleteUserById.run(userId);
+    });
+    del();
+  },
+
   getAllUsers() {
     return statements.getAllUsers.all();
   },

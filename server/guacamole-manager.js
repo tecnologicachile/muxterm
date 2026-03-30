@@ -5,7 +5,18 @@ const GuacamoleLite = require('guacamole-lite');
 const logger = require('./utils/logger');
 
 const CIPHER = 'aes-256-cbc';
-const SECRET_KEY = process.env.GUAC_SECRET || 'MuxTermGuacamoleSecretKey32Bytes';
+
+// Generate GUAC_SECRET if not provided (auto-save to .env)
+if (!process.env.GUAC_SECRET) {
+  const secret = crypto.randomBytes(16).toString('hex'); // 32 chars for aes-256
+  process.env.GUAC_SECRET = secret;
+  const envPath = path.join(__dirname, '..', '.env');
+  const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  if (!envContent.includes('GUAC_SECRET=')) {
+    fs.appendFileSync(envPath, `\nGUAC_SECRET=${secret}\n`);
+  }
+}
+const SECRET_KEY = process.env.GUAC_SECRET;
 
 class GuacamoleManager {
   constructor() {

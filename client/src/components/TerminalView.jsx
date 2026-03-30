@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../utils/AuthContext';
 import {
   Box,
   Typography,
@@ -29,6 +30,7 @@ import logger from '../utils/logger';
 
 function TerminalView() {
   const navigate = useNavigate();
+  const { logout, isAdmin } = useAuth();
   const { socket } = useSocket();
   const [panels, setPanels] = useState([]);
   const [activePanel, setActivePanel] = useState(null);
@@ -66,6 +68,10 @@ function TerminalView() {
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [resetPwUserId, setResetPwUserId] = useState(null);
+  const [resetPwValue, setResetPwValue] = useState('');
   const [vaultOrgLoading, setVaultOrgLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
   const [vaultItemsLoading, setVaultItemsLoading] = useState(false);
@@ -395,6 +401,22 @@ function TerminalView() {
     }
   };
 
+  // Admin: fetch users when settings open
+  useEffect(() => {
+    if (settingsOpen && isAdmin) {
+      fetchAdminUsers();
+    }
+  }, [settingsOpen, isAdmin]);
+
+  const fetchAdminUsers = async () => {
+    setAdminLoading(true);
+    try {
+      const res = await fetch('/api/auth/admin/users', { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      if (res.ok) setAdminUsers(await res.json());
+    } catch (e) {}
+    setAdminLoading(false);
+  };
+
   const handleNewTerminal = () => {
     if (panels.length >= 8) {
       alert('Maximum 8 panels supported');
@@ -589,7 +611,7 @@ function TerminalView() {
         mode="terminal"
         sessionName="Workspace"
         panelCount={panels.length}
-        onLogout={() => navigate('/login')}
+        onLogout={() => { logout(); navigate('/login'); }}
         rightContent={
           <>
             {panels.length < 8 && (
@@ -1391,6 +1413,132 @@ function TerminalView() {
           <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#555', fontSize: '10px' }}>
             Credentials are fetched from Bitwarden on demand. Nothing is stored in MuxTerm.
           </Typography>
+
+          {/* Change Password */}
+          <Typography variant="subtitle2" sx={{ mt: 3, mb: 1, color: '#aaa' }}>
+            🔑 Change Password
+          </Typography>
+          <Box sx={{ p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
+            <TextField margin="dense" label="Current Password" type="password" fullWidth variant="outlined" size="small"
+              id="settings-current-password"
+            />
+            <TextField margin="dense" label="New Password" type="password" fullWidth variant="outlined" size="small"
+              id="settings-new-password"
+            />
+            <TextField margin="dense" label="Confirm New Password" type="password" fullWidth variant="outlined" size="small"
+              id="settings-confirm-password"
+              onKeyPress={(e) => { if (e.key === 'Enter') document.getElementById('btn-change-password').click(); }}
+            />
+            <Button id="btn-change-password" fullWidth variant="contained" size="small" sx={{ mt: 1 }}
+              onClick={async () => {
+                const currentPw = document.getElementById('settings-current-password').value;
+                const newPw = document.getElementById('settings-new-password').value;
+                const confirmPw = document.getElementById('settings-confirm-password').value;
+                if (!currentPw || !newPw) return alert('Fill in all fields');
+                if (newPw !== confirmPw) return alert('New passwords do not match');
+                if (newPw.length < 4) return alert('Password must be at least 4 characters');
+                try {
+                  const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    alert('Password changed successfully');
+                    document.getElementById('settings-current-password').value = '';
+                    document.getElementById('settings-new-password').value = '';
+                    document.getElementById('settings-confirm-password').value = '';
+                  } else {
+                    alert(data.message || 'Failed to change password');
+                  }
+                } catch (e) { alert('Error changing password'); }
+              }}
+            >
+              Change Password
+            </Button>
+          </Box>
+
+          {/* Admin: User Management */}
+          {isAdmin && (
+            <>
+              <Typography variant="subtitle2" sx={{ mt: 3, mb: 1, color: '#aaa' }}>
+                👥 User Management
+              </Typography>
+              <Box sx={{ p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
+                {adminLoading ? (
+                  <Box sx={{ textAlign: 'center', color: '#888', fontSize: '12px', py: 1 }}>Loading users...</Box>
+                ) : (
+                  adminUsers.map(u => (
+                    <Box key={u.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5, borderBottom: '1px solid #222', '&:last-child': { borderBottom: 'none' } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography sx={{ fontSize: '13px', color: '#ccc' }}>{u.username}</Typography>
+                        {u.is_admin === 1 && (
+                          <Typography sx={{ fontSize: '10px', color: '#00ff00', border: '1px solid #00ff00', borderRadius: '4px', px: 0.5 }}>Admin</Typography>
+                        )}
+                        {u.id === 1 && (
+                          <Typography sx={{ fontSize: '10px', color: '#666' }}>(root)</Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        {resetPwUserId === u.id ? (
+                          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                            <TextField size="small" type="password" placeholder="New password" value={resetPwValue}
+                              onChange={(e) => setResetPwValue(e.target.value)}
+                              sx={{ width: '120px' }}
+                              inputProps={{ style: { fontSize: '12px', padding: '4px 8px' } }}
+                            />
+                            <Button size="small" variant="contained" sx={{ fontSize: '10px', minWidth: '40px', py: 0.3 }}
+                              onClick={async () => {
+                                if (!resetPwValue) return;
+                                const res = await fetch('/api/auth/admin/reset-password', {
+                                  method: 'POST',
+                                  headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ userId: u.id, newPassword: resetPwValue })
+                                });
+                                const data = await res.json();
+                                if (data.success) { setResetPwUserId(null); setResetPwValue(''); alert('Password reset'); }
+                                else alert(data.message);
+                              }}>OK</Button>
+                            <Button size="small" sx={{ fontSize: '10px', minWidth: '30px', py: 0.3 }}
+                              onClick={() => { setResetPwUserId(null); setResetPwValue(''); }}>✕</Button>
+                          </Box>
+                        ) : (
+                          <>
+                            <Button size="small" sx={{ fontSize: '10px', minWidth: 0, py: 0.2, textTransform: 'none' }}
+                              onClick={() => setResetPwUserId(u.id)}>Reset PW</Button>
+                            {u.id !== 1 && (
+                              <Button size="small" sx={{ fontSize: '10px', minWidth: 0, py: 0.2, textTransform: 'none' }}
+                                onClick={async () => {
+                                  const res = await fetch('/api/auth/admin/toggle-admin', {
+                                    method: 'POST',
+                                    headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ userId: u.id, isAdmin: u.is_admin ? 0 : 1 })
+                                  });
+                                  if (res.ok) fetchAdminUsers();
+                                }}>{u.is_admin ? 'Demote' : 'Promote'}</Button>
+                            )}
+                            {u.id !== 1 && (
+                              <Button size="small" color="error" sx={{ fontSize: '10px', minWidth: 0, py: 0.2, textTransform: 'none' }}
+                                onClick={async () => {
+                                  if (!confirm(`Delete user "${u.username}"? All their data will be removed.`)) return;
+                                  const res = await fetch(`/api/auth/admin/users/${u.id}`, {
+                                    method: 'DELETE',
+                                    headers: { 'Authorization': `Bearer ${getToken()}` }
+                                  });
+                                  if (res.ok) fetchAdminUsers();
+                                  else { const d = await res.json(); alert(d.message); }
+                                }}>Delete</Button>
+                            )}
+                          </>
+                        )}
+                      </Box>
+                    </Box>
+                  ))
+                )}
+              </Box>
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSettingsOpen(false)}>Close</Button>

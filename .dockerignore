@@ -1,0 +1,12 @@
+node_modules
+client/node_modules
+client/dist
+.git
+.env
+*.log
+data/
+logs/
+certs/
+db/*.db
+.playwright-cli/
+test-results/

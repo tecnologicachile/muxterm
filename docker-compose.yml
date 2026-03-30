@@ -8,27 +8,18 @@ services:
     restart: unless-stopped
     ports:
       - "3002:3002"
+      - "4823:4823"
     environment:
       - NODE_ENV=production
-      - JWT_SECRET=${JWT_SECRET:-your-secret-key-here}
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./sessions:/app/sessions
+      - muxterm-db:/app/db
+      - muxterm-data:/app/data
+      - muxterm-logs:/app/logs
+      - ./certs:/app/certs
       - /tmp/muxterm:/tmp/muxterm
-    # Optional: for SSH access to host
-    # network_mode: host
-    
-  # Optional: Nginx reverse proxy with SSL
-  nginx:
-    image: nginx:alpine
-    container_name: muxterm-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - muxterm
+      - /tmp/guac-drive:/tmp/guac-drive
+
+volumes:
+  muxterm-db:
+  muxterm-data:
+  muxterm-logs:

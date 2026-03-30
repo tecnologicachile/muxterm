@@ -83,7 +83,8 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
-    logout
+    logout,
+    isAdmin: user?.is_admin === 1
   };
 
   return (
