@@ -252,7 +252,9 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             longPressTimer = null;
           }
         }, LONG_PRESS_THRESHOLD);
-        if (mobileInputRef.current) mobileInputRef.current.focus();
+        if (mobileInputRef.current && document.activeElement !== mobileInputRef.current) {
+          mobileInputRef.current.focus();
+        }
       }, { passive: true });
 
       displayElement.addEventListener('touchmove', (e) => {
