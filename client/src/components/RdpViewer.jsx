@@ -450,6 +450,17 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     return () => observer.disconnect();
   }, [currentMode]);
 
+  // Prevent viewport scroll when mobile keyboard opens
+  useEffect(function() {
+    if (!window.visualViewport) return;
+    if ('virtualKeyboard' in navigator) {
+      navigator.virtualKeyboard.overlaysContent = true;
+    }
+    function onScroll() { window.scrollTo(0, 0); }
+    window.visualViewport.addEventListener('scroll', onScroll);
+    return function() { window.visualViewport.removeEventListener('scroll', onScroll); };
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
