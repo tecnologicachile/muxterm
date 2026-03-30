@@ -135,7 +135,10 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     const tokenEvent = connectionType === 'vnc' ? 'vnc-token-created' : 'rdp-token-created';
     const errorEvent = connectionType === 'vnc' ? 'vnc-error' : 'rdp-error';
     const emitEvent = connectionType === 'vnc' ? 'create-vnc-token' : 'create-rdp-token';
-    const emitData = connectionType === 'vnc' ? { vncConnectionId: connId } : { rdpConnectionId: connId };
+    const keyboardLayout = navigator.language || navigator.userLanguage || 'en-US';
+    const emitData = connectionType === 'vnc'
+      ? { vncConnectionId: connId }
+      : { rdpConnectionId: connId, keyboardLayout };
 
     const handleToken = (data) => {
       socket.off(tokenEvent, handleToken);
@@ -172,6 +175,10 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
       const client = new Guacamole.Client(tunnel);
       clientRef.current = client;
+
+      // Expose client on DOM for special keys toolbar
+      const panelElement = canvasContainerRef.current.closest('[data-panel-id]');
+      if (panelElement) panelElement.__guacClient = client;
 
       // Append display canvas - constrain within container
       const displayElement = client.getDisplay().getElement();
@@ -215,7 +222,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       let touchStartTime = 0;
       let touchStartPos = { x: 0, y: 0 };
       let lastScreenPos = { x: 0, y: 0 };
-      let cursorPos = { x: 0, y: 0 }; // remote cursor position
+      let cursorPos = { x: 0, y: 0 };
       const TAP_THRESHOLD = 200;
       const LONG_PRESS_THRESHOLD = 700;
       const MOVE_THRESHOLD = 10;
@@ -235,13 +242,10 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           cursorPos = { x: display.getWidth() / 2, y: display.getHeight() / 2 };
           cursorInitialized = true;
         }
-        // Long-press timer for right-click
         if (longPressTimer) clearTimeout(longPressTimer);
         longPressTimer = setTimeout(() => {
           if (!hasMoved) {
-            // Vibrate for feedback if available
             if (navigator.vibrate) navigator.vibrate(50);
-            // Right-click
             client.sendMouseState(new Guacamole.Mouse.State(
               cursorPos.x, cursorPos.y, false, false, true, false, false
             ));
@@ -253,7 +257,6 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             longPressTimer = null;
           }
         }, LONG_PRESS_THRESHOLD);
-        // Keyboard opened via dedicated button, not auto-focus on touch
       }, { passive: true });
 
       displayElement.addEventListener('touchmove', (e) => {
@@ -262,12 +265,10 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         const t = e.touches[0];
         const display = client.getDisplay();
 
-        // Calculate finger delta in screen pixels
         const dx = t.clientX - lastScreenPos.x;
         const dy = t.clientY - lastScreenPos.y;
         lastScreenPos = { x: t.clientX, y: t.clientY };
 
-        // Check if moved enough
         const totalDx = t.clientX - touchStartPos.x;
         const totalDy = t.clientY - touchStartPos.y;
         if (Math.abs(totalDx) > MOVE_THRESHOLD || Math.abs(totalDy) > MOVE_THRESHOLD) {
@@ -275,7 +276,6 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         }
 
-        // Apply delta to cursor (1:1 movement, clamped to display bounds)
         cursorPos.x = Math.max(0, Math.min(display.getWidth(), cursorPos.x + dx));
         cursorPos.y = Math.max(0, Math.min(display.getHeight(), cursorPos.y + dy));
 
@@ -288,7 +288,6 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         const elapsed = Date.now() - touchStartTime;
         if (elapsed < TAP_THRESHOLD && !hasMoved) {
-          // Tap = click at current cursor position
           client.sendMouseState(new Guacamole.Mouse.State(
             cursorPos.x, cursorPos.y, true, false, false, false, false
           ));
@@ -582,29 +581,6 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         </div>
       )}
       {/* Mobile keyboard toggle button */}
-      {connected && 'ontouchstart' in window && (
-        <div
-          onClick={function() {
-            if (mobileInputRef.current) {
-              if (document.activeElement === mobileInputRef.current) {
-                mobileInputRef.current.blur();
-              } else {
-                mobileInputRef.current.focus();
-              }
-            }
-          }}
-          style={{
-            position: 'fixed', bottom: 50, left: 8,
-            width: 36, height: 36, borderRadius: '50%',
-            backgroundColor: 'rgba(30,30,30,0.8)',
-            border: '1px solid #444',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', zIndex: 10, fontSize: 18
-          }}
-        >
-          ⌨️
-        </div>
-      )}
 
       {/* Toolbar tab - right edge, like sidebar pattern */}
       {connected && !toolbarOpen && (

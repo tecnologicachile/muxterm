@@ -605,27 +605,6 @@ function TerminalView() {
               )
             )}
 
-            {isMobile && (() => {
-              const ap = panels.find(function(p) { return p.id === activePanel; });
-              if (ap && (ap.type === 'rdp' || ap.type === 'vnc')) return null;
-              return (
-                <IconButton
-                  color="inherit"
-                  onClick={() => {
-                    const activeTerminal = document.querySelector(`[data-panel-id="${activePanel}"] .xterm`);
-                    if (activeTerminal) activeTerminal.click();
-                    setTimeout(() => {
-                      const mobileInput = document.querySelector(`[data-panel-id="${activePanel}"] textarea`);
-                      if (mobileInput) { mobileInput.focus(); mobileInput.click(); }
-                    }, 100);
-                  }}
-                  size="small"
-                  sx={{ ml: 1 }}
-                >
-                  <KeyboardIcon />
-                </IconButton>
-              );
-            })()}
 
             {/* Vault status + Settings */}
             <IconButton
@@ -674,8 +653,9 @@ function TerminalView() {
             backgroundColor: '#111'
           }}
         >
-          {/* Special keys toolbar */}
+          {/* Special keys toolbar - adapts to panel type */}
           <SpecialKeysToolbar
+            panelType={(() => { const ap = panels.find(p => p.id === activePanel); return ap ? ap.type || 'local' : 'local'; })()}
             onKeyPress={(seq) => {
               if (socket && activePanel) {
                 const panel = panels.find(p => p.id === activePanel);
@@ -688,25 +668,29 @@ function TerminalView() {
                 }
               }
             }}
-            isVisible={true}
-            onDismissKeyboard={() => {
-              // Blur any focused textarea
-              const textarea = document.querySelector('textarea');
+            onGuacKey={(keysym, mods) => {
+              const guacClient = document.querySelector(`[data-panel-id="${activePanel}"]`)?.__guacClient;
+              if (!guacClient) return;
+              mods.forEach(m => guacClient.sendKeyEvent(1, m));
+              guacClient.sendKeyEvent(1, keysym);
+              guacClient.sendKeyEvent(0, keysym);
+              mods.forEach(m => guacClient.sendKeyEvent(0, m));
+            }}
+            onToggleKeyboard={() => {
+              const textarea = document.querySelector(`[data-panel-id="${activePanel}"] textarea`);
               if (textarea) {
-                textarea.style.position = 'fixed';
-                textarea.style.top = '-9999px';
-                textarea.blur();
-                setTimeout(() => {
-                  if (textarea) {
-                    textarea.style.position = 'absolute';
-                    textarea.style.top = '50%';
-                  }
-                }, 300);
+                if (document.activeElement === textarea) textarea.blur();
+                else textarea.focus();
               }
             }}
+            isVisible={true}
           />
-          {/* Panel dots */}
-          {panels.length > 1 && (
+          {/* Spacer for mobile pill indicator */}
+          {isMobile && (panels.length + minimizedPanels.length) > 1 && (
+            <div style={{ height: 20 }} />
+          )}
+          {/* Panel dots (desktop only, mobile uses pill) */}
+          {!isMobile && panels.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', height: 28, borderTop: '1px solid #222', padding: '0 8px' }}>
               <div style={{ display: 'flex', gap: 6, flex: 1, justifyContent: 'center' }}>
                 {panels.map(function(panel) {
@@ -722,9 +706,6 @@ function TerminalView() {
                   );
                 })}
               </div>
-              <span style={{ fontSize: 10, color: '#666', marginLeft: 8 }}>
-                {panels.findIndex(function(p) { return p.id === activePanel; }) + 1}/{panels.length}
-              </span>
             </div>
           )}
         </Box>
@@ -733,14 +714,14 @@ function TerminalView() {
       {/* Mobile pill indicator - tap to open drawer */}
       {isMobile && (panels.length + minimizedPanels.length) > 1 && !mobilePanelListOpen ? (
         <div onClick={function() { setMobilePanelListOpen(true); }}
-          style={{ position: 'fixed', bottom: 4, left: '50%', transform: 'translateX(-50%)',
-            height: 20, padding: '0 12px', borderRadius: 10,
-            backgroundColor: 'rgba(30,30,30,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, zIndex: 1000, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+          style={{ position: 'fixed', bottom: 2, left: '50%', transform: 'translateX(-50%)',
+            height: 16, padding: '0 10px', borderRadius: 8,
+            backgroundColor: 'rgba(30,30,30,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 5, zIndex: 1000, cursor: 'pointer' }}>
           {panels.map(function(p) {
             return (
               <div key={'pill-' + p.id} style={{
-                width: p.id === activePanel ? 12 : 5, height: 5, borderRadius: 3,
+                width: p.id === activePanel ? 10 : 4, height: 4, borderRadius: 2,
                 backgroundColor: p.id === activePanel ? '#00ff00' : '#555', transition: 'all 0.2s'
               }} />
             );

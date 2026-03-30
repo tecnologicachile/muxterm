@@ -575,6 +575,7 @@ io.on('connection', (socket) => {
       }
 
       rdpConfig._userId = socket.userId;
+      rdpConfig._keyboardLayout = data.keyboardLayout || null;
       const token = guacamoleManager.createToken(rdpConfig);
       socket.emit('rdp-token-created', {
         token,

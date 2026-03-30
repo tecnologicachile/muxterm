@@ -147,9 +147,63 @@ class GuacamoleManager {
     return Buffer.from(JSON.stringify(data)).toString('base64');
   }
 
+  // Map browser locale to Guacamole server-layout
+  _resolveLayout(locale) {
+    if (!locale) return 'failsafe';
+    const lang = locale.toLowerCase().replace('_', '-');
+
+    const layoutMap = {
+      'es': 'es-es-qwerty',
+      'es-es': 'es-es-qwerty',
+      'es-latam': 'es-latam-qwerty',
+      'es-ar': 'es-latam-qwerty',
+      'es-mx': 'es-latam-qwerty',
+      'es-cl': 'es-latam-qwerty',
+      'es-co': 'es-latam-qwerty',
+      'es-pe': 'es-latam-qwerty',
+      'en': 'en-us-qwerty',
+      'en-us': 'en-us-qwerty',
+      'en-gb': 'en-gb-qwerty',
+      'fr': 'fr-fr-azerty',
+      'fr-fr': 'fr-fr-azerty',
+      'fr-be': 'fr-be-azerty',
+      'fr-ch': 'fr-ch-qwertz',
+      'de': 'de-de-qwertz',
+      'de-de': 'de-de-qwertz',
+      'de-ch': 'de-ch-qwertz',
+      'it': 'it-it-qwerty',
+      'it-it': 'it-it-qwerty',
+      'pt': 'pt-br-qwerty',
+      'pt-br': 'pt-br-qwerty',
+      'pt-pt': 'pt-pt-qwerty',
+      'ja': 'ja-jp-qwerty',
+      'ja-jp': 'ja-jp-qwerty',
+      'sv': 'sv-se-qwerty',
+      'sv-se': 'sv-se-qwerty',
+      'da': 'da-dk-qwerty',
+      'da-dk': 'da-dk-qwerty',
+      'hu': 'hu-hu-qwertz',
+      'hu-hu': 'hu-hu-qwertz',
+      'tr': 'tr-tr-qwerty',
+      'tr-tr': 'tr-tr-qwerty',
+      'no': 'no-no-qwerty',
+      'nb': 'no-no-qwerty',
+      'nb-no': 'no-no-qwerty',
+      'ro': 'ro-ro-qwerty',
+      'ro-ro': 'ro-ro-qwerty',
+      'pl': 'pl-pl-qwerty',
+      'pl-pl': 'pl-pl-qwerty',
+      'failsafe': 'failsafe'
+    };
+
+    // Try exact match, then language prefix, then failsafe
+    return layoutMap[lang] || layoutMap[lang.split('-')[0]] || 'failsafe';
+  }
+
   createToken(config) {
     const type = config._type || 'rdp';
-    console.log(`[GUAC] Creating ${type} token for:`, config.host, ':', config.port, 'user:', config.username);
+    const layout = this._resolveLayout(config._keyboardLayout);
+    console.log(`[GUAC] Creating ${type} token for:`, config.host, ':', config.port, 'user:', config.username, 'layout:', layout);
 
     if (type === 'vnc') {
       return this._encryptToken({
@@ -177,7 +231,7 @@ class GuacamoleManager {
           security: 'any',
           'ignore-cert': true,
           'resize-method': 'display-update',
-          'server-layout': 'en-us-qwerty',
+          'server-layout': layout,
           'enable-drive': true,
           'drive-path': `/tmp/guac-drive/${config._userId || 'shared'}`,
           'create-drive-path': true,
