@@ -1278,18 +1278,40 @@ function TerminalView() {
                         .map(item => (
                           <Box
                             key={item.id}
-                            onClick={() => { applyVaultItem(item); setVaultSearch(''); }}
                             sx={{
                               p: 0.8, cursor: 'pointer', borderBottom: '1px solid #222',
                               backgroundColor: selectedVaultItem?.id === item.id ? 'rgba(0,255,0,0.1)' : 'transparent',
-                              '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
+                              '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' },
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between'
                             }}
                           >
-                            <Box sx={{ fontSize: '12px', color: '#ccc' }}>{item.name}</Box>
-                            <Box sx={{ fontSize: '10px', color: '#666' }}>
-                              {item.connections.map(c => `${c.scheme}://${c.host}${c.port ? ':' + c.port : ''}`).join(', ')}
-                              {item.username && ` • ${item.username}`}
+                            <Box onClick={() => { applyVaultItem(item); setVaultSearch(''); }} sx={{ flex: 1 }}>
+                              <Box sx={{ fontSize: '12px', color: '#ccc' }}>{item.name}</Box>
+                              <Box sx={{ fontSize: '10px', color: '#666' }}>
+                                {item.connections.map(c => `${c.scheme}://${c.host}${c.port ? ':' + c.port : ''}`).join(', ')}
+                                {item.username && ` • ${item.username}`}
+                              </Box>
                             </Box>
+                            <Box
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const newName = prompt('Rename credential:', item.name);
+                                if (!newName || newName === item.name) return;
+                                try {
+                                  const res = await fetch('/api/vault/rename', {
+                                    method: 'POST',
+                                    headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ itemId: item.id, newName })
+                                  });
+                                  if (!vaultSessionCheck(res)) return;
+                                  const data = await res.json();
+                                  if (data.status === 'ok') loadVaultItems(newTerminalType);
+                                  else alert('Failed: ' + data.message);
+                                } catch (err) { alert('Error: ' + err.message); }
+                              }}
+                              sx={{ ml: 0.5, p: 0.3, cursor: 'pointer', color: '#555', fontSize: '12px', '&:hover': { color: '#aaa' } }}
+                              title="Rename"
+                            >✏️</Box>
                           </Box>
                         ))
                       }

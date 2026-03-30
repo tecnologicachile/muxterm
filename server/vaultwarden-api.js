@@ -276,6 +276,30 @@ router.post('/create', async (req, res) => {
   }
 });
 
+// Rename item in vault
+router.post('/rename', async (req, res) => {
+  try {
+    const session = bwSessions.get(req.userId);
+    if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
+
+    const { itemId, newName } = req.body;
+    if (!itemId || !newName) return res.status(400).json({ status: 'error', message: 'itemId and newName required' });
+
+    // Get current item
+    const output = await runBw(['get', 'item', itemId, '--session', session.sessionKey], { userId: req.userId });
+    const item = JSON.parse(output);
+    item.name = newName;
+
+    const encoded = Buffer.from(JSON.stringify(item)).toString('base64');
+    await runBw(['edit', 'item', itemId, encoded, '--session', session.sessionKey], { userId: req.userId });
+
+    res.json({ status: 'ok' });
+  } catch (e) {
+    if (e.message === 'SESSION_EXPIRED') return res.status(401).json({ status: 'error', message: 'Vault session expired' });
+    res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // Lock vault
 router.post('/lock', async (req, res) => {
   try {
