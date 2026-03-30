@@ -252,7 +252,22 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             longPressTimer = null;
           }
         }, LONG_PRESS_THRESHOLD);
-        if (mobileInputRef.current) mobileInputRef.current.focus();
+        // Focus keyboard sink on mobile to enable virtual keyboard
+        if (mobileInputRef.current) {
+          mobileInputRef.current.style.zIndex = '1';
+          mobileInputRef.current.style.width = '100%';
+          mobileInputRef.current.style.height = '100%';
+          mobileInputRef.current.style.opacity = '0';
+          mobileInputRef.current.focus();
+          // Reset size after focus
+          setTimeout(function() {
+            if (mobileInputRef.current) {
+              mobileInputRef.current.style.width = '1px';
+              mobileInputRef.current.style.height = '1px';
+              mobileInputRef.current.style.zIndex = '-1';
+            }
+          }, 500);
+        }
       }, { passive: true });
 
       displayElement.addEventListener('touchmove', (e) => {
@@ -299,21 +314,24 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         }
       }, { passive: true });
 
-      // Keyboard input - use a dedicated sink div (not document)
-      // This prevents conflicts with clipboard textarea
+      // Keyboard input - sink div for PC, also listen on mobile textarea
       if (keyboardSinkRef.current) {
         keyboardSinkRef.current.tabIndex = 0;
         keyboardSinkRef.current.style.outline = 'none';
         keyboardSinkRef.current.focus();
         const keyboard = new Guacamole.Keyboard(keyboardSinkRef.current);
         keyboardRef.current = keyboard;
+        // Also listen on mobile textarea for virtual keyboard
+        if (mobileInputRef.current) {
+          keyboard.listenTo(mobileInputRef.current);
+        }
         keyboard.onkeydown = (keysym) => {
-          if (!isActiveRef.current) return false;
+          if (!isActiveRef.current || clipboardOpenRef.current) return false;
           client.sendKeyEvent(1, keysym);
           return true;
         };
         keyboard.onkeyup = (keysym) => {
-          if (!isActiveRef.current) return;
+          if (!isActiveRef.current || clipboardOpenRef.current) return;
           client.sendKeyEvent(0, keysym);
         };
       }
