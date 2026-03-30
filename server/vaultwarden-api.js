@@ -20,23 +20,52 @@ router.keepAlive = (userId) => {
 
 const VAULT_URL = process.env.VAULTWARDEN_URL || '';
 
-function runBw(args, options = {}) {
+function runBwRaw(args, options = {}) {
   return new Promise((resolve, reject) => {
     const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default'), NODE_TLS_REJECT_UNAUTHORIZED: '0', BW_NOINTERACTION: 'true' };
     execFile('bw', args, { env, timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       const output = (stdout || '').trim();
       const errOutput = (stderr || '').trim();
-      // Detect expired/locked vault
-      if (output.includes('Vault is locked') || errOutput.includes('Vault is locked') ||
-          output.includes('not logged in') || errOutput.includes('not logged in') ||
-          output.includes('Master password') || errOutput.includes('Master password')) {
-        reject(new Error('SESSION_EXPIRED'));
-        return;
-      }
       if (err) reject(new Error(output || errOutput || err.message));
       else resolve(output);
     });
   });
+}
+
+async function runBw(args, options = {}) {
+  try {
+    return await runBwRaw(args, options);
+  } catch (e) {
+    const msg = e.message || '';
+    // Auto-unlock if vault is locked
+    if (msg.includes('Vault is locked') || msg.includes('vault is locked')) {
+      const session = bwSessions.get(options.userId);
+      if (session && session.masterPassword) {
+        try {
+          const newKey = await runBwRaw(['unlock', session.masterPassword, '--raw'], options);
+          session.sessionKey = newKey;
+          // Retry with new session key
+          const newArgs = args.map(a => a === session.sessionKey ? newKey : a);
+          // Replace old session key in args
+          const sessionIdx = args.indexOf('--session');
+          if (sessionIdx >= 0 && args[sessionIdx + 1]) {
+            args[sessionIdx + 1] = newKey;
+          }
+          return await runBwRaw(args, options);
+        } catch (unlockErr) {
+          bwSessions.delete(options.userId);
+          throw new Error('SESSION_EXPIRED');
+        }
+      }
+      bwSessions.delete(options.userId);
+      throw new Error('SESSION_EXPIRED');
+    }
+    if (msg.includes('not logged in') || msg.includes('Master password')) {
+      bwSessions.delete(options.userId);
+      throw new Error('SESSION_EXPIRED');
+    }
+    throw e;
+  }
 }
 
 // Configure Vaultwarden URL
@@ -80,6 +109,7 @@ router.post('/login', async (req, res) => {
 
     bwSessions.set(req.userId, {
       sessionKey,
+      masterPassword: password,
       lastUsed: Date.now(),
       collectionId: null,
       organizationId: null
