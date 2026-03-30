@@ -1,33 +1,24 @@
-# MuxTerm - Web-based Terminal Multiplexer
+# MuxTerm - Web-based Terminal & Remote Desktop Multiplexer
 
 [![GitHub stars](https://img.shields.io/github/stars/tecnologicachile/muxterm?style=social)](https://github.com/tecnologicachile/muxterm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-MuxTerm is a web-based terminal multiplexer that provides persistent SSH sessions with tmux-like features. Access your terminals from anywhere with full session persistence.
-
-## ⭐ Support the Project
-
-If you find MuxTerm useful, please consider giving it a star on GitHub! It helps others discover the project and motivates us to keep improving.
-
-[![Star on GitHub](https://img.shields.io/badge/Star%20on-GitHub-yellow?style=for-the-badge&logo=github)](https://github.com/tecnologicachile/muxterm)
+MuxTerm is a web-based workspace that combines local terminals, SSH, RDP, VNC, and SFTP in a single interface. Access and manage all your servers from any browser with persistent sessions and multi-user support.
 
 ## Features
 
-- 🖥️ **Multiple Terminals** - Split your workspace into multiple terminal panels
-- 💾 **Persistent Sessions** - Sessions survive server restarts and browser refreshes
-- 🔄 **Auto-Reconnect** - Automatically reconnect to your sessions
-- 👥 **Multi-User Support** - Each user has independent sessions
-- 📱 **Mobile Friendly** - Responsive design works on all devices
-- ⚡ **Real-time Sync** - See updates across all connected clients
-- 🤖 **Auto-Yes for Claude CLI** - Automatically respond "Yes" to Claude CLI confirmation prompts
-- 🗂️ **Session Management** - Name, organize, and manage your sessions
-
-## System Requirements
-
-- **OS**: Ubuntu/Debian 20.04+, Fedora, CentOS, Arch Linux, or WSL
-- **Memory**: Minimum 1GB RAM (2GB recommended for building)
-- **Node.js**: 16+ (installer will handle this)
-- **tmux**: For session persistence (installer will handle this)
+- **Local Terminals** - Split workspace into multiple terminal panels powered by tmux + ttyd
+- **SSH Connections** - Connect to remote servers via SSH with password or key authentication
+- **RDP (Remote Desktop)** - Connect to Windows machines via Apache Guacamole (guacd)
+- **VNC** - Control remote desktops via VNC protocol through the same Guacamole stack
+- **SFTP File Browser** - Visual file manager for uploading, downloading, and managing remote files
+- **Bitwarden/Vaultwarden Integration** - Pull SSH, RDP, VNC, and SFTP credentials directly from your vault
+- **Persistent Sessions** - Terminal sessions survive server restarts via tmux
+- **Multi-User with Admin Panel** - User management with admin roles, password reset, promote/demote
+- **Mobile Friendly** - Responsive design with touch trackpad for RDP, special keys toolbar, pill navigator
+- **HTTPS** - Auto-detection of mkcert certificates
+- **Auto-Update** - Checks GitHub Releases for new versions with one-click update
+- **Docker Support** - Full Dockerfile with multi-stage build
 
 ## Quick Start
 
@@ -37,195 +28,170 @@ If you find MuxTerm useful, please consider giving it a star on GitHub! It helps
 curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
 
-The installer automatically detects and adapts to your environment:
-- ✓ Auto-detects low memory and switches to minimal mode
-- ✓ Auto-detects Docker/LXC containers and optimizes
-- ✓ Auto-detects CI/CD and runs non-interactively
-- ✓ Auto-installs missing dependencies
+MuxTerm starts automatically at `https://localhost:3002`
 
-**Alternative methods:**
-- Using wget: `wget -qO- https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash`
-- Force options: Add `--minimal` (low memory) or `--yes` (non-interactive)
+Default credentials: `test` / `test123`
 
-**Note**: MuxTerm starts automatically after installation at http://localhost:3002
-
-### Docker Install
+### Docker
 
 ```bash
-# Using Docker Compose
-curl -O https://raw.githubusercontent.com/tecnologicachile/muxterm/main/docker-compose.yml
-docker-compose up -d
+git clone https://github.com/tecnologicachile/muxterm.git
+cd muxterm
+docker build -t muxterm:latest .
+docker run -d --name muxterm \
+  -e NODE_ENV=production \
+  -p 3002:3002 -p 4823:4823 \
+  -v muxterm-db:/app/db \
+  -v muxterm-data:/app/data \
+  -v muxterm-logs:/app/logs \
+  muxterm:latest
+```
 
-# Or using Docker directly
-docker run -d -p 3002:3002 -v muxterm-data:/app/data ghcr.io/tecnologicachile/muxterm
+Or with Docker Compose:
+
+```bash
+docker-compose up -d
 ```
 
 ### Manual Installation
 
-#### Prerequisites
-
-- Node.js 16+ 
-- tmux (for session persistence)
-- Git
-
 ```bash
-# Clone the repository
 git clone https://github.com/tecnologicachile/muxterm.git
 cd muxterm
-
-# Run installer
-./install.sh
-
-# Or install manually
 npm install
 cd client && npm install && npm run build && cd ..
-echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
 npm start
-```
-
-The server will start on `http://localhost:3002`
-
-Default credentials:
-- Username: `test`
-- Password: `test123`
-
-**Important**: The default user is created automatically on first run. For production use, create a new admin user:
-
-```bash
-npm run create-user
 ```
 
 ## Architecture
 
-MuxTerm uses:
-- **Frontend**: React with Material-UI
-- **Backend**: Node.js with Express
-- **Terminal**: node-pty with tmux integration
-- **WebSocket**: Socket.io for real-time communication
-- **Database**: SQLite for session persistence
-- **Terminal UI**: xterm.js
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| Frontend | React + Material-UI | Single-page workspace UI |
+| Backend | Node.js + Express | API, auth, terminal management |
+| Terminals | tmux + ttyd | Persistent local/SSH shell sessions |
+| RDP/VNC | guacd + guacamole-lite | Remote desktop protocol proxy |
+| SFTP | ssh2-sftp-client | File transfer over SSH |
+| Database | SQLite (better-sqlite3) | Users, connections, workspace layouts |
+| Real-time | Socket.IO | WebSocket communication |
+| Auth | JWT + bcrypt | Token-based authentication |
+| Vault | Bitwarden CLI (bw) | Credential management |
+| HTTPS | mkcert | Local SSL certificates |
+
+### Ports
+
+| Port | Service |
+|------|---------|
+| 3002 | MuxTerm web server (HTTP/HTTPS) |
+| 4822 | guacd (internal, RDP/VNC proxy daemon) |
+| 4823 | Guacamole WebSocket proxy (WSS) |
 
 ## Usage
 
-### Creating Sessions
-1. Login with your credentials
-2. Click "New Session" and give it a name
-3. Your session is now persistent
+### Workspace
 
-### Managing Panels
-- **Split Horizontal/Vertical**: Create new terminal panels with the split button
-- **Drag to Resize**: Adjust panel sizes by dragging borders
-- **Minimize**: Hide panels to a dock at the bottom
-- **Rename**: Click rename button to give panels custom names
-- **Auto-Yes**: Toggle per-terminal automatic confirmations
+After login, MuxTerm opens your workspace. Each user has one workspace with unlimited panels:
 
-### Auto-Yes Feature (Claude CLI)
-The Auto-Yes feature is specifically designed for Claude CLI to automatically respond "Yes" when prompted "Do you want to proceed?". 
+- Click **+ Terminal** to add a new panel (Local, SSH, RDP, VNC, or SFTP)
+- Drag panel borders to resize
+- Use the sidebar (Ctrl+B or hover left edge) to navigate panels
+- Minimize panels to keep them running in background
 
-To enable:
-1. Click the green checkmark icon (✓) in the terminal header
-2. The icon turns green and shows "AUTO-YES: CLAUDE CLI" badge in the terminal
-3. Claude CLI prompts will be answered automatically
+### Bitwarden Integration
 
-**Note**: This feature is optimized for Claude CLI and may not work with other tools.
+1. Open **Settings** (gear icon)
+2. Enter your Vaultwarden/Bitwarden server URL, email, and master password
+3. Select your organization and the "Remote Access" collection
+4. When creating connections, search your vault credentials directly from the dialog
 
-## Updating
+Credentials with `ssh://`, `rdp://`, `vnc://`, or `sftp://` URIs are automatically recognized.
 
-To update MuxTerm while preserving your data:
+### Mobile
+
+- **Swipe** between panels
+- **Pill indicator** at bottom shows active panel
+- **Special keys toolbar** adapts per panel type (terminal shortcuts vs RDP keysyms)
+- **Touch trackpad** for RDP: drag to move cursor, tap to click, long-press for right-click
+
+### Admin Panel
+
+The first user created is admin. From **Settings > User Management**, admins can:
+
+- List all users
+- Reset passwords
+- Promote/demote admin roles
+- Delete users
+
+Emergency CLI: `node scripts/reset-password.js <username> <password>`
+
+## HTTPS Setup
+
+MuxTerm auto-detects SSL certificates in the `certs/` directory:
 
 ```bash
-./update.sh
-```
-
-This will:
-- Backup your database
-- Pull latest changes
-- Update dependencies
-- Rebuild the client
-- Preserve all sessions
-
-## Development
-
-```bash
-# Run in development mode
-npm run dev
-
-# Run client in development
-cd client && npm start
-
-# Run tests
-npm test
+# Install mkcert
+mkcert -install
+mkcert -cert-file certs/cert.pem -key-file certs/key.pem localhost 127.0.0.1 YOUR_IP
 ```
 
 ## Configuration
 
-### Environment Variables
-
-Create a `.env` file:
+### Environment Variables (.env)
 
 ```env
 PORT=3002
-JWT_SECRET=your-secret-key
 NODE_ENV=production
+JWT_SECRET=auto-generated-on-first-run
+GUAC_SECRET=auto-generated-on-first-run
+SESSION_SECRET=auto-generated-on-first-run
+VAULTWARDEN_URL=https://vault.example.com
 ```
+
+Secrets are auto-generated on first run if not provided.
 
 ### Database
 
-SQLite database is stored in `data/webssh.db`. It contains:
-- User accounts
-- Session metadata
-- Terminal layouts
-- Panel configurations
+SQLite database at `db/webssh.db` stores users, connections, and workspace layouts. Persisted across updates.
 
-### tmux Configuration
+## Updating
 
-Custom tmux config is in `.tmux.webssh.conf` for invisible operation.
+MuxTerm checks GitHub Releases automatically. When an update is available:
+
+1. A notification appears in the header
+2. Click the version chip to see changelog
+3. Click **Update Now** or run manually:
+
+```bash
+cd /path/to/muxterm
+git pull origin main
+npm install
+cd client && npm install && npm run build && cd ..
+# Restart the server
+```
+
+Terminal sessions (tmux) survive updates.
+
+## System Requirements
+
+- **OS**: Ubuntu/Debian 20.04+, Fedora, CentOS, Arch Linux, or WSL
+- **Memory**: 1GB minimum (2GB recommended)
+- **Node.js**: 18+
+- **Dependencies**: tmux, ttyd, guacd (for RDP/VNC)
 
 ## Security
 
-- Passwords are hashed with bcrypt
-- JWT tokens for authentication
-- Session secrets for secure sessions
-- Sessions isolated per user
-- No SSH keys stored on server
-- UTF-8 locale support for international characters
-
-### Creating Users
-
-For production environments, create admin users:
-
-```bash
-npm run create-user
-```
-
-### Installation in Containers
-
-MuxTerm works in Docker/LXC containers. For root installations:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash -s -- --yes
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Passwords hashed with bcrypt
+- JWT tokens with auto-generated secrets
+- AES-256-CBC encryption for Guacamole tokens
+- Per-user session isolation
+- Bitwarden credentials fetched on demand, never stored locally
+- Admin role system with root protection
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with [xterm.js](https://xtermjs.org/)
-- Terminal persistence via [tmux](https://github.com/tmux/tmux)
-- Inspired by traditional terminal multiplexers
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-For questions and support, please visit our [GitHub repository](https://github.com/tecnologicachile/muxterm).
-
-For issues and feature requests, please use the [GitHub Issues](https://github.com/tecnologicachile/muxterm/issues) page.
+- [GitHub Issues](https://github.com/tecnologicachile/muxterm/issues) for bugs and feature requests
+- Star the project if you find it useful!
