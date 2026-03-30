@@ -569,7 +569,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             }
           }}
           style={{
-            position: 'absolute', bottom: 8, left: 8,
+            position: 'fixed', bottom: 50, left: 8,
             width: 36, height: 36, borderRadius: '50%',
             backgroundColor: 'rgba(30,30,30,0.8)',
             border: '1px solid #444',
