@@ -68,6 +68,7 @@ function TerminalView() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [vaultOrgLoading, setVaultOrgLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
+  const [vaultItemsLoading, setVaultItemsLoading] = useState(false);
   const [vaultLoginOpen, setVaultLoginOpen] = useState(false);
   const [vaultServerUrl, setVaultServerUrl] = useState(() => localStorage.getItem('vault_url') || '');
   const [vaultClientId, setVaultClientId] = useState(() => localStorage.getItem('vault_email') || '');
@@ -319,6 +320,8 @@ function TerminalView() {
   };
 
   const loadVaultItems = async (type) => {
+    setVaultItemsLoading(true);
+    setVaultItems([]);
     try {
       let url = type ? `/api/vault/items?type=${type}` : '/api/vault/items';
       if (selectedCollection) url += `${url.includes('?') ? '&' : '?'}collectionId=${selectedCollection}`;
@@ -326,12 +329,19 @@ function TerminalView() {
       const data = await res.json();
       if (data.status === 'ok') setVaultItems(data.items);
     } catch (e) {}
+    setVaultItemsLoading(false);
   };
 
   const applyVaultItem = (item) => {
     setSelectedVaultItem(item);
     const conn = item.connections[0];
-    if (conn.scheme === 'ssh') {
+    if (conn.scheme === 'ssh' && newTerminalType === 'sftp') {
+      // SSH credential used for SFTP - same credentials, keep SFTP type
+      setSftpHost(conn.host);
+      setSftpPort(String(conn.port || 22));
+      setSftpUsername(item.username || '');
+      setSftpPassword(item.password || '');
+    } else if (conn.scheme === 'ssh') {
       setNewTerminalType('ssh');
       setSshHost(conn.host);
       setSshPort(String(conn.port || 22));
@@ -1225,7 +1235,12 @@ function TerminalView() {
                           </Box>
                         ))
                       }
-                      {vaultItems.filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh'))).length === 0 && (
+                      {vaultItemsLoading && (
+                        <Box sx={{ p: 1.5, textAlign: 'center', color: '#888', fontSize: '11px' }}>
+                          🔄 Loading credentials...
+                        </Box>
+                      )}
+                      {!vaultItemsLoading && vaultItems.filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh'))).length === 0 && (
                         <Box sx={{ p: 1.5, textAlign: 'center', color: '#555', fontSize: '11px' }}>
                           No {newTerminalType.toUpperCase()} credentials in vault
                         </Box>

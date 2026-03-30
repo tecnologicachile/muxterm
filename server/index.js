@@ -577,13 +577,15 @@ io.on('connection', (socket) => {
       rdpConfig._userId = socket.userId;
       rdpConfig._keyboardLayout = data.keyboardLayout || null;
       const token = guacamoleManager.createToken(rdpConfig);
-      socket.emit('rdp-token-created', {
+      const rid = data.requestId || '';
+      socket.emit(`rdp-token-created-${rid}`, {
         token,
         wsPort: guacamoleManager.guacPort || 4823
       });
     } catch (error) {
       logger.error('Failed to create RDP token:', error);
-      socket.emit('rdp-error', { message: 'Failed to create RDP token', error: error.message });
+      const rid = data.requestId || '';
+      socket.emit(`rdp-error-${rid}`, { message: 'Failed to create RDP token', error: error.message });
     }
   });
 
@@ -628,10 +630,12 @@ io.on('connection', (socket) => {
       vncConfig._type = 'vnc';
       vncConfig._userId = socket.userId;
       const token = guacamoleManager.createToken(vncConfig);
-      socket.emit('vnc-token-created', { token });
+      const rid = data.requestId || '';
+      socket.emit(`vnc-token-created-${rid}`, { token });
     } catch (error) {
       logger.error('Failed to create VNC token:', error);
-      socket.emit('vnc-error', { message: 'Failed to create VNC token', error: error.message });
+      const rid = data.requestId || '';
+      socket.emit(`vnc-error-${rid}`, { message: 'Failed to create VNC token', error: error.message });
     }
   });
 

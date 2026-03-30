@@ -32,22 +32,22 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
   
-  // Disable iframe pointer-events during panel resize to prevent mouse capture issues
+  // Overlay to block panel content during resize (prevents lag from iframes/canvas)
+  const [isResizing, setIsResizing] = useState(false);
   useEffect(() => {
-    const disableIframes = () => {
-      document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = 'none');
+    const onMouseDown = (e) => {
+      if (e.target.closest('[data-panel-resize-handle-id]')) setIsResizing(true);
     };
-    const enableIframes = () => {
-      document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = 'auto');
+    const onMouseUp = () => {
+      if (isResizing) setIsResizing(false);
     };
-    document.addEventListener('mousedown', (e) => {
-      if (e.target.closest('[data-panel-resize-handle-id]')) disableIframes();
-    });
-    document.addEventListener('mouseup', enableIframes);
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mouseup', onMouseUp);
     return () => {
-      document.removeEventListener('mouseup', enableIframes);
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mouseup', onMouseUp);
     };
-  }, []);
+  }, [isResizing]);
 
   // Handle activity changes from terminals
   const handleActivityChange = (panelId, isActive) => {
@@ -59,6 +59,14 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // For simplicity, we'll use a 2x2 grid layout
   // This allows up to 4 terminals in a grid pattern
   
+  const hStyle = (dir) => ({
+    width: dir === 'h' ? '6px' : undefined,
+    height: dir === 'v' ? '6px' : undefined,
+    backgroundColor: isResizing ? '#555' : '#333',
+    cursor: dir === 'h' ? 'col-resize' : 'row-resize',
+    transition: 'background-color 0.15s'
+  });
+
   const renderTerminal = (panel) => {
     const isActive = panel.id === activePanel;
     logger.debug(`[PanelManager] Rendering terminal for panel ${panel.id}, terminalId: ${panel.terminalId}, active: ${isActive}`);
@@ -79,7 +87,14 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         }}
         onClick={() => onPanelSelect(panel.id)}
       >
-        <Box 
+        {/* Resize overlay - blocks iframe/canvas mouse capture during drag */}
+        {isResizing && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 100, cursor: 'col-resize'
+          }} />
+        )}
+        <Box
           className="panel-header"
           sx={{
             display: 'flex',
@@ -294,7 +309,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         <Panel id="panel-0" minSize={5}>
           {renderTerminal(panels[0])}
         </Panel>
-        <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+        <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-1" minSize={5}>
           {renderTerminal(panels[1])}
         </Panel>
@@ -308,13 +323,13 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         <Panel id="panel-0" minSize={5}>
           {renderTerminal(panels[0])}
         </Panel>
-        <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+        <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-1" minSize={5}>
               {renderTerminal(panels[1])}
             </Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-2" minSize={5}>
               {renderTerminal(panels[2])}
             </Panel>
@@ -333,19 +348,19 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           <Panel id="panel-0" minSize={5}>
             {renderTerminal(panels[0])}
           </Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-2" minSize={5}>
             {renderTerminal(panels[2])}
           </Panel>
         </PanelGroup>
       </Panel>
-      <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+      <PanelResizeHandle style={hStyle('h')} />
       <Panel id="panel-right-group" minSize={5}>
         <PanelGroup direction="vertical" style={{ height: '100%' }}>
           <Panel id="panel-1" minSize={5}>
             {renderTerminal(panels[1])}
           </Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-3" minSize={5}>
             {renderTerminal(panels[3])}
           </Panel>
@@ -362,17 +377,17 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         <Panel id="panel-left" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
           </PanelGroup>
         </Panel>
-        <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+        <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
           </PanelGroup>
         </Panel>
@@ -387,19 +402,19 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         <Panel id="panel-left" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
           </PanelGroup>
         </Panel>
-        <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+        <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-5" minSize={5}>{renderTerminal(panels[5])}</Panel>
           </PanelGroup>
         </Panel>
@@ -414,25 +429,25 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         <Panel id="panel-left" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
           </PanelGroup>
         </Panel>
-        <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+        <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-center" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
           </PanelGroup>
         </Panel>
-        <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+        <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
           <PanelGroup direction="vertical" style={{ height: '100%' }}>
             <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-5" minSize={5}>{renderTerminal(panels[5])}</Panel>
-            <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+            <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-6" minSize={5}>{renderTerminal(panels[6])}</Panel>
           </PanelGroup>
         </Panel>
@@ -446,23 +461,23 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
       <Panel id="panel-left" minSize={5}>
         <PanelGroup direction="vertical" style={{ height: '100%' }}>
           <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
         </PanelGroup>
       </Panel>
-      <PanelResizeHandle style={{ width: '6px', backgroundColor: '#333', cursor: 'col-resize' }} />
+      <PanelResizeHandle style={hStyle('h')} />
       <Panel id="panel-right" minSize={5}>
         <PanelGroup direction="vertical" style={{ height: '100%' }}>
           <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-5" minSize={5}>{renderTerminal(panels[5])}</Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-6" minSize={5}>{renderTerminal(panels[6])}</Panel>
-          <PanelResizeHandle style={{ height: '6px', backgroundColor: '#333', cursor: 'row-resize' }} />
+          <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-7" minSize={5}>{renderTerminal(panels[7])}</Panel>
         </PanelGroup>
       </Panel>

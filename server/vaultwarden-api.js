@@ -155,9 +155,9 @@ router.get('/items', async (req, res) => {
       })
       .filter(Boolean);
 
-    // Filter by type if specified
+    // Filter by type if specified (sftp also matches ssh credentials)
     const filtered = type
-      ? connections.filter(c => c.connections.some(p => p.scheme === type))
+      ? connections.filter(c => c.connections.some(p => p.scheme === type || (type === 'sftp' && p.scheme === 'ssh')))
       : connections;
 
     res.json({ status: 'ok', items: filtered });

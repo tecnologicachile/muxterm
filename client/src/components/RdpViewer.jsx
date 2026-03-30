@@ -132,13 +132,14 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     if (!socket || !connId || tokenRequestedRef.current) return;
     tokenRequestedRef.current = true;
 
-    const tokenEvent = connectionType === 'vnc' ? 'vnc-token-created' : 'rdp-token-created';
-    const errorEvent = connectionType === 'vnc' ? 'vnc-error' : 'rdp-error';
+    const requestId = panelId || connId;
+    const tokenEvent = connectionType === 'vnc' ? `vnc-token-created-${requestId}` : `rdp-token-created-${requestId}`;
+    const errorEvent = connectionType === 'vnc' ? `vnc-error-${requestId}` : `rdp-error-${requestId}`;
     const emitEvent = connectionType === 'vnc' ? 'create-vnc-token' : 'create-rdp-token';
     const keyboardLayout = navigator.language || navigator.userLanguage || 'en-US';
     const emitData = connectionType === 'vnc'
-      ? { vncConnectionId: connId }
-      : { rdpConnectionId: connId, keyboardLayout };
+      ? { vncConnectionId: connId, requestId }
+      : { rdpConnectionId: connId, keyboardLayout, requestId };
 
     const handleToken = (data) => {
       socket.off(tokenEvent, handleToken);
