@@ -29,7 +29,12 @@ class TtydProcessManager {
     // Build the shell command for SSH sessions
     let shellCommand = null;
     if (sshConfig) {
-      const sshArgs = ['ssh', '-o', 'StrictHostKeyChecking=accept-new'];
+      const sshArgs = [];
+      // Use sshpass for password authentication if available
+      if (sshConfig.password && !sshConfig.privateKey) {
+        sshArgs.push('sshpass', '-p', sshConfig.password);
+      }
+      sshArgs.push('ssh', '-o', 'StrictHostKeyChecking=accept-new');
       if (sshConfig.port && sshConfig.port !== 22) {
         sshArgs.push('-p', sshConfig.port.toString());
       }
