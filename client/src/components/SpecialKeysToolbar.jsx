@@ -114,6 +114,8 @@ function SpecialKeysToolbar({ onKeyPress, onGuacKey, onToggleKeyboard, isVisible
         return (
           <Box
             key={idx}
+            onMouseDown={(e) => e.preventDefault()}
+            onTouchEnd={(e) => { e.preventDefault(); handleKey(keyDef); }}
             onClick={() => handleKey(keyDef)}
             sx={{
               minWidth: keyDef.label.length > 2 ? '40px' : '32px',
