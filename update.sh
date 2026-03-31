@@ -745,9 +745,9 @@ main() {
 
     if [ -d ".git" ]; then
 
-        exec_log "git fetch --tags" "Fetching latest tags"
+        exec_log "git fetch --tags origin" "Fetching latest changes"
 
-        exec_log "git checkout $LATEST_VERSION" "Checking out version $LATEST_VERSION"
+        exec_log "git checkout main 2>/dev/null; git reset --hard origin/main" "Updating to latest version"
 
     else
 
