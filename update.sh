@@ -840,7 +840,7 @@ main() {
         # Check if node_modules exists and if package.json has changed
         if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null || [ ! -f "node_modules/.bin/vite" ]; then
             print_color "Installing client dependencies..." "$BLUE"
-            exec_log "npm install" "Installing client dependencies"
+            exec_log "npm install --include=dev" "Installing client dependencies"
             
             if [ $? -ne 0 ]; then
                 print_color "✗ Failed to install client dependencies" "$RED"
