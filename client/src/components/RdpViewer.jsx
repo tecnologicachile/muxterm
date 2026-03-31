@@ -22,6 +22,9 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   const [currentMode, setCurrentMode] = useState(displayMode);
   const tokenRequestedRef = useRef(false);
   const isActiveRef = useRef(isActive);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef(null);
+  const MAX_RETRIES = 3;
   const mobileInputRef = useRef(null);
   const keyboardSinkRef = useRef(null);
   const [zoom, setZoom] = useState(1);
@@ -165,6 +168,45 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       tokenRequestedRef.current = false;
     };
   }, [socket, rdpConnectionId, vncConnectionId, connectionType]);
+
+  const handleConnectionError = (msg) => {
+    if (retryCountRef.current < MAX_RETRIES) {
+      retryCountRef.current++;
+      const delay = retryCountRef.current * 3000; // 3s, 6s, 9s
+      setError(`Reconnecting... (attempt ${retryCountRef.current}/${MAX_RETRIES})`);
+      retryTimerRef.current = setTimeout(() => {
+        setError(null);
+        setConnected(false);
+        tokenRequestedRef.current = false;
+        if (clientRef.current) {
+          try { clientRef.current.disconnect(); } catch (e) {}
+          clientRef.current = null;
+        }
+        // Re-request token to reconnect
+        const connId = connectionType === 'vnc' ? vncConnectionId : rdpConnectionId;
+        const requestId = panelId || connId;
+        const tokenEvent = connectionType === 'vnc' ? `vnc-token-created-${requestId}` : `rdp-token-created-${requestId}`;
+        const emitEvent = connectionType === 'vnc' ? 'create-vnc-token' : 'create-rdp-token';
+        const keyboardLayout = navigator.language || navigator.userLanguage || 'en-US';
+        const emitData = connectionType === 'vnc'
+          ? { vncConnectionId: connId, requestId }
+          : { rdpConnectionId: connId, keyboardLayout, requestId };
+        const handleToken = (data) => {
+          socket.off(tokenEvent, handleToken);
+          connectRdp(data.token);
+        };
+        socket.on(tokenEvent, handleToken);
+        socket.emit(emitEvent, emitData);
+      }, delay);
+    } else {
+      setError(msg);
+    }
+  };
+
+  // Cleanup retry timer
+  useEffect(() => {
+    return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); };
+  }, []);
 
   const connectRdp = (token) => {
     if (!canvasContainerRef.current) return;
@@ -358,6 +400,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         if (state === 3) { // CONNECTED
           setConnected(true);
           setError(null);
+          retryCountRef.current = 0;
           if (onActivityChange) onActivityChange(panelId, true);
           setTimeout(() => {
             if (clientRef.current && canvasContainerRef.current) {
@@ -381,12 +424,12 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
 
       client.onerror = (status) => {
         console.error('[REMOTE] Client error:', status);
-        setError(`Connection error: ${status.message || status.code || 'Unknown error'}`);
+        handleConnectionError(`Connection error: ${status.message || status.code || 'Unknown error'}`);
       };
 
       tunnel.onerror = (status) => {
         console.error('[REMOTE] Tunnel error:', status);
-        setError(`Tunnel error: ${status.message || status.code || 'Unknown error'}`);
+        handleConnectionError(`Tunnel error: ${status.message || status.code || 'Unknown error'}`);
       };
 
       // Connect with token and container dimensions
@@ -493,15 +536,54 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   }, []);
 
   if (error) {
+    const isRetrying = error.startsWith('Reconnecting');
     return (
       <div style={{
         width: '100%', height: '100%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        backgroundColor: '#000', color: '#ff4444', fontSize: '14px',
+        backgroundColor: '#000', color: isRetrying ? '#ffaa00' : '#ff4444', fontSize: '14px',
         flexDirection: 'column', gap: '8px'
       }}>
-        <span>{connectionType === 'vnc' ? 'VNC' : 'RDP'} Error</span>
-        <span style={{ color: '#888', fontSize: '12px' }}>{error}</span>
+        {isRetrying ? (
+          <>
+            <span style={{ fontSize: '16px' }}>🔄 {error}</span>
+          </>
+        ) : (
+          <>
+            <span>{connectionType === 'vnc' ? 'VNC' : 'RDP'} Error</span>
+            <span style={{ color: '#888', fontSize: '12px' }}>{error}</span>
+            <button onClick={() => {
+              retryCountRef.current = 0;
+              setError(null);
+              setConnected(false);
+              tokenRequestedRef.current = false;
+              if (clientRef.current) {
+                try { clientRef.current.disconnect(); } catch (e) {}
+                clientRef.current = null;
+              }
+              const connId = connectionType === 'vnc' ? vncConnectionId : rdpConnectionId;
+              const requestId = panelId || connId;
+              const tokenEvent = connectionType === 'vnc' ? `vnc-token-created-${requestId}` : `rdp-token-created-${requestId}`;
+              const emitEvent = connectionType === 'vnc' ? 'create-vnc-token' : 'create-rdp-token';
+              const keyboardLayout = navigator.language || navigator.userLanguage || 'en-US';
+              const emitData = connectionType === 'vnc'
+                ? { vncConnectionId: connId, requestId }
+                : { rdpConnectionId: connId, keyboardLayout, requestId };
+              const handleToken = (data) => {
+                socket.off(tokenEvent, handleToken);
+                connectRdp(data.token);
+              };
+              socket.on(tokenEvent, handleToken);
+              socket.emit(emitEvent, emitData);
+            }} style={{
+              marginTop: '8px', padding: '6px 16px', backgroundColor: '#333',
+              color: '#ccc', border: '1px solid #555', borderRadius: '4px',
+              cursor: 'pointer', fontSize: '12px'
+            }}>
+              Retry Connection
+            </button>
+          </>
+        )}
       </div>
     );
   }
