@@ -729,7 +729,7 @@ server.listen(PORT, async () => {
     // Delay tmux cleanup to allow workspace reconnections after restart
     setTimeout(() => {
       ttydManager.cleanupOrphanedTmuxSessions();
-    }, 5 * 60 * 1000); // 5 minutes grace period
+    }, 10 * 60 * 1000); // 10 minutes grace period
   }
   
   // Create default admin user if no users exist

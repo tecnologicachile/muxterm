@@ -301,27 +301,17 @@ class TtydProcessManager {
       const tmuxList = execSync('tmux -L muxterm ls 2>/dev/null || true', { encoding: 'utf8' });
       const tmuxSessions = tmuxList.split('\n').filter(l => l.includes('webssh_')).map(l => l.split(':')[0].trim());
 
-      const allDbTerminals = new Set();
-      const users = database.getAllUsers();
-      if (users) {
-        for (const user of users) {
-          const sessions = database.findSessionsByUserId(user.id);
-          if (sessions) {
-            for (const session of sessions) {
-              const terminals = database.findTerminalsBySessionId(session.id);
-              if (terminals) {
-                for (const t of terminals) {
-                  allDbTerminals.add(`webssh_${session.id}_${t.id}`.replace(/-/g, '_'));
-                }
-              }
-            }
-          }
+      // Build set of known terminal tmux names from active ttyd terminals
+      const knownSessions = new Set();
+      for (const [id, terminal] of this.terminals) {
+        if (terminal.tmuxSessionName) {
+          knownSessions.add(terminal.tmuxSessionName);
         }
       }
 
       let cleaned = 0;
       for (const tmuxSession of tmuxSessions) {
-        if (!allDbTerminals.has(tmuxSession)) {
+        if (!knownSessions.has(tmuxSession)) {
           try {
             execSync(`tmux -L muxterm kill-session -t ${tmuxSession}`, { timeout: 2000 });
             cleaned++;

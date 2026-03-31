@@ -335,7 +335,7 @@ const dbHelpers = {
     if (existing) return terminalId;
     db.pragma('foreign_keys = OFF');
     try {
-      statements.createTerminalForUser.run(terminalId, '_', userId, panelId, sshConnectionId);
+      statements.createTerminalForUser.run(terminalId, 'ws_' + userId, userId, panelId, sshConnectionId);
     } finally {
       db.pragma('foreign_keys = ON');
     }

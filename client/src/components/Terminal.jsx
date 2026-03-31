@@ -51,6 +51,15 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
 
     const handleTerminalError = (data) => {
       logger.error('Terminal error:', data);
+      // If terminal not found, recreate it
+      if (data.message && (data.message.includes('not found') || data.message.includes('No terminal'))) {
+        logger.info('Terminal lost, recreating...');
+        setLocalTerminalId(null);
+        terminalCreatedRef.current = false;
+        const createData = {};
+        if (sshConnectionId) createData.sshConnectionId = sshConnectionId;
+        socket.emit('create-terminal', createData);
+      }
     };
 
     const handleTerminalActivity = (data) => {
