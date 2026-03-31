@@ -192,19 +192,33 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     socket.emit(emitEvent, emitData);
   };
 
+  const reconnectAttemptsRef = useRef(0);
+
   const handleConnectionError = (msg) => {
+    // Prevent infinite loop — max 5 consecutive reconnect cycles
+    reconnectAttemptsRef.current++;
+    if (reconnectAttemptsRef.current > 5) {
+      setReconnecting(false);
+      setError(msg);
+      reconnectAttemptsRef.current = 0;
+      return;
+    }
+
     setReconnecting(true);
     setError(null);
     if (clientRef.current) {
       try { clientRef.current.disconnect(); } catch (e) {}
       clientRef.current = null;
     }
-    // Poll guacd health until ready, then reconnect
+    // Poll guacd health until ready, then reconnect with delay
     const pollHealth = () => {
       fetch('/api/guacd-health').then(r => r.json()).then(data => {
         if (data.status === 'ok') {
-          setReconnecting(false);
-          reconnect();
+          // Wait 5 seconds after guacd is ready before reconnecting
+          retryTimerRef.current = setTimeout(() => {
+            setReconnecting(false);
+            reconnect();
+          }, 5000);
         } else {
           retryTimerRef.current = setTimeout(pollHealth, 3000);
         }
@@ -413,6 +427,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           setConnected(true);
           setError(null);
           setReconnecting(false);
+          reconnectAttemptsRef.current = 0;
           if (onActivityChange) onActivityChange(panelId, true);
           setTimeout(() => {
             if (clientRef.current && canvasContainerRef.current) {
