@@ -25,6 +25,12 @@ class GuacamoleManager {
 
   init() {
     try {
+      // Ensure drive redirection directory exists
+      const driveRoot = '/tmp/guac-drive';
+      if (!fs.existsSync(driveRoot)) {
+        fs.mkdirSync(driveRoot, { recursive: true, mode: 0o777 });
+      }
+
       this.guacPort = 4823;
 
       // Load SSL certs if available (same certs as main server)
