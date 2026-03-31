@@ -129,13 +129,24 @@ router.post('/login', async (req, res) => {
       organizations = JSON.parse(orgsOutput).map(o => ({ id: o.id, name: o.name }));
     } catch (e) {}
 
-    bwSessions.set(req.userId, {
+    const session = {
       sessionKey,
       masterPassword: password,
       lastUsed: Date.now(),
       collectionId: null,
       organizationId: null
-    });
+    };
+    bwSessions.set(req.userId, session);
+
+    // Precache items in background (don't block login response)
+    runBw(['list', 'items', '--session', sessionKey], { userId: req.userId })
+      .then(output => {
+        const items = JSON.parse(output);
+        if (!session.itemsCache) session.itemsCache = {};
+        session.itemsCache['all'] = items;
+        session.itemsCacheTime = Date.now();
+      })
+      .catch(() => {});
 
     res.json({ status: 'ok', organizations });
   } catch (e) {
