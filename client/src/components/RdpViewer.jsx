@@ -444,19 +444,34 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             }
           }, 500);
         } else if (state === 5) { // DISCONNECTED
+          const wasConnected = connected;
           setConnected(false);
           if (onActivityChange) onActivityChange(panelId, false);
+          // If was previously connected, show disconnect message (not reconnect loop)
+          if (wasConnected) {
+            setError('Connection lost. The remote session was disconnected.');
+          }
         }
       };
 
       client.onerror = (status) => {
         console.error('[REMOTE] Client error:', status);
-        handleConnectionError(`Connection error: ${status.message || status.code || 'Unknown error'}`);
+        const code = status.code || 0;
+        const msg = `Connection error: ${status.message || code || 'Unknown error'}`;
+        // Code 519 = upstream not found (guacd issue), others = RDP server issue
+        if (code === 519 || code === 514 || code === 512) {
+          handleConnectionError(msg);
+        } else {
+          setError(msg);
+        }
       };
 
       tunnel.onerror = (status) => {
         console.error('[REMOTE] Tunnel error:', status);
-        handleConnectionError(`Tunnel error: ${status.message || status.code || 'Unknown error'}`);
+        const code = status.code || 0;
+        const msg = `Tunnel error: ${status.message || code || 'Unknown error'}`;
+        // Tunnel errors are always guacd related
+        handleConnectionError(msg);
       };
 
       // Connect with token and container dimensions
