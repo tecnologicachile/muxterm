@@ -1,6 +1,6 @@
 {
   "name": "muxterm-client",
-  "version": "1.0.77",
+  "version": "1.0.78",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.11.1",
