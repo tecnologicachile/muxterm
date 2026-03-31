@@ -156,28 +156,40 @@ router.get('/items', async (req, res) => {
     session.lastUsed = Date.now();
     const { type } = req.query;
 
-    // Sync first
-    try { await runBw(['sync', '--session', session.sessionKey], { userId: req.userId }); } catch (e) {
-      if (e.message === 'SESSION_EXPIRED') {
-        bwSessions.delete(req.userId);
-        return res.status(401).json({ status: 'error', message: 'Vault session expired' });
+    const CACHE_TTL = 60000; // 1 minute cache
+    const now = Date.now();
+    const cacheKey = session.collectionId || 'all';
+
+    // Use cache if fresh
+    if (!session.itemsCache || !session.itemsCache[cacheKey] || (now - session.itemsCacheTime) > CACHE_TTL) {
+      // Sync in background (don't block)
+      if (!session.lastSync || (now - session.lastSync) > CACHE_TTL) {
+        session.lastSync = now;
+        runBw(['sync', '--session', session.sessionKey], { userId: req.userId }).catch(e => {
+          if (e.message === 'SESSION_EXPIRED') bwSessions.delete(req.userId);
+        });
       }
+
+      // List items
+      const args = ['list', 'items', '--session', session.sessionKey];
+      if (session.collectionId) { args.push('--collectionid', session.collectionId); }
+      let output;
+      try {
+        output = await runBw(args, { userId: req.userId });
+      } catch (e) {
+        if (e.message === 'SESSION_EXPIRED') {
+          bwSessions.delete(req.userId);
+          return res.status(401).json({ status: 'error', message: 'Vault session expired' });
+        }
+        throw e;
+      }
+      const parsed = JSON.parse(output);
+      if (!session.itemsCache) session.itemsCache = {};
+      session.itemsCache[cacheKey] = parsed;
+      session.itemsCacheTime = now;
     }
 
-    // List items (auto-filter by "Remote Access" collection if found)
-    const args = ['list', 'items', '--session', session.sessionKey];
-    if (session.collectionId) { args.push('--collectionid', session.collectionId); }
-    let output;
-    try {
-      output = await runBw(args, { userId: req.userId });
-    } catch (e) {
-      if (e.message === 'SESSION_EXPIRED') {
-        bwSessions.delete(req.userId);
-        return res.status(401).json({ status: 'error', message: 'Vault session expired' });
-      }
-      throw e;
-    }
-    const items = JSON.parse(output);
+    const items = session.itemsCache[cacheKey];
 
     // Filter login items with URIs
     const connections = items
@@ -270,6 +282,8 @@ router.post('/create', async (req, res) => {
     if (session.organizationId) { args.push('--organizationid', session.organizationId); }
     await runBw(args, { userId: req.userId });
 
+    // Invalidate cache
+    if (session.itemsCache) session.itemsCache = {};
     res.json({ status: 'ok' });
   } catch (e) {
     res.status(500).json({ status: 'error', message: e.message });
@@ -293,6 +307,8 @@ router.post('/rename', async (req, res) => {
     const encoded = Buffer.from(JSON.stringify(item)).toString('base64');
     await runBw(['edit', 'item', itemId, encoded, '--session', session.sessionKey], { userId: req.userId });
 
+    // Invalidate cache
+    if (session.itemsCache) session.itemsCache = {};
     res.json({ status: 'ok' });
   } catch (e) {
     if (e.message === 'SESSION_EXPIRED') return res.status(401).json({ status: 'error', message: 'Vault session expired' });
