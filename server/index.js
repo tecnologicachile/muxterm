@@ -125,6 +125,25 @@ app.use('/api/vault', authenticateToken, (req, res, next) => {
   next();
 }, vaultwardenApi);
 
+// Guacd health check — test if guacd is accepting connections
+app.get('/api/guacd-health', (req, res) => {
+  const net = require('net');
+  const client = new net.Socket();
+  client.setTimeout(3000);
+  client.connect(4822, '127.0.0.1', () => {
+    client.destroy();
+    res.json({ status: 'ok' });
+  });
+  client.on('error', () => {
+    client.destroy();
+    res.json({ status: 'unavailable' });
+  });
+  client.on('timeout', () => {
+    client.destroy();
+    res.json({ status: 'unavailable' });
+  });
+});
+
 // Update check endpoint
 app.get('/api/update-check', async (req, res) => {
   // Force check if manual=true query param
