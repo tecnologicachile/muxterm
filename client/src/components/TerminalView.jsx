@@ -1463,7 +1463,7 @@ function TerminalView() {
               </Typography>
               <TextField size="small" type="number" value={vaultTimeout}
                 onChange={(e) => {
-                  const v = Math.max(5, Math.min(480, parseInt(e.target.value) || 30));
+                  const v = Math.max(5, Math.min(9999, parseInt(e.target.value) || 30));
                   setVaultTimeout(v);
                   localStorage.setItem('vault_timeout', v);
                   fetch('/api/vault/timeout', {
