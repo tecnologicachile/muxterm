@@ -888,9 +888,9 @@ main() {
             print_color "⚠ Cannot build frontend - vite not found" "$YELLOW"
         fi
 
-    fi
+    }
 
-    
+
 
     # Restore data
 
