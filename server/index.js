@@ -723,10 +723,13 @@ server.listen(PORT, async () => {
     logger.error('WARNING: tmux not installed. Sessions will not persist!');
   }
 
-  // Clean up orphaned ttyd processes and tmux sessions
+  // Clean up orphaned ttyd processes (but NOT tmux sessions on startup — they may reconnect)
   if (hasTmux) {
     ttydManager.cleanupOrphanedProcesses();
-    ttydManager.cleanupOrphanedTmuxSessions();
+    // Delay tmux cleanup to allow workspace reconnections after restart
+    setTimeout(() => {
+      ttydManager.cleanupOrphanedTmuxSessions();
+    }, 5 * 60 * 1000); // 5 minutes grace period
   }
   
   // Create default admin user if no users exist
