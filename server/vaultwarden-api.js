@@ -191,7 +191,7 @@ router.get('/items', async (req, res) => {
     session.lastUsed = Date.now();
     const { type } = req.query;
 
-    const CACHE_TTL = 60000; // 1 minute cache
+    const CACHE_TTL = 5 * 60 * 1000; // 5 minute cache
     const now = Date.now();
     const cacheKey = session.collectionId || 'all';
 
