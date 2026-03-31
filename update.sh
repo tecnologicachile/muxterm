@@ -944,7 +944,11 @@ main() {
 
         print_color "\nRestarting MuxTerm service..." "$YELLOW"
 
-        exec_log "sudo systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
+        if command -v sudo &>/dev/null && [ "$(id -u)" != "0" ]; then
+            exec_log "sudo systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
+        else
+            exec_log "systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
+        fi
 
         
 
