@@ -285,10 +285,21 @@ function TerminalView() {
         setVaultLoggedIn(true);
         setVaultLoginOpen(false);
         if (data.organizations) setVaultOrgs(data.organizations);
-        // Auto-select saved org
+        // Restore saved timeout
+        const savedTimeout = parseInt(localStorage.getItem('vault_timeout')) || 30;
+        setVaultTimeout(savedTimeout);
+        fetch('/api/vault/timeout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minutes: savedTimeout })
+        }).catch(() => {});
+        // Auto-select saved org and precache items
         const savedOrg = localStorage.getItem('vault_org');
         if (savedOrg) {
           selectOrganization(savedOrg);
+        } else {
+          // No org saved, precache items anyway
+          loadVaultItems();
         }
       } else {
         alert('Bitwarden login failed: ' + data.message);
