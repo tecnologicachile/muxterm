@@ -1472,8 +1472,8 @@ function TerminalView() {
                     body: JSON.stringify({ minutes: v })
                   }).catch(() => {});
                 }}
-                inputProps={{ min: 5, max: 480, style: { width: '50px', textAlign: 'center' } }}
-                sx={{ width: '80px' }}
+                inputProps={{ min: 5, max: 9999, style: { width: '60px', textAlign: 'center' } }}
+                sx={{ width: '90px' }}
               />
               <Typography variant="caption" sx={{ color: '#888', fontSize: '11px' }}>min</Typography>
             </Box>
