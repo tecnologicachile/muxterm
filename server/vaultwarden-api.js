@@ -20,6 +20,30 @@ router.keepAlive = (userId) => {
 
 const VAULT_URL = process.env.VAULTWARDEN_URL || '';
 
+// Keepalive: periodically unlock vault to prevent bw CLI from locking
+const KEEPALIVE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+setInterval(() => {
+  for (const [userId, session] of bwSessions.entries()) {
+    if (!session.masterPassword) continue;
+    // Only keepalive if session was used in the last timeout period
+    const sessionTimeout = (session.timeoutMinutes || 30) * 60 * 1000;
+    if (Date.now() - session.lastUsed > sessionTimeout) {
+      bwSessions.delete(userId);
+      continue;
+    }
+    // Sync to keep bw CLI session alive
+    runBwRaw(['sync', '--session', session.sessionKey], { userId })
+      .catch(() => {
+        // If locked, unlock silently
+        if (session.masterPassword) {
+          runBwRaw(['unlock', session.masterPassword, '--raw'], { userId })
+            .then(newKey => { session.sessionKey = newKey; })
+            .catch(() => {});
+        }
+      });
+  }
+}, KEEPALIVE_INTERVAL);
+
 function runBwRaw(args, options = {}) {
   return new Promise((resolve, reject) => {
     const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default'), NODE_TLS_REJECT_UNAUTHORIZED: '0', BW_NOINTERACTION: 'true' };
