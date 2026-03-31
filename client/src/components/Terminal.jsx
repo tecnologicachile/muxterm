@@ -132,9 +132,9 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
                 try {
                   const doc = iframeRef.current?.contentDocument;
                   if (doc) {
-                    // Hide xterm.js scrollbar
+                    // Hide xterm.js scrollbar and pre-connection messages
                     const style = doc.createElement('style');
-                    style.textContent = '.xterm-viewport::-webkit-scrollbar { display: none !important; } .xterm-viewport { scrollbar-width: none !important; overflow: hidden !important; }';
+                    style.textContent = '.xterm-viewport::-webkit-scrollbar { display: none !important; } .xterm-viewport { scrollbar-width: none !important; overflow: hidden !important; } body { background: #000 !important; } body > :not(#terminal-container):not(.xterm) { display: none !important; }';
                     doc.head.appendChild(style);
                     // Propagate clicks to parent for panel selection
                     doc.addEventListener('mousedown', () => {
