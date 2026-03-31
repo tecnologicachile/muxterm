@@ -30,9 +30,11 @@ curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/insta
 
 MuxTerm starts automatically at `https://localhost:3002`
 
-Default credentials: `test` / `test123`
+Default credentials: `admin` / `admin` (password change required on first login)
 
 ### Docker
+
+> **Note:** Native installation is recommended over Docker. With native install, terminal sessions (tmux) persist across updates and restarts. Docker containers lose tmux sessions when recreated.
 
 ```bash
 git clone https://github.com/tecnologicachile/muxterm.git
