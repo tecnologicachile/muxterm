@@ -831,29 +831,9 @@ main() {
 
     
 
-    # Check if frontend is already pre-compiled
-    print_color "\nChecking frontend status..." "$YELLOW"
-    
-    # Check if public directory exists with compiled files
-    if [ -d "public" ] && [ -f "public/index.html" ] && [ -d "public/assets" ]; then
-        print_color "✓ Frontend is pre-compiled in public/ directory" "$GREEN"
-        
-        # Verify the version in the compiled files matches
-        if [ -f "public/assets/index-*.js" ]; then
-            COMPILED_VERSION=$(grep -h -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" public/assets/index-*.js 2>/dev/null | head -1)
-            if [ -n "$COMPILED_VERSION" ] && [ "$COMPILED_VERSION" = "$LATEST_VERSION" ]; then
-                print_color "✓ Compiled frontend version matches: $COMPILED_VERSION" "$GREEN"
-                print_color "✓ Skipping frontend build - using pre-compiled files" "$GREEN"
-            else
-                print_color "⚠ Warning: Compiled version ($COMPILED_VERSION) differs from expected ($LATEST_VERSION)" "$YELLOW"
-                print_color "Frontend may need rebuilding, but will use existing files" "$YELLOW"
-            fi
-        fi
-    else
-        # Only build if public directory doesn't exist or is incomplete
-        print_color "⚠ Frontend not found or incomplete in public/ directory" "$YELLOW"
-        print_color "This should not happen in recent versions (v1.0.63+)" "$YELLOW"
-        print_color "Attempting to build frontend locally..." "$YELLOW"
+    # Always rebuild frontend to ensure latest version
+    print_color "\nBuilding frontend..." "$YELLOW"
+    {
         
         cd client
         
@@ -873,7 +853,7 @@ main() {
         # Try to build
         if [ -f "node_modules/.bin/vite" ]; then
             print_color "Compiling frontend..." "$BLUE"
-            print_color "Frontend pre-compiled. Skipping build..." "$GREEN"
+            npx vite build 2>&1 | tail -3
             
             if [ $? -eq 0 ]; then
                 print_color "✓ Frontend compiled successfully" "$GREEN"

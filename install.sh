@@ -590,6 +590,7 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=/usr/bin/node server/index.js
 Restart=on-failure
 RestartSec=10
+KillMode=process
 StandardOutput=append:$INSTALL_DIR/logs/muxterm.log
 StandardError=append:$INSTALL_DIR/logs/muxterm-error.log
 
