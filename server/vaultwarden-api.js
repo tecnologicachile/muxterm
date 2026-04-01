@@ -441,6 +441,19 @@ router.post('/select-org', async (req, res) => {
       } catch (e) {}
     }
 
+    // Precache items for selected collection in background
+    if (session.collectionId) {
+      const args = ['list', 'items', '--collectionid', session.collectionId, '--session', session.sessionKey];
+      runBw(args, { userId: req.userId })
+        .then(output => {
+          const items = JSON.parse(output);
+          if (!session.itemsCache) session.itemsCache = {};
+          session.itemsCache[session.collectionId] = items;
+          session.itemsCacheTime = Date.now();
+        })
+        .catch(() => {});
+    }
+
     res.json({ status: 'ok', collectionId: session.collectionId, hasRemoteAccess: !!session.collectionId });
   } catch (e) {
     res.status(500).json({ status: 'error', message: e.message });
