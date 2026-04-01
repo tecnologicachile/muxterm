@@ -1303,26 +1303,54 @@ function TerminalView() {
                                 {item.username && ` • ${item.username}`}
                               </Box>
                             </Box>
-                            <Box
-                              onClick={async (e) => {
+                            <Box sx={{ display: 'flex', gap: 0.3, ml: 0.5 }}>
+                              {/* Edit */}
+                              <Box onClick={async (e) => {
                                 e.stopPropagation();
-                                const newName = prompt('Rename credential:', item.name);
-                                if (!newName || newName === item.name) return;
                                 try {
-                                  const res = await fetch('/api/vault/rename', {
-                                    method: 'POST',
+                                  const res = await fetch(`/api/vault/item/${item.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+                                  if (!vaultSessionCheck(res)) return;
+                                  const data = await res.json();
+                                  if (data.status !== 'ok') return alert('Failed to load item');
+                                  const i = data.item;
+                                  const newName = prompt('Name:', i.name);
+                                  if (newName === null) return;
+                                  const newUser = prompt('Username:', i.username || '');
+                                  if (newUser === null) return;
+                                  const newPass = prompt('Password:', i.password || '');
+                                  if (newPass === null) return;
+                                  const conn = item.connections[0] || {};
+                                  const newHost = prompt('Host:', conn.host || '');
+                                  if (newHost === null) return;
+                                  const newPort = prompt('Port:', conn.port || '');
+                                  if (newPort === null) return;
+                                  const r = await fetch(`/api/vault/item/${item.id}`, {
+                                    method: 'PUT',
                                     headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ itemId: item.id, newName })
+                                    body: JSON.stringify({ name: newName, username: newUser, password: newPass, host: newHost, port: newPort, type: conn.scheme || newTerminalType })
+                                  });
+                                  if (!vaultSessionCheck(r)) return;
+                                  const rd = await r.json();
+                                  if (rd.status === 'ok') loadVaultItems(newTerminalType);
+                                  else alert('Failed: ' + rd.message);
+                                } catch (err) { alert('Error: ' + err.message); }
+                              }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
+                              {/* Delete */}
+                              <Box onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm(`Delete "${item.name}" from Bitwarden?`)) return;
+                                try {
+                                  const res = await fetch(`/api/vault/item/${item.id}`, {
+                                    method: 'DELETE',
+                                    headers: { 'Authorization': `Bearer ${getToken()}` }
                                   });
                                   if (!vaultSessionCheck(res)) return;
                                   const data = await res.json();
                                   if (data.status === 'ok') loadVaultItems(newTerminalType);
                                   else alert('Failed: ' + data.message);
                                 } catch (err) { alert('Error: ' + err.message); }
-                              }}
-                              sx={{ ml: 0.5, p: 0.3, cursor: 'pointer', color: '#555', fontSize: '12px', '&:hover': { color: '#aaa' } }}
-                              title="Rename"
-                            >✏️</Box>
+                              }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#f44' } }} title="Delete">🗑️</Box>
+                            </Box>
                           </Box>
                         ))
                       }

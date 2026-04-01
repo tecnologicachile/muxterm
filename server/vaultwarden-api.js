@@ -351,6 +351,51 @@ router.post('/rename', async (req, res) => {
   }
 });
 
+// Delete item from vault
+router.delete('/item/:id', async (req, res) => {
+  try {
+    const session = bwSessions.get(req.userId);
+    if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
+
+    await runBw(['delete', 'item', req.params.id, '--session', session.sessionKey], { userId: req.userId });
+    res.json({ status: 'ok' });
+  } catch (e) {
+    if (e.message === 'SESSION_EXPIRED') return res.status(401).json({ status: 'error', message: 'Vault session expired' });
+    res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// Edit item in vault (name, username, password, uri)
+router.put('/item/:id', async (req, res) => {
+  try {
+    const session = bwSessions.get(req.userId);
+    if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
+
+    const { name, username, password, host, port, type } = req.body;
+
+    const output = await runBw(['get', 'item', req.params.id, '--session', session.sessionKey], { userId: req.userId });
+    const item = JSON.parse(output);
+
+    if (name) item.name = name;
+    if (item.login) {
+      if (username !== undefined) item.login.username = username;
+      if (password !== undefined) item.login.password = password;
+      if (host) {
+        const scheme = type || 'rdp';
+        const uri = `${scheme}://${host}${port ? ':' + port : ''}`;
+        item.login.uris = [{ uri, match: null }];
+      }
+    }
+
+    const encoded = Buffer.from(JSON.stringify(item)).toString('base64');
+    await runBw(['edit', 'item', req.params.id, encoded, '--session', session.sessionKey], { userId: req.userId });
+    res.json({ status: 'ok' });
+  } catch (e) {
+    if (e.message === 'SESSION_EXPIRED') return res.status(401).json({ status: 'error', message: 'Vault session expired' });
+    res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // Lock vault
 router.post('/lock', async (req, res) => {
   try {
