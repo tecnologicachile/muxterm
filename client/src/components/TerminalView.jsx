@@ -81,8 +81,9 @@ function TerminalView() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [resetPwUserId, setResetPwUserId] = useState(null);
   const [resetPwValue, setResetPwValue] = useState('');
-  const [vaultEditDialog, setVaultEditDialog] = useState(null); // { mode: 'save'|'edit'|'delete', item?, defaults? }
+  const [vaultEditDialog, setVaultEditDialog] = useState(null); // { mode: 'save'|'edit'|'delete'|'loading', item? }
   const [vaultEditFields, setVaultEditFields] = useState({ name: '', username: '', password: '', host: '', port: '', type: '' });
+  const [vaultActionLoading, setVaultActionLoading] = useState(false);
   const [vaultOrgLoading, setVaultOrgLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
   const [vaultItemsLoading, setVaultItemsLoading] = useState(false);
@@ -434,6 +435,7 @@ function TerminalView() {
 
   const executeVaultSave = async () => {
     const { name, username, password, host, port, type } = vaultEditFields;
+    setVaultActionLoading(true);
     try {
       const res = await fetch('/api/vault/create', {
         method: 'POST',
@@ -450,6 +452,8 @@ function TerminalView() {
       }
     } catch (e) {
       alert('Error: ' + e.message);
+    } finally {
+      setVaultActionLoading(false);
     }
   };
 
@@ -1679,8 +1683,9 @@ function TerminalView() {
               </Typography>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setVaultEditDialog(null)}>Cancel</Button>
-              <Button color="error" variant="contained" onClick={async () => {
+              <Button onClick={() => setVaultEditDialog(null)} disabled={vaultActionLoading}>Cancel</Button>
+              <Button color="error" variant="contained" disabled={vaultActionLoading} onClick={async () => {
+                setVaultActionLoading(true);
                 try {
                   const res = await fetch(`/api/vault/item/${vaultEditDialog.item.id}`, {
                     method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` }
@@ -1690,7 +1695,8 @@ function TerminalView() {
                   if (data.status === 'ok') { setVaultEditDialog(null); loadVaultItems(newTerminalType); }
                   else alert(data.message);
                 } catch (err) { alert(err.message); }
-              }}>Delete</Button>
+                finally { setVaultActionLoading(false); }
+              }}>{vaultActionLoading ? <CircularProgress size={18} /> : 'Delete'}</Button>
             </DialogActions>
           </>
         ) : (
@@ -1709,11 +1715,12 @@ function TerminalView() {
                 value={vaultEditFields.password} onChange={(e) => setVaultEditFields(p => ({ ...p, password: e.target.value }))} />
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setVaultEditDialog(null)}>Cancel</Button>
-              <Button variant="contained" onClick={async () => {
+              <Button onClick={() => setVaultEditDialog(null)} disabled={vaultActionLoading}>Cancel</Button>
+              <Button variant="contained" disabled={vaultActionLoading} onClick={async () => {
                 if (vaultEditDialog?.mode === 'save') {
                   executeVaultSave();
                 } else {
+                  setVaultActionLoading(true);
                   try {
                     const r = await fetch(`/api/vault/item/${vaultEditDialog.item.id}`, {
                       method: 'PUT',
@@ -1725,8 +1732,9 @@ function TerminalView() {
                     if (rd.status === 'ok') { setVaultEditDialog(null); loadVaultItems(newTerminalType); }
                     else alert(rd.message);
                   } catch (err) { alert(err.message); }
+                  finally { setVaultActionLoading(false); }
                 }
-              }}>{vaultEditDialog?.mode === 'save' ? 'Save' : 'Update'}</Button>
+              }}>{vaultActionLoading ? <CircularProgress size={18} /> : (vaultEditDialog?.mode === 'save' ? 'Save' : 'Update')}</Button>
             </DialogActions>
           </>
         )}
