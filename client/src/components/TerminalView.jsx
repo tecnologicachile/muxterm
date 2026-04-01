@@ -10,7 +10,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -1311,15 +1312,16 @@ function TerminalView() {
                               {/* Edit */}
                               <Box onClick={async (e) => {
                                 e.stopPropagation();
+                                setVaultEditDialog({ mode: 'loading' });
                                 try {
                                   const res = await fetch(`/api/vault/item/${item.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
-                                  if (!vaultSessionCheck(res)) return;
+                                  if (!vaultSessionCheck(res)) { setVaultEditDialog(null); return; }
                                   const data = await res.json();
-                                  if (data.status !== 'ok') return;
+                                  if (data.status !== 'ok') { setVaultEditDialog(null); return; }
                                   const conn = item.connections[0] || {};
                                   setVaultEditFields({ name: data.item.name, username: data.item.username || '', password: data.item.password || '', host: conn.host || '', port: String(conn.port || ''), type: conn.scheme || newTerminalType });
                                   setVaultEditDialog({ mode: 'edit', item });
-                                } catch (err) {}
+                                } catch (err) { setVaultEditDialog(null); }
                               }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
                               {/* Delete */}
                               <Box onClick={(e) => {
@@ -1662,8 +1664,13 @@ function TerminalView() {
       </Dialog>
 
       {/* Vault Edit/Save/Delete Dialog */}
-      <Dialog open={!!vaultEditDialog} onClose={() => setVaultEditDialog(null)} maxWidth="xs" fullWidth>
-        {vaultEditDialog?.mode === 'delete' ? (
+      <Dialog open={!!vaultEditDialog} onClose={() => vaultEditDialog?.mode !== 'loading' && setVaultEditDialog(null)} maxWidth="xs" fullWidth>
+        {vaultEditDialog?.mode === 'loading' ? (
+          <DialogContent sx={{ textAlign: 'center', py: 4 }}>
+            <CircularProgress size={32} sx={{ color: '#00ff00' }} />
+            <Typography sx={{ mt: 2, color: '#888', fontSize: '13px' }}>Loading credential...</Typography>
+          </DialogContent>
+        ) : vaultEditDialog?.mode === 'delete' ? (
           <>
             <DialogTitle>Delete Credential</DialogTitle>
             <DialogContent>
