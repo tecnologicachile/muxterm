@@ -183,20 +183,34 @@ check_memory() {
 
 install_dependencies() {
     echo -e "${BLUE}Installing system dependencies...${NC}"
-    
+
     case $OS in
         ubuntu|debian)
             $USE_SUDO apt-get update
-            $USE_SUDO apt-get install -y curl git tmux build-essential python3 locales
+            $USE_SUDO apt-get install -y curl git tmux build-essential python3 locales sshpass unzip \
+                libcairo2-dev libpng-dev libpango1.0-dev libssh2-1-dev libwebsockets-dev libwebp-dev \
+                libvncserver-dev libpulse-dev libavcodec-dev libswscale-dev libavutil-dev \
+                autoconf automake libtool pkg-config
+            # libjpeg dev package differs between Debian and Ubuntu
+            $USE_SUDO apt-get install -y libjpeg62-turbo-dev 2>/dev/null || $USE_SUDO apt-get install -y libjpeg-turbo8-dev 2>/dev/null || true
+            # freerdp dev package
+            $USE_SUDO apt-get install -y freerdp2-dev 2>/dev/null || $USE_SUDO apt-get install -y libfreerdp-dev 2>/dev/null || true
             ;;
         fedora)
-            $USE_SUDO dnf install -y curl git tmux gcc-c++ make python3 glibc-langpack-en
+            $USE_SUDO dnf install -y curl git tmux gcc-c++ make python3 glibc-langpack-en sshpass unzip \
+                cairo-devel libjpeg-turbo-devel libpng-devel pango-devel libssh2-devel libwebsockets-devel \
+                libwebp-devel freerdp-devel libvncserver-devel pulseaudio-libs-devel \
+                ffmpeg-devel autoconf automake libtool pkgconfig
             ;;
         centos|rhel)
-            $USE_SUDO yum install -y curl git tmux gcc-c++ make python3 glibc-langpack-en
+            $USE_SUDO yum install -y curl git tmux gcc-c++ make python3 glibc-langpack-en sshpass unzip \
+                cairo-devel libjpeg-turbo-devel libpng-devel pango-devel libssh2-devel \
+                libwebp-devel autoconf automake libtool pkgconfig
             ;;
         arch|manjaro)
-            $USE_SUDO pacman -Syu --noconfirm curl git tmux base-devel python
+            $USE_SUDO pacman -Syu --noconfirm curl git tmux base-devel python sshpass unzip \
+                cairo libjpeg-turbo libpng pango libssh2 libwebsockets libwebp \
+                libvncserver libpulse ffmpeg autoconf automake libtool pkgconf freerdp
             ;;
         *)
             echo -e "${RED}Unsupported OS: $OS${NC}"
@@ -204,6 +218,93 @@ install_dependencies() {
             exit 1
             ;;
     esac
+}
+
+install_ttyd() {
+    if command -v ttyd &> /dev/null; then
+        echo -e "${GREEN}✓ ttyd already installed${NC}"
+        return
+    fi
+    echo -e "${BLUE}Installing ttyd...${NC}"
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) TTYD_ARCH="x86_64" ;;
+        aarch64) TTYD_ARCH="aarch64" ;;
+        armv7l) TTYD_ARCH="armhf" ;;
+        *) echo -e "${YELLOW}⚠ Unsupported architecture for ttyd: $ARCH${NC}"; return ;;
+    esac
+    $USE_SUDO curl -sLo /usr/local/bin/ttyd "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.${TTYD_ARCH}"
+    $USE_SUDO chmod +x /usr/local/bin/ttyd
+    echo -e "${GREEN}✓ ttyd installed${NC}"
+}
+
+install_guacd() {
+    if command -v guacd &> /dev/null || [ -f /usr/local/sbin/guacd ]; then
+        echo -e "${GREEN}✓ guacd already installed${NC}"
+        return
+    fi
+    echo -e "${BLUE}Compiling guacd (Apache Guacamole server)...${NC}"
+    echo -e "${YELLOW}This may take 3-5 minutes...${NC}"
+
+    local GUAC_DIR="/tmp/guacamole-server-build"
+    rm -rf "$GUAC_DIR"
+    git clone --depth 1 --branch 1.5.5 https://github.com/apache/guacamole-server.git "$GUAC_DIR" 2>&1 | tail -1
+    cd "$GUAC_DIR"
+    autoreconf -fi > /dev/null 2>&1
+    ./configure --with-init-dir=/etc/init.d > /dev/null 2>&1
+    make -j$(nproc) > /dev/null 2>&1
+    $USE_SUDO make install > /dev/null 2>&1
+    $USE_SUDO ldconfig
+    cd - > /dev/null
+    rm -rf "$GUAC_DIR"
+
+    if [ -f /usr/local/sbin/guacd ]; then
+        echo -e "${GREEN}✓ guacd compiled and installed${NC}"
+    else
+        echo -e "${YELLOW}⚠ guacd compilation failed - RDP/VNC will not be available${NC}"
+    fi
+}
+
+create_guacd_service() {
+    if [ -f /etc/systemd/system/guacd.service ]; then
+        echo -e "${GREEN}✓ guacd service already exists${NC}"
+        return
+    fi
+    if [ ! -f /usr/local/sbin/guacd ]; then
+        return
+    fi
+    echo -e "${BLUE}Creating guacd systemd service...${NC}"
+    $USE_SUDO tee /etc/systemd/system/guacd.service > /dev/null << 'GUACD_EOF'
+[Unit]
+Description=Guacamole proxy daemon (guacd)
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/sbin/guacd -b 127.0.0.1 -l 4822 -L info
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+GUACD_EOF
+    $USE_SUDO systemctl daemon-reload
+    $USE_SUDO systemctl enable guacd
+    $USE_SUDO systemctl start guacd
+    echo -e "${GREEN}✓ guacd service created and started${NC}"
+}
+
+install_bitwarden_cli() {
+    if command -v bw &> /dev/null; then
+        echo -e "${GREEN}✓ Bitwarden CLI already installed${NC}"
+        return
+    fi
+    echo -e "${BLUE}Installing Bitwarden CLI...${NC}"
+    curl -sL "https://vault.bitwarden.com/download/?app=cli&platform=linux" -o /tmp/bw.zip
+    $USE_SUDO unzip -o /tmp/bw.zip -d /usr/local/bin/ > /dev/null 2>&1
+    $USE_SUDO chmod +x /usr/local/bin/bw
+    rm -f /tmp/bw.zip
+    echo -e "${GREEN}✓ Bitwarden CLI installed${NC}"
 }
 
 configure_locales() {
@@ -912,8 +1013,12 @@ main() {
     # Installation phase
     install_dependencies
     install_nodejs
+    install_ttyd
+    install_guacd
+    install_bitwarden_cli
     clone_repository
     setup_muxterm
+    create_guacd_service
     create_systemd_service
     
     # Auto-start MuxTerm without asking
