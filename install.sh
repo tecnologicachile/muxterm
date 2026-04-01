@@ -128,29 +128,6 @@ check_basic_deps() {
     fi
 }
 
-configure_locales() {
-    echo -e "${BLUE}Configuring system locales...${NC}"
-    
-    # Only for Debian-based systems
-    if [[ "$OS" =~ ^(ubuntu|debian)$ ]]; then
-        export DEBIAN_FRONTEND=noninteractive
-        
-        # Check if locales package is installed
-        if ! dpkg -l locales &> /dev/null; then
-            $USE_SUDO apt-get update -qq
-            $USE_SUDO apt-get install -y locales
-        fi
-        
-        # Generate en_US.UTF-8 locale
-        if ! locale -a | grep -q "en_US.utf8"; then
-            $USE_SUDO locale-gen en_US.UTF-8
-        fi
-        
-        export LANG=en_US.UTF-8
-        export LC_ALL=en_US.UTF-8
-    fi
-}
-
 check_memory() {
     if [ -f /proc/meminfo ]; then
         TOTAL_MEM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
@@ -205,7 +182,8 @@ install_dependencies() {
         centos|rhel)
             $USE_SUDO yum install -y curl git tmux gcc-c++ make python3 glibc-langpack-en sshpass unzip \
                 cairo-devel libjpeg-turbo-devel libpng-devel pango-devel libssh2-devel \
-                libwebp-devel autoconf automake libtool pkgconfig
+                libwebp-devel libvncserver-devel freerdp-devel pulseaudio-libs-devel \
+                ffmpeg-devel autoconf automake libtool pkgconfig
             ;;
         arch|manjaro)
             $USE_SUDO pacman -Syu --noconfirm curl git tmux base-devel python sshpass unzip \
