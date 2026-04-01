@@ -80,6 +80,8 @@ function TerminalView() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [resetPwUserId, setResetPwUserId] = useState(null);
   const [resetPwValue, setResetPwValue] = useState('');
+  const [vaultEditDialog, setVaultEditDialog] = useState(null); // { mode: 'save'|'edit'|'delete', item?, defaults? }
+  const [vaultEditFields, setVaultEditFields] = useState({ name: '', username: '', password: '', host: '', port: '', type: '' });
   const [vaultOrgLoading, setVaultOrgLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
   const [vaultItemsLoading, setVaultItemsLoading] = useState(false);
@@ -424,21 +426,23 @@ function TerminalView() {
     const username = type === 'rdp' ? rdpUsername : type === 'sftp' ? sftpUsername : sshUsername;
     const password = type === 'rdp' ? rdpPassword : type === 'vnc' ? vncPassword : type === 'sftp' ? sftpPassword : sshPassword;
     if (!host) { alert('Fill in at least the host'); return; }
-    const name = prompt('Name for this credential:', `${username || ''}@${host}`);
-    if (!name) return;
+    setVaultEditFields({ name: `${username || ''}@${host}`, username, password, host, port, type });
+    setVaultEditDialog({ mode: 'save' });
+    return;
+  };
+
+  const executeVaultSave = async () => {
+    const { name, username, password, host, port, type } = vaultEditFields;
     try {
       const res = await fetch('/api/vault/create', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, type, host, port, username, password })
       });
-      if (!vaultSessionCheck(res)) {
-        alert('Bitwarden session expired. Please reconnect in Settings.');
-        return;
-      }
+      if (!vaultSessionCheck(res)) return;
       const data = await res.json();
       if (data.status === 'ok') {
-        alert('Saved to Bitwarden!');
+        setVaultEditDialog(null);
         loadVaultItems(newTerminalType);
       } else {
         alert('Failed: ' + data.message);
@@ -1311,44 +1315,16 @@ function TerminalView() {
                                   const res = await fetch(`/api/vault/item/${item.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
                                   if (!vaultSessionCheck(res)) return;
                                   const data = await res.json();
-                                  if (data.status !== 'ok') return alert('Failed to load item');
-                                  const i = data.item;
-                                  const newName = prompt('Name:', i.name);
-                                  if (newName === null) return;
-                                  const newUser = prompt('Username:', i.username || '');
-                                  if (newUser === null) return;
-                                  const newPass = prompt('Password:', i.password || '');
-                                  if (newPass === null) return;
+                                  if (data.status !== 'ok') return;
                                   const conn = item.connections[0] || {};
-                                  const newHost = prompt('Host:', conn.host || '');
-                                  if (newHost === null) return;
-                                  const newPort = prompt('Port:', conn.port || '');
-                                  if (newPort === null) return;
-                                  const r = await fetch(`/api/vault/item/${item.id}`, {
-                                    method: 'PUT',
-                                    headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ name: newName, username: newUser, password: newPass, host: newHost, port: newPort, type: conn.scheme || newTerminalType })
-                                  });
-                                  if (!vaultSessionCheck(r)) return;
-                                  const rd = await r.json();
-                                  if (rd.status === 'ok') loadVaultItems(newTerminalType);
-                                  else alert('Failed: ' + rd.message);
-                                } catch (err) { alert('Error: ' + err.message); }
+                                  setVaultEditFields({ name: data.item.name, username: data.item.username || '', password: data.item.password || '', host: conn.host || '', port: String(conn.port || ''), type: conn.scheme || newTerminalType });
+                                  setVaultEditDialog({ mode: 'edit', item });
+                                } catch (err) {}
                               }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
                               {/* Delete */}
-                              <Box onClick={async (e) => {
+                              <Box onClick={(e) => {
                                 e.stopPropagation();
-                                if (!confirm(`Delete "${item.name}" from Bitwarden?`)) return;
-                                try {
-                                  const res = await fetch(`/api/vault/item/${item.id}`, {
-                                    method: 'DELETE',
-                                    headers: { 'Authorization': `Bearer ${getToken()}` }
-                                  });
-                                  if (!vaultSessionCheck(res)) return;
-                                  const data = await res.json();
-                                  if (data.status === 'ok') loadVaultItems(newTerminalType);
-                                  else alert('Failed: ' + data.message);
-                                } catch (err) { alert('Error: ' + err.message); }
+                                setVaultEditDialog({ mode: 'delete', item });
                               }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#f44' } }} title="Delete">🗑️</Box>
                             </Box>
                           </Box>
@@ -1683,6 +1659,70 @@ function TerminalView() {
             Change Password
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Vault Edit/Save/Delete Dialog */}
+      <Dialog open={!!vaultEditDialog} onClose={() => setVaultEditDialog(null)} maxWidth="xs" fullWidth>
+        {vaultEditDialog?.mode === 'delete' ? (
+          <>
+            <DialogTitle>Delete Credential</DialogTitle>
+            <DialogContent>
+              <Typography sx={{ fontSize: '13px' }}>
+                Are you sure you want to delete <strong>{vaultEditDialog?.item?.name}</strong> from Bitwarden?
+              </Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setVaultEditDialog(null)}>Cancel</Button>
+              <Button color="error" variant="contained" onClick={async () => {
+                try {
+                  const res = await fetch(`/api/vault/item/${vaultEditDialog.item.id}`, {
+                    method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` }
+                  });
+                  if (!vaultSessionCheck(res)) return;
+                  const data = await res.json();
+                  if (data.status === 'ok') { setVaultEditDialog(null); loadVaultItems(newTerminalType); }
+                  else alert(data.message);
+                } catch (err) { alert(err.message); }
+              }}>Delete</Button>
+            </DialogActions>
+          </>
+        ) : (
+          <>
+            <DialogTitle>{vaultEditDialog?.mode === 'save' ? 'Save to Bitwarden' : 'Edit Credential'}</DialogTitle>
+            <DialogContent>
+              <TextField margin="dense" label="Name" fullWidth variant="outlined" size="small"
+                value={vaultEditFields.name} onChange={(e) => setVaultEditFields(p => ({ ...p, name: e.target.value }))} />
+              <TextField margin="dense" label="Host" fullWidth variant="outlined" size="small"
+                value={vaultEditFields.host} onChange={(e) => setVaultEditFields(p => ({ ...p, host: e.target.value }))} />
+              <TextField margin="dense" label="Port" fullWidth variant="outlined" size="small"
+                value={vaultEditFields.port} onChange={(e) => setVaultEditFields(p => ({ ...p, port: e.target.value }))} />
+              <TextField margin="dense" label="Username" fullWidth variant="outlined" size="small"
+                value={vaultEditFields.username} onChange={(e) => setVaultEditFields(p => ({ ...p, username: e.target.value }))} />
+              <TextField margin="dense" label="Password" type="password" fullWidth variant="outlined" size="small"
+                value={vaultEditFields.password} onChange={(e) => setVaultEditFields(p => ({ ...p, password: e.target.value }))} />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setVaultEditDialog(null)}>Cancel</Button>
+              <Button variant="contained" onClick={async () => {
+                if (vaultEditDialog?.mode === 'save') {
+                  executeVaultSave();
+                } else {
+                  try {
+                    const r = await fetch(`/api/vault/item/${vaultEditDialog.item.id}`, {
+                      method: 'PUT',
+                      headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify(vaultEditFields)
+                    });
+                    if (!vaultSessionCheck(r)) return;
+                    const rd = await r.json();
+                    if (rd.status === 'ok') { setVaultEditDialog(null); loadVaultItems(newTerminalType); }
+                    else alert(rd.message);
+                  } catch (err) { alert(err.message); }
+                }
+              }}>{vaultEditDialog?.mode === 'save' ? 'Save' : 'Update'}</Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
     </Box>
