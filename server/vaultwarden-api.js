@@ -285,6 +285,7 @@ router.get('/item/:id', async (req, res) => {
       }
     });
   } catch (e) {
+    if (e.message === 'SESSION_EXPIRED') return res.status(401).json({ status: 'error', message: 'Vault session expired' });
     res.status(500).json({ status: 'error', message: e.message });
   }
 });
@@ -321,6 +322,7 @@ router.post('/create', async (req, res) => {
     if (session.itemsCache) session.itemsCache = {};
     res.json({ status: 'ok' });
   } catch (e) {
+    if (e.message === 'SESSION_EXPIRED') return res.status(401).json({ status: 'error', message: 'Vault session expired' });
     res.status(500).json({ status: 'error', message: e.message });
   }
 });
@@ -389,6 +391,7 @@ router.put('/item/:id', async (req, res) => {
 
     const encoded = Buffer.from(JSON.stringify(item)).toString('base64');
     await runBw(['edit', 'item', req.params.id, encoded, '--session', session.sessionKey], { userId: req.userId });
+    if (session.itemsCache) session.itemsCache = {};
     res.json({ status: 'ok' });
   } catch (e) {
     if (e.message === 'SESSION_EXPIRED') return res.status(401).json({ status: 'error', message: 'Vault session expired' });
