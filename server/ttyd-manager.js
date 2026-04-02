@@ -29,24 +29,24 @@ class TtydProcessManager {
     // Build the shell command for SSH sessions
     let shellCommand = null;
     if (sshConfig) {
-      const sshArgs = [];
-      // Use sshpass for password authentication if available
-      if (sshConfig.password && !sshConfig.privateKey) {
-        // Use SSHPASS env var to avoid exposing password in process list
-        const escapedPass = sshConfig.password.replace(/'/g, "'\\''");
-        sshArgs.push(`SSHPASS='${escapedPass}'`, 'sshpass', '-e');
-      }
-      sshArgs.push('ssh', '-o', 'StrictHostKeyChecking=accept-new');
+      const sshParts = ['ssh', '-o', 'StrictHostKeyChecking=accept-new'];
       if (sshConfig.port && sshConfig.port !== 22) {
-        sshArgs.push('-p', sshConfig.port.toString());
+        sshParts.push('-p', sshConfig.port.toString());
       }
       if (sshConfig.privateKey) {
         const keyPath = path.join(this.socketDir, `key_${terminalId}`);
         fs.writeFileSync(keyPath, sshConfig.privateKey, { mode: 0o600 });
-        sshArgs.push('-i', keyPath);
+        sshParts.push('-i', keyPath);
       }
-      sshArgs.push(`${sshConfig.username}@${sshConfig.host}`);
-      shellCommand = sshArgs.join(' ');
+      sshParts.push(`${sshConfig.username}@${sshConfig.host}`);
+
+      if (sshConfig.password && !sshConfig.privateKey) {
+        // Wrap in bash -c with SSHPASS env var (not visible in ps)
+        const escapedPass = sshConfig.password.replace(/'/g, "'\\''");
+        shellCommand = `bash -c "SSHPASS='${escapedPass}' sshpass -e ${sshParts.join(' ')}"`;
+      } else {
+        shellCommand = sshParts.join(' ');
+      }
       logger.info(`SSH terminal: ${sshConfig.username}@${sshConfig.host}:${sshConfig.port || 22}`);
     }
 
