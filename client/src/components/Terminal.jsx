@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
@@ -10,6 +11,7 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
   const [hasActivity, setHasActivity] = useState(false);
   const activityTimeoutRef = useRef(null);
   const terminalCreatedRef = useRef(false);
+  const requestIdRef = useRef(null);
 
   // Cleanup activity timeout on unmount
   useEffect(() => {
@@ -26,7 +28,8 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     if (localTerminalId || terminalId || terminalCreatedRef.current) return;
 
     terminalCreatedRef.current = true;
-    const createData = {};
+    requestIdRef.current = uuidv4();
+    const createData = { requestId: requestIdRef.current };
     if (sshConnectionId) createData.sshConnectionId = sshConnectionId;
     socket.emit('create-terminal', createData);
   }, [socket, localTerminalId, terminalId]);
@@ -56,7 +59,8 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
         logger.info('Terminal lost, recreating...');
         setLocalTerminalId(null);
         terminalCreatedRef.current = false;
-        const createData = {};
+        requestIdRef.current = uuidv4();
+        const createData = { requestId: requestIdRef.current };
         if (sshConnectionId) createData.sshConnectionId = sshConnectionId;
         socket.emit('create-terminal', createData);
       }
@@ -74,13 +78,15 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
       }
     };
 
-    socket.on('terminal-created', handleTerminalCreated);
+    // Listen on correlated event if we have a requestId, otherwise generic
+    const createdEvent = requestIdRef.current ? `terminal-created-${requestIdRef.current}` : 'terminal-created';
+    socket.on(createdEvent, handleTerminalCreated);
     socket.on('terminal-restored', handleTerminalRestored);
     socket.on('terminal-error', handleTerminalError);
     socket.on('terminal-activity', handleTerminalActivity);
 
     return () => {
-      socket.off('terminal-created', handleTerminalCreated);
+      socket.off(createdEvent, handleTerminalCreated);
       socket.off('terminal-restored', handleTerminalRestored);
       socket.off('terminal-error', handleTerminalError);
       socket.off('terminal-activity', handleTerminalActivity);

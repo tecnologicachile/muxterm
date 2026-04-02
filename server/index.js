@@ -19,6 +19,9 @@ const updateChecker = require('./update-checker');
 const httpProxy = require('http-proxy');
 const guacamoleManager = require('./guacamole-manager');
 
+// In-memory cache for SSH passwords (never stored in DB)
+const sshPasswordCache = new Map();
+
 const app = express();
 
 // Try HTTPS first, fallback to HTTP
@@ -499,7 +502,7 @@ io.on('connection', (socket) => {
             port: conn.port,
             username: conn.username,
             authType: conn.auth_type,
-            password: conn.password,
+            password: conn.password || sshPasswordCache.get(sshConnectionId) || null,
             privateKey: conn.private_key
           };
         }
@@ -516,7 +519,8 @@ io.on('connection', (socket) => {
         null,
         sshConfig
       );
-      socket.emit('terminal-created', {
+      const terminalEvent = data.requestId ? `terminal-created-${data.requestId}` : 'terminal-created';
+      socket.emit(terminalEvent, {
         terminalId: terminal.id,
         sessionId: sessionId
       });
@@ -534,10 +538,21 @@ io.on('connection', (socket) => {
 
   socket.on('create-ssh-connection', (data) => {
     try {
-      const conn = database.createSshConnection(
-        socket.userId, data.name, data.host, data.port,
-        data.username, data.authType, data.password, data.privateKey
-      );
+      // Check if an identical connection already exists (deduplicate)
+      const existing = database.findSshConnectionByHostUser(socket.userId, data.host, data.port || 22, data.username);
+      let conn;
+      if (existing) {
+        conn = existing;
+        // Update password cache with latest password
+        if (data.password) sshPasswordCache.set(conn.id, data.password);
+      } else {
+        conn = database.createSshConnection(
+          socket.userId, data.name, data.host, data.port,
+          data.username, data.authType, data.password, data.privateKey
+        );
+        // Cache password in memory (not stored in DB)
+        if (data.password) sshPasswordCache.set(conn.id, data.password);
+      }
       socket.emit('ssh-connection-created', conn);
       socket.emit('ssh-connections', database.getSshConnections(socket.userId));
     } catch (error) {
@@ -667,7 +682,7 @@ io.on('connection', (socket) => {
         if (conn && conn.user_id === socket.userId) {
           sshConfig = {
             host: conn.host, port: conn.port, username: conn.username,
-            authType: conn.auth_type, password: conn.password, privateKey: conn.private_key
+            authType: conn.auth_type, password: conn.password || sshPasswordCache.get(data.sshConnectionId) || null, privateKey: conn.private_key
           };
         }
       }
@@ -730,6 +745,10 @@ io.on('connection', (socket) => {
     try {
       const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId) {
+        // Clean up cached SSH password if this terminal had an SSH connection
+        if (data.sshConnectionId) {
+          sshPasswordCache.delete(data.sshConnectionId);
+        }
         ttydManager.closeTerminal(data.terminalId);
         database.deleteTerminalByUser(data.terminalId, socket.userId);
       }
@@ -762,6 +781,8 @@ server.listen(PORT, async () => {
     // Delay tmux cleanup to allow workspace reconnections after restart
     setTimeout(() => {
       ttydManager.cleanupOrphanedTmuxSessions();
+      // Run periodic cleanup every 30 minutes
+      setInterval(() => ttydManager.cleanupOrphanedTmuxSessions(), 30 * 60 * 1000);
     }, 10 * 60 * 1000); // 10 minutes grace period
   }
   

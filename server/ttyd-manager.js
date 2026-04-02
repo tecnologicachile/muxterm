@@ -32,7 +32,9 @@ class TtydProcessManager {
       const sshArgs = [];
       // Use sshpass for password authentication if available
       if (sshConfig.password && !sshConfig.privateKey) {
-        sshArgs.push('sshpass', '-p', sshConfig.password);
+        // Use SSHPASS env var to avoid exposing password in process list
+        const escapedPass = sshConfig.password.replace(/'/g, "'\\''");
+        sshArgs.push(`SSHPASS='${escapedPass}'`, 'sshpass', '-e');
       }
       sshArgs.push('ssh', '-o', 'StrictHostKeyChecking=accept-new');
       if (sshConfig.port && sshConfig.port !== 22) {

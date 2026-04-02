@@ -188,6 +188,7 @@ const statements = {
   createSshConnection: db.prepare('INSERT INTO ssh_connections (user_id, name, host, port, username, auth_type, password, private_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
   findSshConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, auth_type, created_at FROM ssh_connections WHERE user_id = ? ORDER BY name'),
   findSshConnectionById: db.prepare('SELECT * FROM ssh_connections WHERE id = ?'),
+  findSshConnectionByHostUser: db.prepare('SELECT * FROM ssh_connections WHERE user_id = ? AND host = ? AND port = ? AND username = ?'),
   updateSshConnection: db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=?, auth_type=?, password=?, private_key=? WHERE id=? AND user_id=?'),
   deleteSshConnection: db.prepare('DELETE FROM ssh_connections WHERE id = ? AND user_id = ?'),
 
@@ -353,8 +354,12 @@ const dbHelpers = {
 
   // SSH Connections
   createSshConnection(userId, name, host, port, username, authType, password, privateKey) {
-    const result = statements.createSshConnection.run(userId, name, host, port || 22, username, authType || 'password', password || null, privateKey || null);
+    const result = statements.createSshConnection.run(userId, name, host, port || 22, username, authType || 'password', null, privateKey || null);
     return { id: result.lastInsertRowid, name, host, port: port || 22, username };
+  },
+
+  findSshConnectionByHostUser(userId, host, port, username) {
+    return statements.findSshConnectionByHostUser.get(userId, host, port, username);
   },
 
   getSshConnections(userId) {
