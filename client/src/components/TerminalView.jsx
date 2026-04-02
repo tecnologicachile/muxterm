@@ -1277,84 +1277,108 @@ function TerminalView() {
                 />
               )}
 
-              {/* Bitwarden credentials */}
-              {vaultLoggedIn && (
+              {/* Unified credential search */}
+              {newTerminalType !== 'local' && (
                 <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333' }}>
-                  <Typography variant="caption" sx={{ color: '#666', fontSize: '11px' }}>
-                    Or use saved credentials
-                  </Typography>
-                  <Box sx={{ mt: 0.5 }}>
-                    <TextField
-                      fullWidth size="small" margin="dense"
-                      label="🔐 Search Bitwarden"
-                      placeholder="Type to filter..."
-                      value={vaultSearch}
-                      onChange={(e) => setVaultSearch(e.target.value)}
-                    />
-                    <Box sx={{ maxHeight: '150px', overflow: 'auto', border: '1px solid #333', borderRadius: 1, mt: 0.5 }}>
-                      {vaultItems
-                        .filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh')))
-                        .filter(i => !vaultSearch || i.name.toLowerCase().includes(vaultSearch.toLowerCase()) || i.connections.some(c => c.host.includes(vaultSearch)))
-                        .map(item => (
-                          <Box
-                            key={item.id}
+                  <TextField
+                    fullWidth size="small" margin="dense"
+                    label="🔍 Search credentials"
+                    placeholder="Type to filter..."
+                    value={vaultSearch}
+                    onChange={(e) => setVaultSearch(e.target.value)}
+                  />
+                  <Box sx={{ maxHeight: '180px', overflow: 'auto', border: '1px solid #333', borderRadius: 1, mt: 0.5 }}>
+                    {/* Local saved connections */}
+                    {(() => {
+                      const localConns = newTerminalType === 'rdp' ? rdpConnections
+                        : newTerminalType === 'vnc' ? vncConnections
+                        : sshConnections; // ssh and sftp use ssh connections
+                      return localConns
+                        .filter(c => !vaultSearch || c.name?.toLowerCase().includes(vaultSearch.toLowerCase()) || c.host?.includes(vaultSearch))
+                        .map(conn => (
+                          <Box key={`local-${conn.id}`}
+                            onClick={() => {
+                              if (newTerminalType === 'rdp') setSelectedRdpConnection(String(conn.id));
+                              else if (newTerminalType === 'vnc') setSelectedVncConnection(String(conn.id));
+                              else setSelectedSshConnection(String(conn.id));
+                              if (newTerminalType === 'ssh' || newTerminalType === 'sftp') {
+                                setSshHost(conn.host); setSshPort(String(conn.port || 22)); setSshUsername(conn.username || '');
+                              } else if (newTerminalType === 'rdp') {
+                                setRdpHost(conn.host); setRdpPort(String(conn.port || 3389)); setRdpUsername(conn.username || '');
+                              } else if (newTerminalType === 'vnc') {
+                                setVncHost(conn.host); setVncPort(String(conn.port || 5900));
+                              }
+                              setVaultSearch('');
+                            }}
                             sx={{
                               p: 0.8, cursor: 'pointer', borderBottom: '1px solid #222',
-                              backgroundColor: selectedVaultItem?.id === item.id ? 'rgba(0,255,0,0.1)' : 'transparent',
                               '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' },
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                            }}
-                          >
-                            <Box onClick={() => { applyVaultItem(item); setVaultSearch(''); }} sx={{ flex: 1 }}>
-                              <Box sx={{ fontSize: '12px', color: '#ccc' }}>{item.name}</Box>
-                              <Box sx={{ fontSize: '10px', color: '#666' }}>
-                                {item.connections.map(c => `${c.scheme}://${c.host}${c.port ? ':' + c.port : ''}`).join(', ')}
-                                {item.username && ` • ${item.username}`}
-                              </Box>
+                            }}>
+                            <Box sx={{ flex: 1 }}>
+                              <Box sx={{ fontSize: '12px', color: '#ccc' }}>💾 {conn.name || `${conn.username}@${conn.host}`}</Box>
+                              <Box sx={{ fontSize: '10px', color: '#666' }}>{conn.host}:{conn.port} {conn.username && `• ${conn.username}`}</Box>
                             </Box>
                             <Box sx={{ display: 'flex', gap: 0.3, ml: 0.5 }}>
-                              {/* Edit */}
-                              <Box onClick={async (e) => {
-                                e.stopPropagation();
-                                setVaultEditDialog({ mode: 'loading' });
-                                try {
-                                  const res = await fetch(`/api/vault/item/${item.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
-                                  if (!vaultSessionCheck(res)) { setVaultEditDialog(null); return; }
-                                  const data = await res.json();
-                                  if (data.status !== 'ok') { setVaultEditDialog(null); return; }
-                                  const conn = item.connections[0] || {};
-                                  setVaultEditFields({ name: data.item.name, username: data.item.username || '', password: data.item.password || '', host: conn.host || '', port: String(conn.port || ''), type: conn.scheme || newTerminalType });
-                                  setVaultEditDialog({ mode: 'edit', item });
-                                } catch (err) { setVaultEditDialog(null); }
-                              }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
-                              {/* Delete */}
-                              <Box onClick={(e) => {
-                                e.stopPropagation();
-                                setVaultEditDialog({ mode: 'delete', item });
-                              }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#f44' } }} title="Delete">🗑️</Box>
+                              <Box onClick={(e) => { e.stopPropagation(); socket.emit(`delete-${newTerminalType === 'sftp' ? 'ssh' : newTerminalType}-connection`, { id: conn.id }); }}
+                                sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#f44' } }} title="Delete">🗑️</Box>
                             </Box>
                           </Box>
-                        ))
+                        ));
+                    })()}
+                    {/* Bitwarden vault items */}
+                    {vaultLoggedIn && vaultItems
+                      .filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh')))
+                      .filter(i => !vaultSearch || i.name.toLowerCase().includes(vaultSearch.toLowerCase()) || i.connections.some(c => c.host.includes(vaultSearch)))
+                      .map(item => (
+                        <Box key={`vault-${item.id}`}
+                          sx={{
+                            p: 0.8, cursor: 'pointer', borderBottom: '1px solid #222',
+                            backgroundColor: selectedVaultItem?.id === item.id ? 'rgba(0,255,0,0.1)' : 'transparent',
+                            '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' },
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                          }}>
+                          <Box onClick={() => { applyVaultItem(item); setVaultSearch(''); }} sx={{ flex: 1 }}>
+                            <Box sx={{ fontSize: '12px', color: '#ccc' }}>🔐 {item.name}</Box>
+                            <Box sx={{ fontSize: '10px', color: '#666' }}>
+                              {item.connections.map(c => `${c.scheme}://${c.host}${c.port ? ':' + c.port : ''}`).join(', ')}
+                              {item.username && ` • ${item.username}`}
+                            </Box>
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 0.3, ml: 0.5 }}>
+                            <Box onClick={async (e) => {
+                              e.stopPropagation();
+                              setVaultEditDialog({ mode: 'loading' });
+                              try {
+                                const res = await fetch(`/api/vault/item/${item.id}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+                                if (!vaultSessionCheck(res)) { setVaultEditDialog(null); return; }
+                                const data = await res.json();
+                                if (data.status !== 'ok') { setVaultEditDialog(null); return; }
+                                const conn = item.connections[0] || {};
+                                setVaultEditFields({ name: data.item.name, username: data.item.username || '', password: data.item.password || '', host: conn.host || '', port: String(conn.port || ''), type: conn.scheme || newTerminalType });
+                                setVaultEditDialog({ mode: 'edit', item });
+                              } catch (err) { setVaultEditDialog(null); }
+                            }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
+                            <Box onClick={(e) => { e.stopPropagation(); setVaultEditDialog({ mode: 'delete', item }); }}
+                              sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#f44' } }} title="Delete">🗑️</Box>
+                          </Box>
+                        </Box>
+                      ))
+                    }
+                    {vaultItemsLoading && (
+                      <Box sx={{ p: 1.5, textAlign: 'center', color: '#888', fontSize: '11px' }}>🔄 Loading...</Box>
+                    )}
+                    {(() => {
+                      const localConns = newTerminalType === 'rdp' ? rdpConnections : newTerminalType === 'vnc' ? vncConnections : sshConnections;
+                      const vaultCount = vaultLoggedIn ? vaultItems.filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh'))).length : 0;
+                      if (!vaultItemsLoading && localConns.length === 0 && vaultCount === 0) {
+                        return <Box sx={{ p: 1.5, textAlign: 'center', color: '#555', fontSize: '11px' }}>
+                          No saved credentials{!vaultLoggedIn ? ' — connect Bitwarden in ⚙️ Settings' : ''}
+                        </Box>;
                       }
-                      {vaultItemsLoading && (
-                        <Box sx={{ p: 1.5, textAlign: 'center', color: '#888', fontSize: '11px' }}>
-                          🔄 Loading credentials...
-                        </Box>
-                      )}
-                      {!vaultItemsLoading && vaultItems.filter(i => i.connections.some(c => c.scheme === newTerminalType || (newTerminalType === 'sftp' && c.scheme === 'ssh'))).length === 0 && (
-                        <Box sx={{ p: 1.5, textAlign: 'center', color: '#555', fontSize: '11px' }}>
-                          No {newTerminalType.toUpperCase()} credentials in vault
-                        </Box>
-                      )}
-                    </Box>
+                      return null;
+                    })()}
                   </Box>
-                </Box>
-              )}
-              {!vaultLoggedIn && (
-                <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333', textAlign: 'center' }}>
-                  <Typography variant="caption" sx={{ color: '#555', fontSize: '11px' }}>
-                    Connect to Bitwarden in ⚙️ Settings for saved credentials
-                  </Typography>
                 </Box>
               )}
             </Box>
@@ -1367,6 +1391,7 @@ function TerminalView() {
               🔐 Save to Vault
             </Button>
           )}
+          {vaultLoggedIn && newTerminalType !== 'local' && <Box sx={{ flex: 1 }} />}
           <Button
             onClick={handleCreateTerminal}
             variant="contained"

@@ -124,6 +124,7 @@ router.post('/change-password', async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     database.updateUserPassword(user.id, hashedPassword);
     database.clearMustChangePassword(user.id);
+    database.clearUserCredentialCache(user.id);
     res.json({ success: true });
   } catch (error) {
     logger.error('Change password error:', error);
@@ -167,6 +168,7 @@ router.post('/admin/reset-password', requireAdmin, async (req, res) => {
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
   const hashed = await bcrypt.hash(newPassword, 10);
   database.updateUserPassword(userId, hashed);
+  database.clearUserCredentialCache(userId);
   res.json({ success: true });
 });
 

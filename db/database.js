@@ -92,6 +92,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_terminals_session_id ON terminals(session_id);
   CREATE INDEX IF NOT EXISTS idx_ssh_connections_user_id ON ssh_connections(user_id);
 
+  CREATE TABLE IF NOT EXISTS credential_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    cache_key TEXT NOT NULL,
+    encrypted_password TEXT NOT NULL,
+    password_iv TEXT NOT NULL,
+    source TEXT DEFAULT 'local',
+    vault_item_id TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, cache_key)
+  );
+
   -- Workspace layout (one per user, replaces session_layouts)
   CREATE TABLE IF NOT EXISTS workspace_layouts (
     user_id INTEGER PRIMARY KEY,
@@ -202,7 +215,13 @@ const statements = {
   createVncConnection: db.prepare('INSERT INTO vnc_connections (user_id, name, host, port, password) VALUES (?, ?, ?, ?, ?)'),
   findVncConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, created_at FROM vnc_connections WHERE user_id = ? ORDER BY name'),
   findVncConnectionById: db.prepare('SELECT * FROM vnc_connections WHERE id = ?'),
-  deleteVncConnection: db.prepare('DELETE FROM vnc_connections WHERE id = ? AND user_id = ?')
+  deleteVncConnection: db.prepare('DELETE FROM vnc_connections WHERE id = ? AND user_id = ?'),
+
+  // Credential Cache
+  upsertCredentialCache: db.prepare('INSERT INTO credential_cache (user_id, cache_key, encrypted_password, password_iv, source, vault_item_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id, cache_key) DO UPDATE SET encrypted_password=excluded.encrypted_password, password_iv=excluded.password_iv, source=excluded.source, vault_item_id=excluded.vault_item_id, updated_at=CURRENT_TIMESTAMP'),
+  getCredentialCache: db.prepare('SELECT * FROM credential_cache WHERE user_id = ? AND cache_key = ?'),
+  deleteCredentialCache: db.prepare('DELETE FROM credential_cache WHERE user_id = ? AND cache_key = ?'),
+  deleteAllCredentialCacheByUser: db.prepare('DELETE FROM credential_cache WHERE user_id = ?')
 };
 
 // Helper functions
@@ -242,6 +261,7 @@ const dbHelpers = {
 
   deleteUser(userId) {
     const del = db.transaction(() => {
+      db.prepare('DELETE FROM credential_cache WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM ssh_connections WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM rdp_connections WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM vnc_connections WHERE user_id = ?').run(userId);
@@ -382,7 +402,7 @@ const dbHelpers = {
 
   // RDP Connections
   createRdpConnection(userId, name, host, port, username, password, domain) {
-    const result = statements.createRdpConnection.run(userId, name, host, port || 3389, username, password || null, domain || null);
+    const result = statements.createRdpConnection.run(userId, name, host, port || 3389, username, null, domain || null);
     return { id: result.lastInsertRowid, name, host, port: port || 3389, username };
   },
 
@@ -401,7 +421,7 @@ const dbHelpers = {
 
   // VNC Connections
   createVncConnection(userId, name, host, port, password) {
-    const result = statements.createVncConnection.run(userId, name, host, port || 5900, password || null);
+    const result = statements.createVncConnection.run(userId, name, host, port || 5900, null);
     return { id: result.lastInsertRowid, name, host, port: port || 5900 };
   },
 
@@ -416,6 +436,20 @@ const dbHelpers = {
   deleteVncConnection(id, userId) {
     const result = statements.deleteVncConnection.run(id, userId);
     return result.changes > 0;
+  },
+
+  // Credential Cache
+  cacheCredential(userId, cacheKey, encryptedPassword, passwordIv, source, vaultItemId) {
+    statements.upsertCredentialCache.run(userId, cacheKey, encryptedPassword, passwordIv, source || 'local', vaultItemId || null);
+  },
+  getCachedCredential(userId, cacheKey) {
+    return statements.getCredentialCache.get(userId, cacheKey);
+  },
+  deleteCachedCredential(userId, cacheKey) {
+    statements.deleteCredentialCache.run(userId, cacheKey);
+  },
+  clearUserCredentialCache(userId) {
+    statements.deleteAllCredentialCacheByUser.run(userId);
   }
 };
 

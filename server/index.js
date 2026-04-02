@@ -18,9 +18,24 @@ const tracer = require('./utils/persistenceTracer');
 const updateChecker = require('./update-checker');
 const httpProxy = require('http-proxy');
 const guacamoleManager = require('./guacamole-manager');
+const credEncryption = require('./credential-encryption');
 
-// In-memory cache for SSH passwords (never stored in DB)
-const sshPasswordCache = new Map();
+// Encrypted credential cache helpers (stored in DB, not in memory)
+function cachePassword(userId, type, host, port, username, password, source, vaultItemId) {
+  if (!password) return;
+  const cacheKey = `${type}:${host}:${port}:${username}`;
+  const { ciphertext, iv } = credEncryption.encrypt(password);
+  database.cacheCredential(userId, cacheKey, ciphertext, iv, source || 'local', vaultItemId || null);
+}
+
+function getCachedPassword(userId, type, host, port, username) {
+  const cacheKey = `${type}:${host}:${port}:${username}`;
+  const cached = database.getCachedCredential(userId, cacheKey);
+  if (cached) {
+    return credEncryption.decrypt(cached.encrypted_password, cached.password_iv);
+  }
+  return null;
+}
 
 const app = express();
 
@@ -502,7 +517,7 @@ io.on('connection', (socket) => {
             port: conn.port,
             username: conn.username,
             authType: conn.auth_type,
-            password: sshPasswordCache.get(sshConnectionId) || conn.password || null,
+            password: getCachedPassword(socket.userId, 'ssh', conn.host, conn.port, conn.username) || conn.password || null,
             privateKey: conn.private_key
           };
         }
@@ -543,16 +558,14 @@ io.on('connection', (socket) => {
       let conn;
       if (existing) {
         conn = existing;
-        // Update password cache with latest password
-        if (data.password) sshPasswordCache.set(conn.id, data.password);
       } else {
         conn = database.createSshConnection(
           socket.userId, data.name, data.host, data.port,
           data.username, data.authType, data.password, data.privateKey
         );
-        // Cache password in memory (not stored in DB)
-        if (data.password) sshPasswordCache.set(conn.id, data.password);
       }
+      // Cache password encrypted in DB
+      cachePassword(socket.userId, 'ssh', data.host, data.port || 22, data.username, data.password, data.fromVault ? 'vault' : 'local', data.vaultItemId);
       socket.emit('ssh-connection-created', conn);
       socket.emit('ssh-connections', database.getSshConnections(socket.userId));
     } catch (error) {
@@ -578,6 +591,8 @@ io.on('connection', (socket) => {
         socket.userId, data.name, data.host, data.port,
         data.username, data.password, data.domain
       );
+      // Cache password encrypted in DB
+      cachePassword(socket.userId, 'rdp', data.host, data.port || 3389, data.username, data.password, data.fromVault ? 'vault' : 'local', data.vaultItemId);
       socket.emit('rdp-connection-created', conn);
       socket.emit('rdp-connections', database.getRdpConnections(socket.userId));
     } catch (error) {
@@ -602,8 +617,14 @@ io.on('connection', (socket) => {
           return;
         }
         rdpConfig = conn;
+        // Retrieve cached password if not stored in DB
+        if (!rdpConfig.password) {
+          rdpConfig.password = getCachedPassword(socket.userId, 'rdp', conn.host, conn.port, conn.username);
+        }
       } else {
         rdpConfig = { host: data.host, port: data.port, username: data.username, password: data.password, domain: data.domain };
+        // Cache the password for future use
+        cachePassword(socket.userId, 'rdp', data.host, data.port || 3389, data.username, data.password, data.fromVault ? 'vault' : 'local', data.vaultItemId);
       }
 
       rdpConfig._userId = socket.userId;
@@ -631,6 +652,8 @@ io.on('connection', (socket) => {
       const conn = database.createVncConnection(
         socket.userId, data.name, data.host, data.port, data.password
       );
+      // Cache password encrypted in DB
+      cachePassword(socket.userId, 'vnc', data.host, data.port || 5900, '', data.password, data.fromVault ? 'vault' : 'local', data.vaultItemId);
       socket.emit('vnc-connection-created', conn);
       socket.emit('vnc-connections', database.getVncConnections(socket.userId));
     } catch (error) {
@@ -655,8 +678,14 @@ io.on('connection', (socket) => {
           return;
         }
         vncConfig = conn;
+        // Retrieve cached password if not stored in DB
+        if (!vncConfig.password) {
+          vncConfig.password = getCachedPassword(socket.userId, 'vnc', conn.host, conn.port, '');
+        }
       } else {
         vncConfig = { host: data.host, port: data.port, password: data.password };
+        // Cache the password for future use
+        cachePassword(socket.userId, 'vnc', data.host, data.port || 5900, '', data.password, data.fromVault ? 'vault' : 'local', data.vaultItemId);
       }
 
       vncConfig._type = 'vnc';
@@ -682,7 +711,7 @@ io.on('connection', (socket) => {
         if (conn && conn.user_id === socket.userId) {
           sshConfig = {
             host: conn.host, port: conn.port, username: conn.username,
-            authType: conn.auth_type, password: sshPasswordCache.get(data.sshConnectionId) || conn.password || null, privateKey: conn.private_key
+            authType: conn.auth_type, password: getCachedPassword(socket.userId, 'ssh', conn.host, conn.port, conn.username) || conn.password || null, privateKey: conn.private_key
           };
         }
       }
@@ -745,10 +774,6 @@ io.on('connection', (socket) => {
     try {
       const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId) {
-        // Clean up cached SSH password if this terminal had an SSH connection
-        if (data.sshConnectionId) {
-          sshPasswordCache.delete(data.sshConnectionId);
-        }
         ttydManager.closeTerminal(data.terminalId);
         database.deleteTerminalByUser(data.terminalId, socket.userId);
       }
@@ -786,10 +811,25 @@ server.listen(PORT, async () => {
     }, 10 * 60 * 1000); // 10 minutes grace period
   }
   
-  // Clear any legacy plaintext SSH passwords from DB (security migration)
+  // Migrate plaintext passwords to encrypted cache
   try {
+    const rdpConns = database.db.prepare('SELECT id, user_id, host, port, username, password FROM rdp_connections WHERE password IS NOT NULL').all();
+    for (const conn of rdpConns) {
+      cachePassword(conn.user_id, 'rdp', conn.host, conn.port || 3389, conn.username, conn.password, 'local', null);
+    }
+    database.db.prepare('UPDATE rdp_connections SET password = NULL WHERE password IS NOT NULL').run();
+
+    const vncConns = database.db.prepare('SELECT id, user_id, host, port, password FROM vnc_connections WHERE password IS NOT NULL').all();
+    for (const conn of vncConns) {
+      cachePassword(conn.user_id, 'vnc', conn.host, conn.port || 5900, '', conn.password, 'local', null);
+    }
+    database.db.prepare('UPDATE vnc_connections SET password = NULL WHERE password IS NOT NULL').run();
+
+    // Also clean any remaining SSH plaintext passwords
     database.db.prepare('UPDATE ssh_connections SET password = NULL WHERE password IS NOT NULL').run();
-  } catch (e) {}
+  } catch (e) {
+    // Migration errors are non-fatal
+  }
 
   // Create default admin user if no users exist
   const users = database.getAllUsers();
