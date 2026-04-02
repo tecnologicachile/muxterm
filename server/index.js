@@ -580,6 +580,33 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('update-ssh-connection', (data) => {
+    try {
+      database.db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=? WHERE id=? AND user_id=?')
+        .run(data.name, data.host, data.port || 22, data.username, data.id, socket.userId);
+      if (data.password) cachePassword(socket.userId, 'ssh', data.host, data.port || 22, data.username, data.password, 'local', null);
+      socket.emit('ssh-connections', database.getSshConnections(socket.userId));
+    } catch (e) {}
+  });
+
+  socket.on('update-rdp-connection', (data) => {
+    try {
+      database.db.prepare('UPDATE rdp_connections SET name=?, host=?, port=?, username=? WHERE id=? AND user_id=?')
+        .run(data.name, data.host, data.port || 3389, data.username, data.id, socket.userId);
+      if (data.password) cachePassword(socket.userId, 'rdp', data.host, data.port || 3389, data.username, data.password, 'local', null);
+      socket.emit('rdp-connections', database.getRdpConnections(socket.userId));
+    } catch (e) {}
+  });
+
+  socket.on('update-vnc-connection', (data) => {
+    try {
+      database.db.prepare('UPDATE vnc_connections SET name=?, host=?, port=? WHERE id=? AND user_id=?')
+        .run(data.name, data.host, data.port || 5900, data.id, socket.userId);
+      if (data.password) cachePassword(socket.userId, 'vnc', data.host, data.port || 5900, '', data.password, 'local', null);
+      socket.emit('vnc-connections', database.getVncConnections(socket.userId));
+    } catch (e) {}
+  });
+
   // RDP Connection management
   socket.on('get-rdp-connections', () => {
     socket.emit('rdp-connections', database.getRdpConnections(socket.userId));

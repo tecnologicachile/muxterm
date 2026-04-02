@@ -1320,7 +1320,19 @@ function TerminalView() {
                               <Box sx={{ fontSize: '10px', color: '#666' }}>{conn.host}:{conn.port} {conn.username && `• ${conn.username}`}</Box>
                             </Box>
                             <Box sx={{ display: 'flex', gap: 0.3, ml: 0.5 }}>
-                              <Box onClick={(e) => { e.stopPropagation(); socket.emit(`delete-${newTerminalType === 'sftp' ? 'ssh' : newTerminalType}-connection`, { id: conn.id }); }}
+                              {/* Edit local */}
+                              <Box onClick={(e) => {
+                                e.stopPropagation();
+                                const connType = newTerminalType === 'sftp' ? 'ssh' : newTerminalType;
+                                setVaultEditFields({ name: conn.name || `${conn.username || ''}@${conn.host}`, username: conn.username || '', password: '', host: conn.host || '', port: String(conn.port || ''), type: connType });
+                                setVaultEditDialog({ mode: 'edit-local', connId: conn.id, connType });
+                              }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
+                              {/* Delete local */}
+                              <Box onClick={(e) => {
+                                e.stopPropagation();
+                                const connType = newTerminalType === 'sftp' ? 'ssh' : newTerminalType;
+                                setVaultEditDialog({ mode: 'delete-local', connId: conn.id, connType, item: { name: conn.name || `${conn.username || ''}@${conn.host}` } });
+                              }}
                                 sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#f44' } }} title="Delete">🗑️</Box>
                             </Box>
                           </Box>
@@ -1699,12 +1711,12 @@ function TerminalView() {
             <CircularProgress size={32} sx={{ color: '#00ff00' }} />
             <Typography sx={{ mt: 2, color: '#888', fontSize: '13px' }}>Loading credential...</Typography>
           </DialogContent>
-        ) : vaultEditDialog?.mode === 'delete' ? (
+        ) : vaultEditDialog?.mode === 'delete' || vaultEditDialog?.mode === 'delete-local' ? (
           <>
             <DialogTitle>Delete Credential</DialogTitle>
             <DialogContent>
               <Typography sx={{ fontSize: '13px' }}>
-                Are you sure you want to delete <strong>{vaultEditDialog?.item?.name}</strong> from Bitwarden?
+                Are you sure you want to delete <strong>{vaultEditDialog?.item?.name}</strong>?
               </Typography>
             </DialogContent>
             <DialogActions>
@@ -1712,13 +1724,18 @@ function TerminalView() {
               <Button color="error" variant="contained" disabled={vaultActionLoading} onClick={async () => {
                 setVaultActionLoading(true);
                 try {
-                  const res = await fetch(`/api/vault/item/${vaultEditDialog.item.id}`, {
-                    method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` }
-                  });
-                  if (!vaultSessionCheck(res)) return;
-                  const data = await res.json();
-                  if (data.status === 'ok') { setVaultEditDialog(null); loadVaultItems(newTerminalType); }
-                  else alert(data.message);
+                  if (vaultEditDialog.mode === 'delete-local') {
+                    socket.emit(`delete-${vaultEditDialog.connType}-connection`, { id: vaultEditDialog.connId });
+                    setVaultEditDialog(null);
+                  } else {
+                    const res = await fetch(`/api/vault/item/${vaultEditDialog.item.id}`, {
+                      method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` }
+                    });
+                    if (!vaultSessionCheck(res)) return;
+                    const data = await res.json();
+                    if (data.status === 'ok') { setVaultEditDialog(null); loadVaultItems(newTerminalType); }
+                    else alert(data.message);
+                  }
                 } catch (err) { alert(err.message); }
                 finally { setVaultActionLoading(false); }
               }}>{vaultActionLoading ? <CircularProgress size={18} /> : 'Delete'}</Button>
@@ -1744,6 +1761,20 @@ function TerminalView() {
               <Button variant="contained" disabled={vaultActionLoading} onClick={async () => {
                 if (vaultEditDialog?.mode === 'save') {
                   executeVaultSave();
+                } else if (vaultEditDialog?.mode === 'edit-local') {
+                  setVaultActionLoading(true);
+                  try {
+                    const { name, host, port, username, password, type } = vaultEditFields;
+                    socket.emit(`update-${vaultEditDialog.connType}-connection`, {
+                      id: vaultEditDialog.connId, name, host, port: parseInt(port), username, password
+                    });
+                    // Cache password if provided
+                    if (password) {
+                      socket.emit('cache-credential', { type: vaultEditDialog.connType, host, port: parseInt(port), username, password });
+                    }
+                    setVaultEditDialog(null);
+                  } catch (err) { alert(err.message); }
+                  finally { setVaultActionLoading(false); }
                 } else {
                   setVaultActionLoading(true);
                   try {
