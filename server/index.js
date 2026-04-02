@@ -659,12 +659,26 @@ io.on('connection', (socket) => {
   socket.on('restore-terminal', async (data) => {
     try {
       const sessionId = data.sessionId || `ws_${socket.userId}`;
+
+      // Get SSH config if this was an SSH terminal
+      let sshConfig = null;
+      if (data.sshConnectionId) {
+        const conn = database.getSshConnection(data.sshConnectionId);
+        if (conn && conn.user_id === socket.userId) {
+          sshConfig = {
+            host: conn.host, port: conn.port, username: conn.username,
+            authType: conn.auth_type, password: conn.password, privateKey: conn.private_key
+          };
+        }
+      }
+
       const terminal = await ttydManager.restoreTerminal(
         data.terminalId,
         socket.userId,
         sessionId,
         data.rows || 24,
-        data.cols || 80
+        data.cols || 80,
+        sshConfig
       );
       if (terminal && terminal.userId === socket.userId) {
         socket.emit('terminal-restored', {

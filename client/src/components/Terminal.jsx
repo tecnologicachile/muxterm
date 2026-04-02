@@ -91,13 +91,13 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
   useEffect(() => {
     if (!socket || !localTerminalId && !terminalId) return;
     const tid = localTerminalId || terminalId;
-    socket.emit('restore-terminal', { terminalId: tid });
+    socket.emit('restore-terminal', { terminalId: tid, sshConnectionId });
   }, [socket, localTerminalId, terminalId]);
 
   // Handle reconnection
   useEffect(() => {
     if (isReconnected && localTerminalId && socket) {
-      socket.emit('restore-terminal', { terminalId: localTerminalId });
+      socket.emit('restore-terminal', { terminalId: localTerminalId, sshConnectionId });
     }
   }, [isReconnected, localTerminalId, socket]);
 

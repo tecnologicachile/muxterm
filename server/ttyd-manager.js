@@ -157,7 +157,7 @@ class TtydProcessManager {
   /**
    * Restore an existing terminal or create a new one
    */
-  async restoreTerminal(terminalId, userId, sessionId, rows = 24, cols = 80) {
+  async restoreTerminal(terminalId, userId, sessionId, rows = 24, cols = 80, sshConfig = null) {
     const existing = this.terminals.get(terminalId);
     if (existing && !existing._exited) {
       existing.lastActivity = new Date();
@@ -178,11 +178,11 @@ class TtydProcessManager {
         return await this._spawnTtyd(terminalId, userId, sessionId, tmuxSessionName, socketPath);
       } else {
         logger.info(`Restoring terminal ${terminalId.substring(0, 8)}: tmux not found, creating fresh`);
-        return await this.createTerminal(userId, sessionId, rows, cols, terminalId);
+        return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig);
       }
     } catch (error) {
       logger.error(`Error restoring terminal: ${error.message}`);
-      return await this.createTerminal(userId, sessionId, rows, cols, terminalId);
+      return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig);
     }
   }
 
