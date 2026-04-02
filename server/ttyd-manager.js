@@ -134,10 +134,12 @@ class TtydProcessManager {
       const terminal = this.terminals.get(terminalId);
       if (terminal) {
         terminal._exited = true;
-        // If SSH died within 5 seconds, likely auth failure
-        if (sshConfig && (Date.now() - createdTime) < 5000) {
+        // If SSH died within 10 seconds, likely auth failure
+        if (sshConfig && (Date.now() - createdTime) < 10000) {
           terminal._authFailed = true;
           logger.info(`SSH auth likely failed for ${sshConfig.username}@${sshConfig.host}`);
+          // Notify via callback
+          if (this.onAuthFailed) this.onAuthFailed(terminalId, userId);
         }
       }
     });

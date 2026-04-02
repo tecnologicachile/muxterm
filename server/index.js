@@ -477,6 +477,16 @@ const authenticateSocket = async (socket, next) => {
 
 io.use(authenticateSocket);
 
+// Notify user when SSH auth fails
+ttydManager.onAuthFailed = (terminalId, userId) => {
+  const sockets = io.sockets.sockets;
+  for (const [, s] of sockets) {
+    if (s.userId === userId) {
+      s.emit('terminal-auth-failed', { terminalId });
+    }
+  }
+};
+
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
 
