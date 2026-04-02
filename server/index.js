@@ -786,6 +786,11 @@ server.listen(PORT, async () => {
     }, 10 * 60 * 1000); // 10 minutes grace period
   }
   
+  // Clear any legacy plaintext SSH passwords from DB (security migration)
+  try {
+    database.db.prepare('UPDATE ssh_connections SET password = NULL WHERE password IS NOT NULL').run();
+  } catch (e) {}
+
   // Create default admin user if no users exist
   const users = database.getAllUsers();
   if (!users || users.length === 0) {
