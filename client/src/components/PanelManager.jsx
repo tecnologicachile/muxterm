@@ -48,6 +48,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     };
   }, [isResizing]);
 
+  // Maximized panel state
+  const [maximizedPanel, setMaximizedPanel] = useState(null);
+
   // Handle activity changes from terminals
   const handleActivityChange = (panelId, isActive) => {
     setActivityStates(prev => ({
@@ -182,6 +185,24 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               }}
             />
             
+            {/* Maximize/Restore */}
+            {panels.length > 1 && (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMaximizedPanel(maximizedPanel === panel.id ? null : panel.id);
+                }}
+                sx={{
+                  padding: '2px',
+                  color: maximizedPanel === panel.id ? '#00ff00' : '#666',
+                  '&:hover': { color: '#fff' }
+                }}
+                title={maximizedPanel === panel.id ? 'Restore' : 'Maximize'}
+              >
+                <Typography sx={{ fontSize: 12, lineHeight: 1 }}>{maximizedPanel === panel.id ? '⧉' : '□'}</Typography>
+              </IconButton>
+            )}
             {onMinimizePanel && (
               <IconButton
                 size="small"
@@ -189,7 +210,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                   e.stopPropagation();
                   onMinimizePanel(panel.id);
                 }}
-                sx={{ 
+                sx={{
                   padding: '2px',
                   color: '#666',
                   '&:hover': { color: '#fff' }
@@ -257,6 +278,29 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   };
 
   if (panels.length === 0) return null;
+
+  // Maximized panel: show only that panel fullscreen, others hidden but mounted
+  if (maximizedPanel && panels.some(p => p.id === maximizedPanel)) {
+    return (
+      <Box sx={{ height: '100%', position: 'relative', overflow: 'hidden' }}>
+        {panels.map(panel => (
+          <Box
+            key={`max-panel-${panel.id}`}
+            sx={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0, bottom: 0,
+              visibility: panel.id === maximizedPanel ? 'visible' : 'hidden',
+              zIndex: panel.id === maximizedPanel ? 1 : 0,
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            {renderTerminal(panel)}
+          </Box>
+        ))}
+      </Box>
+    );
+  }
 
   // Mobile: single panel view (tabs rendered by TerminalView)
   // All panels stay mounted at full-screen size, only the active one is visible
