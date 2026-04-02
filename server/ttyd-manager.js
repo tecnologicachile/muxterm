@@ -303,13 +303,31 @@ class TtydProcessManager {
       const tmuxList = execSync('tmux -L muxterm ls 2>/dev/null || true', { encoding: 'utf8' });
       const tmuxSessions = tmuxList.split('\n').filter(l => l.includes('webssh_')).map(l => l.split(':')[0].trim());
 
-      // Build set of known terminal tmux names from active ttyd terminals
+      // Build set of known terminal tmux names from active ttyd terminals + workspace layouts
       const knownSessions = new Set();
       for (const [id, terminal] of this.terminals) {
         if (terminal.tmuxSessionName) {
           knownSessions.add(terminal.tmuxSessionName);
         }
       }
+      // Also protect sessions from workspace layouts (active + minimized panels)
+      try {
+        const database = require('../db/database');
+        const allUsers = database.getAllUsers();
+        for (const user of allUsers) {
+          const layout = database.getWorkspaceLayout(user.id);
+          if (layout) {
+            const allPanels = [...(layout.panels || []), ...(layout.minimizedPanels || [])];
+            for (const panel of allPanels) {
+              if (panel.terminalId) {
+                const sessionId = `ws_${user.id}`;
+                const tmuxName = `webssh_${sessionId}_${panel.terminalId}`.replace(/-/g, '_');
+                knownSessions.add(tmuxName);
+              }
+            }
+          }
+        }
+      } catch (e) {}
 
       let cleaned = 0;
       for (const tmuxSession of tmuxSessions) {
