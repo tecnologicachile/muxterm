@@ -10,20 +10,12 @@ function GitHubStars() {
 
   const fetchStars = async () => {
     try {
-      const response = await axios.get('https://api.github.com/repos/tecnologicachile/muxterm');
-      setStars(response.data.stargazers_count);
-      logger.debug('GitHub stars fetched:', response.data.stargazers_count);
-    } catch (error) {
-      logger.error('Failed to fetch GitHub stars:', error);
-      // Try using our backend as proxy to avoid rate limits
-      try {
-        const backendResponse = await axios.get('/api/github-stars');
-        if (backendResponse.data.stars !== undefined) {
-          setStars(backendResponse.data.stars);
-        }
-      } catch (backendError) {
-        logger.error('Failed to fetch stars from backend:', backendError);
+      const response = await axios.get('/api/github-stars');
+      if (response.data.stars !== undefined) {
+        setStars(response.data.stars);
       }
+    } catch (error) {
+      // Silent fail - stars are cosmetic
     } finally {
       setLoading(false);
     }

@@ -670,14 +670,15 @@ function TerminalView() {
         onLogout={() => { logout(); navigate('/login'); }}
         rightContent={
           <>
-            {panels.length < 8 && (
-              !isMobile ? (
+            {!isMobile ? (
                 <Button
                   color="inherit"
                   size="small"
                   startIcon={<AddIcon />}
                   onClick={handleNewTerminal}
-                  sx={{ mr: 1 }}
+                  disabled={panels.length >= 8}
+                  title={panels.length >= 8 ? 'Maximum 8 panels' : 'New terminal'}
+                  sx={{ mr: 1, opacity: panels.length >= 8 ? 0.4 : 1 }}
                 >
                   Terminal
                 </Button>
@@ -686,13 +687,12 @@ function TerminalView() {
                   color="inherit"
                   size="small"
                   onClick={handleNewTerminal}
-                  sx={{ ml: 1 }}
+                  disabled={panels.length >= 8}
+                  sx={{ ml: 1, opacity: panels.length >= 8 ? 0.4 : 1 }}
                 >
                   <AddIcon />
                 </IconButton>
-              )
-            )}
-
+              )}
 
             {/* Vault status + Settings */}
             <IconButton
