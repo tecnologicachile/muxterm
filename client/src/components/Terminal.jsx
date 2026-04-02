@@ -59,12 +59,12 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     const handleTerminalError = (data) => {
       logger.error('Terminal error:', data);
       if (data.message && (data.message.includes('not found') || data.message.includes('No terminal'))) {
-        // Check if it was an auth failure before recreating
-        if (sshConnectionId && localTerminalId) {
-          socket.emit('check-terminal-auth', { terminalId: localTerminalId });
-        }
-        // Only auto-retry if under 3 attempts
         retryCountRef.current++;
+        if (sshConnectionId && retryCountRef.current >= 2) {
+          // SSH failed multiple times — likely auth failure
+          setAuthFailed(true);
+          return;
+        }
         if (retryCountRef.current <= 3) {
           logger.info('Terminal lost, recreating (attempt ' + retryCountRef.current + ')...');
           setLocalTerminalId(null);
