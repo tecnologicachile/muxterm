@@ -502,7 +502,7 @@ io.on('connection', (socket) => {
             port: conn.port,
             username: conn.username,
             authType: conn.auth_type,
-            password: conn.password || sshPasswordCache.get(sshConnectionId) || null,
+            password: sshPasswordCache.get(sshConnectionId) || conn.password || null,
             privateKey: conn.private_key
           };
         }
@@ -682,7 +682,7 @@ io.on('connection', (socket) => {
         if (conn && conn.user_id === socket.userId) {
           sshConfig = {
             host: conn.host, port: conn.port, username: conn.username,
-            authType: conn.auth_type, password: conn.password || sshPasswordCache.get(data.sshConnectionId) || null, privateKey: conn.private_key
+            authType: conn.auth_type, password: sshPasswordCache.get(data.sshConnectionId) || conn.password || null, privateKey: conn.private_key
           };
         }
       }
