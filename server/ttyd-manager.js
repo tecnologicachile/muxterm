@@ -128,10 +128,18 @@ class TtydProcessManager {
       if (line) logger.debug(`[ttyd:${terminalId.substring(0, 8)}] ${line}`);
     });
 
+    const createdTime = Date.now();
     ttydProcess.on('exit', (code, signal) => {
       logger.info(`ttyd exited: terminal=${terminalId.substring(0, 8)}, code=${code}, signal=${signal}`);
       const terminal = this.terminals.get(terminalId);
-      if (terminal) terminal._exited = true;
+      if (terminal) {
+        terminal._exited = true;
+        // If SSH died within 5 seconds, likely auth failure
+        if (sshConfig && (Date.now() - createdTime) < 5000) {
+          terminal._authFailed = true;
+          logger.info(`SSH auth likely failed for ${sshConfig.username}@${sshConfig.host}`);
+        }
+      }
     });
 
     await this._waitForSocket(socketPath, 3000);

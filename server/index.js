@@ -765,6 +765,48 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Check if terminal had auth failure
+  socket.on('check-terminal-auth', (data) => {
+    const terminal = ttydManager.getTerminal(data.terminalId);
+    if (terminal && terminal._authFailed) {
+      socket.emit('terminal-auth-failed', { terminalId: data.terminalId });
+    }
+  });
+
+  // Retry SSH with new password
+  socket.on('retry-ssh-connection', async (data) => {
+    try {
+      const { terminalId, sshConnectionId, password } = data;
+      // Close old terminal
+      const oldTerminal = ttydManager.getTerminal(terminalId);
+      if (oldTerminal) ttydManager.closeTerminal(terminalId);
+
+      // Get SSH config
+      const conn = database.getSshConnection(sshConnectionId);
+      if (!conn || conn.user_id !== socket.userId) {
+        socket.emit('terminal-error', { message: 'Connection not found' });
+        return;
+      }
+
+      // Cache new password
+      cachePassword(socket.userId, 'ssh', conn.host, conn.port, conn.username, password, 'local', null);
+
+      const sshConfig = {
+        host: conn.host, port: conn.port, username: conn.username,
+        authType: 'password', password: password, privateKey: conn.private_key
+      };
+
+      const sessionId = `ws_${socket.userId}`;
+      const terminal = await ttydManager.createTerminal(socket.userId, sessionId, 24, 80, null, sshConfig);
+      const rid = data.requestId || '';
+      socket.emit(rid ? `terminal-created-${rid}` : 'terminal-created', {
+        terminalId: terminal.id, sessionId
+      });
+    } catch (error) {
+      socket.emit('terminal-error', { message: 'Failed to retry SSH', error: error.message });
+    }
+  });
+
   // Scroll terminal history via tmux copy-mode
   socket.on('terminal-scroll', async (data) => {
     try {

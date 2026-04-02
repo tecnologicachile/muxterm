@@ -9,9 +9,13 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
   const [localTerminalId, setLocalTerminalId] = useState(terminalId);
   const [iframeReady, setIframeReady] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
+  const [retryPassword, setRetryPassword] = useState('');
+  const [retrying, setRetrying] = useState(false);
   const activityTimeoutRef = useRef(null);
   const terminalCreatedRef = useRef(false);
   const requestIdRef = useRef(null);
+  const retryCountRef = useRef(0);
 
   // Cleanup activity timeout on unmount
   useEffect(() => {
@@ -54,15 +58,29 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
 
     const handleTerminalError = (data) => {
       logger.error('Terminal error:', data);
-      // If terminal not found, recreate it
       if (data.message && (data.message.includes('not found') || data.message.includes('No terminal'))) {
-        logger.info('Terminal lost, recreating...');
-        setLocalTerminalId(null);
-        terminalCreatedRef.current = false;
-        requestIdRef.current = uuidv4();
-        const createData = { requestId: requestIdRef.current };
-        if (sshConnectionId) createData.sshConnectionId = sshConnectionId;
-        socket.emit('create-terminal', createData);
+        // Check if it was an auth failure before recreating
+        if (sshConnectionId && localTerminalId) {
+          socket.emit('check-terminal-auth', { terminalId: localTerminalId });
+        }
+        // Only auto-retry if under 3 attempts
+        retryCountRef.current++;
+        if (retryCountRef.current <= 3) {
+          logger.info('Terminal lost, recreating (attempt ' + retryCountRef.current + ')...');
+          setLocalTerminalId(null);
+          terminalCreatedRef.current = false;
+          requestIdRef.current = uuidv4();
+          const createData = { requestId: requestIdRef.current };
+          if (sshConnectionId) createData.sshConnectionId = sshConnectionId;
+          socket.emit('create-terminal', createData);
+        }
+      }
+    };
+
+    const handleAuthFailed = (data) => {
+      if (data.terminalId === localTerminalId) {
+        setAuthFailed(true);
+        retryCountRef.current = 999; // Stop auto-retry
       }
     };
 
@@ -84,12 +102,14 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     socket.on('terminal-restored', handleTerminalRestored);
     socket.on('terminal-error', handleTerminalError);
     socket.on('terminal-activity', handleTerminalActivity);
+    socket.on('terminal-auth-failed', handleAuthFailed);
 
     return () => {
       socket.off(createdEvent, handleTerminalCreated);
       socket.off('terminal-restored', handleTerminalRestored);
       socket.off('terminal-error', handleTerminalError);
       socket.off('terminal-activity', handleTerminalActivity);
+      socket.off('terminal-auth-failed', handleAuthFailed);
     };
   }, [socket, localTerminalId, terminalId, onTerminalCreated, panelId, onActivityChange]);
 
@@ -173,6 +193,83 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
           </div>
         )}
       </div>
+      {/* Auth failed overlay */}
+      {authFailed && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 10
+        }}>
+          <div style={{ textAlign: 'center', maxWidth: '300px' }}>
+            <div style={{ color: '#f44', fontSize: '14px', marginBottom: '12px' }}>Authentication Failed</div>
+            <div style={{ color: '#888', fontSize: '12px', marginBottom: '16px' }}>
+              The password was rejected. Enter the correct password to reconnect.
+            </div>
+            <input
+              type="password"
+              placeholder="New password"
+              value={retryPassword}
+              onChange={(e) => setRetryPassword(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && retryPassword && !retrying) {
+                  setRetrying(true);
+                  requestIdRef.current = uuidv4();
+                  socket.emit('retry-ssh-connection', {
+                    terminalId: localTerminalId,
+                    sshConnectionId,
+                    password: retryPassword,
+                    requestId: requestIdRef.current
+                  });
+                  setAuthFailed(false);
+                  setRetryPassword('');
+                  setRetrying(false);
+                  retryCountRef.current = 0;
+                  terminalCreatedRef.current = false;
+                  setLocalTerminalId(null);
+                }
+              }}
+              style={{
+                width: '100%', padding: '8px 12px', backgroundColor: '#222',
+                border: '1px solid #444', borderRadius: '4px', color: '#fff',
+                fontSize: '13px', marginBottom: '12px', outline: 'none'
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  if (!retryPassword || retrying) return;
+                  setRetrying(true);
+                  requestIdRef.current = uuidv4();
+                  socket.emit('retry-ssh-connection', {
+                    terminalId: localTerminalId,
+                    sshConnectionId,
+                    password: retryPassword,
+                    requestId: requestIdRef.current
+                  });
+                  setAuthFailed(false);
+                  setRetryPassword('');
+                  setRetrying(false);
+                  retryCountRef.current = 0;
+                  terminalCreatedRef.current = false;
+                  setLocalTerminalId(null);
+                }}
+                disabled={!retryPassword || retrying}
+                style={{
+                  padding: '6px 16px', backgroundColor: '#00ff00', color: '#000',
+                  border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px'
+                }}
+              >Reconnect</button>
+              <button
+                onClick={() => setAuthFailed(false)}
+                style={{
+                  padding: '6px 16px', backgroundColor: '#333', color: '#888',
+                  border: '1px solid #555', borderRadius: '4px', cursor: 'pointer', fontSize: '12px'
+                }}
+              >Dismiss</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
