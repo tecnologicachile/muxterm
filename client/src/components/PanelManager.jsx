@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, IconButton } from '@mui/material';
 import {
-  Edit as EditIcon,
   Close as CloseIcon,
   Minimize as MinimizeIcon
 } from '@mui/icons-material';
@@ -106,13 +105,20 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             minHeight: '24px'
           }}
         >
-          <Typography 
-            variant="caption" 
-            sx={{ 
+          <Typography
+            variant="caption"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onRenamePanel) onRenamePanel(panel.id);
+            }}
+            sx={{
               color: isActive ? '#00ff00' : '#888',
               fontSize: '11px',
-              fontWeight: isActive ? 'bold' : 'normal'
+              fontWeight: isActive ? 'bold' : 'normal',
+              cursor: 'pointer',
+              '&:hover': { textDecoration: 'underline' }
             }}
+            title="Click to rename"
           >
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
@@ -191,23 +197,6 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 title="Minimize"
               >
                 <MinimizeIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            )}
-            {onRenamePanel && (
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRenamePanel(panel.id);
-                }}
-                sx={{ 
-                  padding: '2px',
-                  color: '#666',
-                  '&:hover': { color: '#fff' }
-                }}
-                title="Rename"
-              >
-                <EditIcon sx={{ fontSize: 14 }} />
               </IconButton>
             )}
             {panels.length > 1 && (
