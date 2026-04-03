@@ -299,12 +299,26 @@ router.post('/create', async (req, res) => {
     const { name, type, host, port, username, password } = req.body;
     const uri = `${type}://${host}${port ? ':' + port : ''}`;
 
+    // If no password provided, try to recover from encrypted local cache
+    let finalPassword = password || null;
+    if (!finalPassword && host && type) {
+      try {
+        const credEncryption = require('./credential-encryption');
+        const database = require('../db/database');
+        const cacheKey = `${type}:${host}:${port || ''}:${username || ''}`;
+        const cached = database.getCachedCredential(req.userId, cacheKey);
+        if (cached) {
+          finalPassword = credEncryption.decrypt(cached.encrypted_password, cached.password_iv);
+        }
+      } catch (e) {}
+    }
+
     const item = {
       type: 1,
       name: name,
       login: {
         username: username || null,
-        password: password || null,
+        password: finalPassword,
         uris: [{ uri: uri, match: null }]
       }
     };
@@ -381,7 +395,18 @@ router.put('/item/:id', async (req, res) => {
     if (name) item.name = name;
     if (item.login) {
       if (username !== undefined) item.login.username = username;
-      if (password !== undefined) item.login.password = password;
+      // If password is empty string, try to recover from local cache
+      let finalPw = password;
+      if (!finalPw && host && type) {
+        try {
+          const credEncryption = require('./credential-encryption');
+          const database = require('../db/database');
+          const cacheKey = `${type}:${host}:${port || ''}:${username || ''}`;
+          const cached = database.getCachedCredential(req.userId, cacheKey);
+          if (cached) finalPw = credEncryption.decrypt(cached.encrypted_password, cached.password_iv);
+        } catch (e) {}
+      }
+      if (finalPw !== undefined) item.login.password = finalPw;
       if (host) {
         const scheme = type || 'rdp';
         const uri = `${scheme}://${host}${port ? ':' + port : ''}`;

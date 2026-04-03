@@ -665,6 +665,12 @@ io.on('connection', (socket) => {
         cachePassword(socket.userId, 'rdp', data.host, data.port || 3389, data.username, data.password, data.fromVault ? 'vault' : 'local', data.vaultItemId);
       }
 
+      // Parse DOMAIN\user format if domain not set
+      if (!rdpConfig.domain && rdpConfig.username && rdpConfig.username.includes('\\')) {
+        const parts = rdpConfig.username.split('\\');
+        rdpConfig.domain = parts[0];
+        rdpConfig.username = parts.slice(1).join('\\');
+      }
       rdpConfig._userId = socket.userId;
       rdpConfig._keyboardLayout = data.keyboardLayout || null;
       const token = guacamoleManager.createToken(rdpConfig);

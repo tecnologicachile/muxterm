@@ -74,6 +74,7 @@ function TerminalView() {
   const [sftpPort, setSftpPort] = useState('22');
   const [sftpUsername, setSftpUsername] = useState('');
   const [sftpPassword, setSftpPassword] = useState('');
+  const [localPasswordCached, setLocalPasswordCached] = useState(false);
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -387,6 +388,7 @@ function TerminalView() {
 
   const applyVaultItem = (item) => {
     setSelectedVaultItem(item);
+    setLocalPasswordCached(false);
     const conn = item.connections[0];
     if (conn.scheme === 'ssh' && newTerminalType === 'sftp') {
       // SSH credential used for SFTP - same credentials, keep SFTP type
@@ -404,7 +406,16 @@ function TerminalView() {
       setNewTerminalType('rdp');
       setRdpHost(conn.host);
       setRdpPort(String(conn.port || 3389));
-      setRdpUsername(item.username || '');
+      // Parse DOMAIN\user format
+      const rawUser = item.username || '';
+      const bsIdx = rawUser.indexOf('\\');
+      if (bsIdx > 0) {
+        setRdpDomain(rawUser.substring(0, bsIdx));
+        setRdpUsername(rawUser.substring(bsIdx + 1));
+      } else {
+        setRdpUsername(rawUser);
+        setRdpDomain('');
+      }
       setRdpPassword(item.password || '');
     } else if (conn.scheme === 'vnc') {
       setNewTerminalType('vnc');
@@ -429,7 +440,16 @@ function TerminalView() {
     const password = type === 'rdp' ? rdpPassword : type === 'vnc' ? vncPassword : type === 'sftp' ? sftpPassword : sshPassword;
     if (!host) { alert('Fill in at least the host'); return; }
     setVaultEditFields({ name: `${username || ''}@${host}`, username, password, host, port, type });
-    setVaultEditDialog({ mode: 'save' });
+    // Check for duplicate in vault
+    const duplicate = vaultItems.find(item =>
+      item.username === username &&
+      item.connections.some(c => c.host === host && (c.scheme === type || (type === 'sftp' && c.scheme === 'ssh')))
+    );
+    if (duplicate) {
+      setVaultEditDialog({ mode: 'save-duplicate', duplicateItem: duplicate });
+    } else {
+      setVaultEditDialog({ mode: 'save' });
+    }
     return;
   };
 
@@ -498,6 +518,7 @@ function TerminalView() {
     setSftpPort('22');
     setSftpUsername('');
     setSftpPassword('');
+    setLocalPasswordCached(false);
     setNewTerminalDialogOpen(true);
   };
 
@@ -1260,13 +1281,16 @@ function TerminalView() {
               {/* Password */}
               <TextField margin="dense" label="Password" type="password" fullWidth variant="outlined" size="small"
                 value={newTerminalType === 'rdp' ? rdpPassword : newTerminalType === 'vnc' ? vncPassword : newTerminalType === 'sftp' ? sftpPassword : sshPassword}
+                placeholder={localPasswordCached ? '••••••••  (stored locally)' : ''}
                 onChange={(e) => {
                   const v = e.target.value;
+                  if (v) setLocalPasswordCached(false);
                   if (newTerminalType === 'rdp') setRdpPassword(v);
                   else if (newTerminalType === 'vnc') setVncPassword(v);
                   else if (newTerminalType === 'sftp') setSftpPassword(v);
                   else setSshPassword(v);
                 }}
+                helperText={localPasswordCached ? 'Password stored locally — leave empty to use it' : ''}
                 onKeyPress={(e) => { if (e.key === 'Enter') handleCreateTerminal(); }}
               />
 
@@ -1308,6 +1332,7 @@ function TerminalView() {
                               } else if (newTerminalType === 'vnc') {
                                 setVncHost(conn.host); setVncPort(String(conn.port || 5900));
                               }
+                              setLocalPasswordCached(true);
                               setVaultSearch('');
                             }}
                             sx={{
@@ -1741,6 +1766,53 @@ function TerminalView() {
               }}>{vaultActionLoading ? <CircularProgress size={18} /> : 'Delete'}</Button>
             </DialogActions>
           </>
+        ) : vaultEditDialog?.mode === 'save-duplicate' ? (
+          <>
+            <DialogTitle>Credential Already Exists</DialogTitle>
+            <DialogContent>
+              <Typography sx={{ fontSize: '13px', mb: 1 }}>
+                A similar credential already exists in the vault:
+              </Typography>
+              <Box sx={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '4px', p: 1.5, mb: 2 }}>
+                <Typography sx={{ fontSize: '13px', color: '#00ff00', fontWeight: 500 }}>
+                  {vaultEditDialog.duplicateItem?.name}
+                </Typography>
+                <Typography sx={{ fontSize: '11px', color: '#888', mt: 0.5 }}>
+                  {vaultEditDialog.duplicateItem?.username} @ {vaultEditDialog.duplicateItem?.connections?.[0]?.host}
+                </Typography>
+              </Box>
+              <Typography sx={{ fontSize: '12px', color: '#aaa' }}>
+                What would you like to do?
+              </Typography>
+            </DialogContent>
+            <DialogActions sx={{ flexDirection: 'column', gap: 1, p: 2, alignItems: 'stretch' }}>
+              <Button variant="contained" size="small" disabled={vaultActionLoading} onClick={async () => {
+                setVaultActionLoading(true);
+                try {
+                  const r = await fetch(`/api/vault/item/${vaultEditDialog.duplicateItem.id}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(vaultEditFields)
+                  });
+                  if (!vaultSessionCheck(r)) return;
+                  const rd = await r.json();
+                  if (rd.status === 'ok') { setVaultEditDialog(null); loadVaultItems(newTerminalType); }
+                  else alert(rd.message);
+                } catch (err) { alert(err.message); }
+                finally { setVaultActionLoading(false); }
+              }} sx={{ textTransform: 'none' }}>
+                {vaultActionLoading ? <CircularProgress size={18} /> : 'Update existing credential'}
+              </Button>
+              <Button variant="outlined" size="small" disabled={vaultActionLoading} onClick={() => {
+                setVaultEditDialog({ mode: 'save' });
+              }} sx={{ textTransform: 'none' }}>
+                Create new credential
+              </Button>
+              <Button size="small" disabled={vaultActionLoading} onClick={() => setVaultEditDialog(null)} sx={{ textTransform: 'none', color: '#888' }}>
+                Cancel
+              </Button>
+            </DialogActions>
+          </>
         ) : (
           <>
             <DialogTitle>{vaultEditDialog?.mode === 'save' ? 'Save to Bitwarden' : 'Edit Credential'}</DialogTitle>
@@ -1754,7 +1826,10 @@ function TerminalView() {
               <TextField margin="dense" label="Username" fullWidth variant="outlined" size="small"
                 value={vaultEditFields.username} onChange={(e) => setVaultEditFields(p => ({ ...p, username: e.target.value }))} />
               <TextField margin="dense" label="Password" type="password" fullWidth variant="outlined" size="small"
-                value={vaultEditFields.password} onChange={(e) => setVaultEditFields(p => ({ ...p, password: e.target.value }))} />
+                value={vaultEditFields.password}
+                placeholder={localPasswordCached && vaultEditDialog?.mode === 'save' ? '••••••••  (stored locally)' : ''}
+                helperText={localPasswordCached && !vaultEditFields.password && vaultEditDialog?.mode === 'save' ? 'Password from local storage will be used' : ''}
+                onChange={(e) => setVaultEditFields(p => ({ ...p, password: e.target.value }))} />
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setVaultEditDialog(null)} disabled={vaultActionLoading}>Cancel</Button>

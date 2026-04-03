@@ -30,6 +30,9 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   const zoomRef = useRef(1);
   const pinchRef = useRef({ startDist: 0, startZoom: 1, isPinching: false });
   const baseScaleRef = useRef(1);
+  const [clipboardNotify, setClipboardNotify] = useState(null);
+  const clipboardNotifyTimerRef = useRef(null);
+  const remoteClipboardRef = useRef('');
 
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { clipboardOpenRef.current = clipboardOpen; }, [clipboardOpen]);
@@ -398,9 +401,19 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           const reader = new Guacamole.StringReader(stream);
           reader.ontext = (text) => { clipData += text; };
           reader.onend = () => {
-            if (clipData && navigator.clipboard) {
-              navigator.clipboard.writeText(clipData).catch(() => {});
+            if (!clipData) return;
+            // Try native clipboard first (requires user gesture — may fail)
+            let nativeOk = false;
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(clipData).then(() => { nativeOk = true; }).catch(() => {});
             }
+            // Always populate the clipboard panel and show notification
+            remoteClipboardRef.current = clipData;
+            setClipboardText(clipData);
+            const preview = clipData.length > 60 ? clipData.substring(0, 60) + '…' : clipData;
+            setClipboardNotify(preview);
+            if (clipboardNotifyTimerRef.current) clearTimeout(clipboardNotifyTimerRef.current);
+            clipboardNotifyTimerRef.current = setTimeout(() => setClipboardNotify(null), 4000);
           };
         }
       };
@@ -563,6 +576,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (clipboardNotifyTimerRef.current) clearTimeout(clipboardNotifyTimerRef.current);
       if (keyboardRef.current) {
         keyboardRef.current.onkeydown = null;
         keyboardRef.current.onkeyup = null;
@@ -636,8 +650,11 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         border: dragOver ? '2px dashed #00ff00' : 'none'
       }}
     >
-      {/* Keyboard sink - receives keyboard focus for remote desktop input */}
-      <div ref={keyboardSinkRef} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} />
+      {/* Keyboard sink - full size but invisible, pointer-events:none so mouse goes through to canvas */}
+      <textarea ref={keyboardSinkRef} tabIndex={0} aria-hidden="true"
+        style={{ position: 'absolute', top: 0, left: 0, width: '1px', height: '1px', opacity: 0, zIndex: -1, outline: 'none', resize: 'none', border: 'none', padding: 0 }}
+        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+      />
       {/* Canvas container - React does NOT manage children of this div */}
       <textarea
         ref={mobileInputRef}
@@ -879,6 +896,46 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           color: '#888', fontSize: '14px', pointerEvents: 'none'
         }}>
           Connecting to {connectionType === 'vnc' ? 'VNC' : 'RDP'}...
+        </div>
+      )}
+      {/* Clipboard notification toast */}
+      {clipboardNotify && (
+        <div
+          onClick={() => {
+            const text = remoteClipboardRef.current;
+            if (!text) { setClipboardNotify(null); return; }
+            const fallbackCopy = () => {
+              const ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+              document.body.appendChild(ta);
+              ta.focus();
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).catch(fallbackCopy);
+            } else {
+              fallbackCopy();
+            }
+            setClipboardNotify('Copied!');
+            setTimeout(() => setClipboardNotify(null), 1500);
+          }}
+          style={{
+            position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)', border: '1px solid #333',
+            borderRadius: '6px', padding: '8px 14px', zIndex: 20, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '80%',
+            animation: 'fadeInUp 0.2s ease-out'
+          }}
+        >
+          <span style={{ fontSize: '14px' }}>📋</span>
+          <span style={{ color: '#ccc', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {clipboardNotify}
+          </span>
+          {clipboardNotify !== 'Copied!' && <span style={{ color: '#00aa00', fontSize: '10px', whiteSpace: 'nowrap' }}>click to copy</span>}
+          <style>{`@keyframes fadeInUp { from { opacity:0; transform: translateX(-50%) translateY(10px); } to { opacity:1; transform: translateX(-50%) translateY(0); }}`}</style>
         </div>
       )}
     </div>
