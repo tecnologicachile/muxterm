@@ -97,6 +97,22 @@ app.use(session({
 
 app.use('/api/auth', authRoutes);
 
+// Web proxy for embedded browser panels (node-unblocker)
+const Unblocker = require('unblocker');
+const unblocker = new Unblocker({
+  prefix: '/browse/',
+  responseMiddleware: [
+    function stripFrameHeaders(data) {
+      if (data.headers) {
+        delete data.headers['x-frame-options'];
+        delete data.headers['content-security-policy'];
+        delete data.headers['content-security-policy-report-only'];
+      }
+    }
+  ]
+});
+app.use(unblocker);
+
 // Serve CA certificate for easy installation on other devices
 // SFTP file browser API (mounted after authenticateToken is defined)
 
