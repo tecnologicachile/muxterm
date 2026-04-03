@@ -8,10 +8,9 @@ function WebViewer({ url: initialUrl, isActive }) {
 
   const getProxiedUrl = (url) => {
     if (!url) return '';
-    // Add protocol if missing
     let full = url;
-    if (!full.match(/^https?:\/\//)) full = 'http://' + full;
-    return `/browse/${full}`;
+    if (!full.match(/^https?:\/\//)) full = 'https://' + full;
+    return `/webproxy/${full}`;
   };
 
   const navigate = (url) => {
