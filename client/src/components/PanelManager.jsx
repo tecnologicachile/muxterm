@@ -295,7 +295,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             />
           ) : (
             <Terminal
-              key={`terminal-${panel.id}`}
+              key={`terminal-${panel.id}-${panel._restoreKey || 0}`}
               terminalId={panel.terminalId}
               isActive={isActive}
               sshConnectionId={panel.sshConnectionId || null}

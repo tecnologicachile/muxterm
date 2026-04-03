@@ -674,11 +674,17 @@ function TerminalView() {
     // Remover de minimizados
     setMinimizedPanels(prev => prev.filter(p => p.id !== panel.id));
 
-    // Agregar a paneles activos (prevenir duplicados)
+    // Agregar a paneles activos con new key to force remount
+    const restoredPanel = { ...panel, _restoreKey: Date.now() };
     setPanels(prev =>
-      prev.some(p => p.id === panel.id) ? prev : [...prev, panel]
+      prev.some(p => p.id === panel.id) ? prev : [...prev, restoredPanel]
     );
     setActivePanel(panel.id);
+
+    // Force restore-terminal emit for terminals
+    if (panel.terminalId && socket) {
+      socket.emit('restore-terminal', { terminalId: panel.terminalId, sshConnectionId: panel.sshConnectionId || null });
+    }
   };
 
 
