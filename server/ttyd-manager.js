@@ -162,6 +162,20 @@ class TtydProcessManager {
     this.terminals.set(terminalId, terminal);
     database.createTerminalForUser(terminalId, userId, terminalId, null);
 
+    // Check if SSH tmux session dies quickly (auth failure detection)
+    if (sshConfig) {
+      setTimeout(() => {
+        try {
+          const tmuxList = execSync('tmux -L muxterm ls 2>/dev/null || true', { encoding: 'utf8' });
+          if (!tmuxList.includes(tmuxSessionName)) {
+            terminal._authFailed = true;
+            logger.info(`SSH auth likely failed for ${sshConfig.username}@${sshConfig.host} (tmux died)`);
+            if (this.onAuthFailed) this.onAuthFailed(terminalId, userId);
+          }
+        } catch (e) {}
+      }, 8000);
+    }
+
     logger.info(`Terminal created: id=${terminalId.substring(0, 8)}, tmux=${tmuxSessionName}, pid=${ttydProcess.pid}`);
     return terminal;
   }
