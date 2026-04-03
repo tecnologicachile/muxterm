@@ -111,7 +111,8 @@ const unblocker = new Unblocker({
     }
   ]
 });
-app.use(unblocker);
+// Mount unblocker before any other routes
+app.use('/browse/', unblocker);
 
 // Serve CA certificate for easy installation on other devices
 // SFTP file browser API (mounted after authenticateToken is defined)
