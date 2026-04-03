@@ -111,8 +111,8 @@ const unblocker = new Unblocker({
     }
   ]
 });
-// Mount unblocker before any other routes
-app.use('/browse/', unblocker);
+// Mount unblocker (handles /browse/* internally via prefix)
+app.use(unblocker);
 
 // Serve CA certificate for easy installation on other devices
 // SFTP file browser API (mounted after authenticateToken is defined)
@@ -465,12 +465,14 @@ if (process.env.NODE_ENV === 'production') {
   // Prefer client/dist (fresh build) over public/ (legacy/copy)
   if (fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'))) {
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/browse/')) return next();
       res.sendFile(path.join(distPath, 'index.html'));
     });
   } else if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'index.html'))) {
     app.use(express.static(publicPath));
-    app.get('*', (req, res) => {
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/browse/')) return next();
       res.sendFile(path.join(publicPath, 'index.html'));
     });
   }
