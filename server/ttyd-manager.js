@@ -81,13 +81,13 @@ class TtydProcessManager {
       try { fs.unlinkSync(socketPath); } catch (e) {}
     }
 
-    return this._spawnTtyd(terminalId, userId, sessionId, tmuxSessionName, socketPath);
+    return this._spawnTtyd(terminalId, userId, sessionId, tmuxSessionName, socketPath, !!sshConfig);
   }
 
   /**
    * Spawn ttyd attached to a tmux session
    */
-  async _spawnTtyd(terminalId, userId, sessionId, tmuxSessionName, socketPath) {
+  async _spawnTtyd(terminalId, userId, sessionId, tmuxSessionName, socketPath, isSsh = false) {
     const tmuxConfigPath = path.join(__dirname, '..', '.tmux.webssh.conf');
 
     const tmuxAttachArgs = ['-L', 'muxterm'];
@@ -163,13 +163,13 @@ class TtydProcessManager {
     database.createTerminalForUser(terminalId, userId, terminalId, null);
 
     // Check if SSH tmux session dies quickly (auth failure detection)
-    if (sshConfig) {
+    if (isSsh) {
       setTimeout(() => {
         try {
           const tmuxList = execSync('tmux -L muxterm ls 2>/dev/null || true', { encoding: 'utf8' });
           if (!tmuxList.includes(tmuxSessionName)) {
             terminal._authFailed = true;
-            logger.info(`SSH auth likely failed for ${sshConfig.username}@${sshConfig.host} (tmux died)`);
+            logger.info(`SSH auth likely failed for terminal ${terminalId.substring(0, 8)} (tmux died)`);
             if (this.onAuthFailed) this.onAuthFailed(terminalId, userId);
           }
         } catch (e) {}
