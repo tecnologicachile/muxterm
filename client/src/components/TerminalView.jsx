@@ -43,6 +43,8 @@ function TerminalView() {
   const { socket } = useSocket();
   const [panels, setPanels] = useState([]);
   const [activePanel, setActivePanel] = useState(null);
+  const [dragPanelId, setDragPanelId] = useState(null);
+  const [dragOverPanelId, setDragOverPanelId] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renamingPanel, setRenamingPanel] = useState(null);
@@ -744,6 +746,17 @@ function TerminalView() {
             onPanelClose={handleClosePanel}
             onRenamePanel={handleRenamePanel}
             onMinimizePanel={handleMinimizePanel}
+            onReorderPanels={(fromId, toId) => {
+              setPanels(prev => {
+                const arr = [...prev];
+                const fromIdx = arr.findIndex(p => p.id === fromId);
+                const toIdx = arr.findIndex(p => p.id === toId);
+                if (fromIdx < 0 || toIdx < 0) return prev;
+                // Swap positions
+                [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                return arr;
+              });
+            }}
             onTerminalCreated={(panelId, newTerminalId) => {
               setPanels(prev => prev.map(p =>
                 p.id === panelId ? { ...p, terminalId: newTerminalId } : p
@@ -1051,6 +1064,33 @@ function TerminalView() {
                   {filteredActive.map(panel => (
                     <Box
                       key={`sidebar-active-${panel.id}`}
+                      draggable={!sidebarFilter}
+                      onDragStart={(e) => {
+                        setDragPanelId(panel.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragPanelId && panel.id !== dragPanelId) setDragOverPanelId(panel.id);
+                      }}
+                      onDragLeave={() => { if (dragOverPanelId === panel.id) setDragOverPanelId(null); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dragPanelId && dragPanelId !== panel.id) {
+                          setPanels(prev => {
+                            const arr = [...prev];
+                            const fromIdx = arr.findIndex(p => p.id === dragPanelId);
+                            const toIdx = arr.findIndex(p => p.id === panel.id);
+                            if (fromIdx < 0 || toIdx < 0) return prev;
+                            [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                            return arr;
+                          });
+                        }
+                        setDragPanelId(null);
+                        setDragOverPanelId(null);
+                      }}
+                      onDragEnd={() => { setDragPanelId(null); setDragOverPanelId(null); }}
                       onClick={() => {
                         setActivePanel(panel.id);
                         setSidebarOpen(false);
@@ -1061,10 +1101,13 @@ function TerminalView() {
                         alignItems: 'center',
                         gap: '8px',
                         padding: '7px 12px',
-                        cursor: 'pointer',
-                        backgroundColor: panel.id === activePanel ? 'rgba(0, 255, 0, 0.08)' : 'transparent',
+                        cursor: dragPanelId ? 'grabbing' : 'grab',
+                        backgroundColor: dragOverPanelId === panel.id ? 'rgba(0, 255, 0, 0.15)' :
+                          panel.id === activePanel ? 'rgba(0, 255, 0, 0.08)' : 'transparent',
                         borderLeft: panel.id === activePanel ? '2px solid #00ff00' : '2px solid transparent',
-                        transition: 'all 0.1s ease',
+                        borderTop: dragOverPanelId === panel.id ? '2px solid #00ff00' : '2px solid transparent',
+                        opacity: dragPanelId === panel.id ? 0.4 : 1,
+                        transition: 'background-color 0.1s ease, opacity 0.1s ease',
                         '&:hover': {
                           backgroundColor: 'rgba(255, 255, 255, 0.06)',
                           '& .sidebar-minimize': { opacity: 1 }

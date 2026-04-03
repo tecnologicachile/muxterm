@@ -11,11 +11,15 @@ import SftpViewer from './SftpViewer';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels }) {
   const { socket } = useSocket();
 
   // Track activity state for each panel
   const [activityStates, setActivityStates] = useState({});
+
+  // Drag & drop reorder state
+  const [dragPanelId, setDragPanelId] = useState(null);
+  const [dragOverPanelId, setDragOverPanelId] = useState(null);
 
   // Detect mobile for single-panel mode (initialize with correct value to avoid flash)
   const [isMobile, setIsMobile] = useState(() => {
@@ -77,27 +81,58 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
       <Box
         key={`panel-box-${panel.id}`}
         data-panel-id={panel.id}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (dragPanelId && panel.id !== dragPanelId) setDragOverPanelId(panel.id);
+        }}
+        onDragLeave={(e) => {
+          // Only clear if leaving the panel entirely (not entering a child)
+          if (!e.currentTarget.contains(e.relatedTarget)) setDragOverPanelId(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (dragPanelId && dragPanelId !== panel.id && onReorderPanels) {
+            onReorderPanels(dragPanelId, panel.id);
+          }
+          setDragPanelId(null);
+          setDragOverPanelId(null);
+        }}
         sx={{
           height: '100%',
           width: '100%',
-          border: isActive ? '2px solid #00ff00' : '1px solid #333',
+          border: dragOverPanelId === panel.id ? '2px solid #00ff00' : isActive ? '2px solid #00ff00' : '1px solid #333',
+          boxShadow: dragOverPanelId === panel.id ? 'inset 0 0 20px rgba(0, 255, 0, 0.15)' : 'none',
           backgroundColor: '#000',
           position: 'relative',
           overflow: 'hidden',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          opacity: dragPanelId === panel.id ? 0.4 : 1,
+          transition: 'box-shadow 0.15s, opacity 0.15s'
         }}
         onClick={() => onPanelSelect(panel.id)}
       >
-        {/* Resize overlay - blocks iframe/canvas mouse capture during drag */}
-        {isResizing && (
+        {/* Overlay - blocks iframe/canvas mouse capture during resize or drag */}
+        {(isResizing || (dragPanelId && dragPanelId !== panel.id)) && (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            zIndex: 100, cursor: 'col-resize'
+            zIndex: 100, cursor: isResizing ? 'col-resize' : 'default'
           }} />
         )}
         <Box
           className="panel-header"
+          draggable={panels.length > 1}
+          onDragStart={(e) => {
+            setDragPanelId(panel.id);
+            e.dataTransfer.effectAllowed = 'move';
+            // Use full panel as drag ghost image
+            const panelEl = e.currentTarget.closest('[data-panel-id]');
+            if (panelEl) {
+              e.dataTransfer.setDragImage(panelEl, panelEl.offsetWidth / 2, 20);
+            }
+          }}
+          onDragEnd={() => { setDragPanelId(null); setDragOverPanelId(null); }}
           sx={{
             display: 'flex',
             alignItems: 'center',
@@ -105,7 +140,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             backgroundColor: '#1a1a1a',
             borderBottom: '1px solid #333',
             padding: '2px 8px',
-            minHeight: '24px'
+            minHeight: '24px',
+            cursor: panels.length > 1 ? 'grab' : 'default',
+            transition: 'background-color 0.1s'
           }}
         >
           <Typography
