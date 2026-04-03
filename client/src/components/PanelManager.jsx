@@ -8,7 +8,6 @@ import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
 import RdpViewer from './RdpViewer';
 import SftpViewer from './SftpViewer';
-import WebViewer from './WebViewer';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
@@ -240,13 +239,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           </Box>
         </Box>
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-          {panel.type === 'web' ? (
-            <WebViewer
-              key={`web-${panel.id}`}
-              url={panel.webUrl}
-              isActive={isActive}
-            />
-          ) : panel.type === 'sftp' ? (
+          {panel.type === 'sftp' ? (
             <SftpViewer
               key={`sftp-${panel.id}`}
               sftpConfig={panel.sftpConfig}

@@ -74,7 +74,6 @@ function TerminalView() {
   const [sftpPort, setSftpPort] = useState('22');
   const [sftpUsername, setSftpUsername] = useState('');
   const [sftpPassword, setSftpPassword] = useState('');
-  const [webUrl, setWebUrl] = useState('');
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -573,11 +572,6 @@ function TerminalView() {
         type: 'sftp',
         sftpConfig: { host: sftpHost, port: parseInt(sftpPort) || 22, username: sftpUsername, password: sftpPassword }
       };
-    } else if (newTerminalType === 'web') {
-      if (!webUrl) return;
-      let displayUrl = webUrl;
-      try { displayUrl = new URL(webUrl.match(/^https?:\/\//) ? webUrl : 'http://' + webUrl).hostname; } catch (e) {}
-      newPanel = { id: uuidv4(), terminalId: null, name: `🌐 ${displayUrl}`, type: 'web', webUrl };
     } else {
       newPanel = { id: uuidv4(), terminalId: null, name: termName, type: 'local' };
     }
@@ -837,7 +831,7 @@ function TerminalView() {
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
                     backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.08)' : 'transparent',
                     borderLeft: panel.id === activePanel ? '3px solid #00ff00' : '3px solid transparent' }}>
-                  <span style={{ fontSize: 16 }}>{panel.type === 'rdp' || panel.type === 'vnc' ? '🖥️' : panel.type === 'sftp' ? '📁' : panel.type === 'web' ? '🌐' : '⬛'}</span>
+                  <span style={{ fontSize: 16 }}>{panel.type === 'rdp' || panel.type === 'vnc' ? '🖥️' : panel.type === 'sftp' ? '📁' : '⬛'}</span>
                   <div>
                     <div style={{ fontSize: 13, color: panel.id === activePanel ? '#00ff00' : '#ccc' }}>{panel.name || 'Panel ' + (idx + 1)}</div>
                     <div style={{ fontSize: 10, color: '#555' }}>{(panel.type || 'local').toUpperCase()}</div>
@@ -1208,8 +1202,7 @@ function TerminalView() {
               { value: 'ssh', label: 'SSH' },
               { value: 'rdp', label: 'RDP' },
               { value: 'vnc', label: 'VNC' },
-              { value: 'sftp', label: 'SFTP' },
-              { value: 'web', label: 'WEB' }
+              { value: 'sftp', label: 'SFTP' }
             ].map(t => (
               <Button key={t.value} size="small"
                 variant={newTerminalType === t.value ? 'contained' : 'outlined'}
@@ -1221,23 +1214,8 @@ function TerminalView() {
             ))}
           </Box>
 
-          {/* Web URL field */}
-          {newTerminalType === 'web' && (
-            <Box sx={{ mt: 1 }}>
-              <TextField margin="dense" label="URL" fullWidth variant="outlined" size="small"
-                value={webUrl}
-                onChange={(e) => setWebUrl(e.target.value)}
-                onKeyPress={(e) => { if (e.key === 'Enter') handleCreateTerminal(); }}
-                placeholder="https://proxmox.local:8006"
-              />
-              <Typography variant="caption" sx={{ color: '#555', fontSize: '10px' }}>
-                Works best with self-hosted apps (Proxmox, Grafana, routers, internal tools)
-              </Typography>
-            </Box>
-          )}
-
-          {/* Connection fields (hidden for local and web) */}
-          {newTerminalType !== 'local' && newTerminalType !== 'web' && (
+          {/* Connection fields (hidden for local) */}
+          {newTerminalType !== 'local' && (
             <Box sx={{ mt: 1 }}>
               {/* Host + Port */}
               <Box sx={{ display: 'flex', gap: 1 }}>
@@ -1433,11 +1411,10 @@ function TerminalView() {
               (newTerminalType === 'ssh' && (selectedSshConnection || sshHost)) ||
               (newTerminalType === 'rdp' && (selectedRdpConnection || rdpHost)) ||
               (newTerminalType === 'vnc' && (selectedVncConnection || vncHost)) ||
-              (newTerminalType === 'sftp' && sftpHost) ||
-              (newTerminalType === 'web' && webUrl)
+              (newTerminalType === 'sftp' && sftpHost)
             )}
           >
-            {newTerminalType === 'local' ? 'Create' : newTerminalType === 'web' ? 'Open' : 'Connect'}
+            {newTerminalType === 'local' ? 'Create' : 'Connect'}
           </Button>
         </DialogActions>
       </Dialog>

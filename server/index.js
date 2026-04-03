@@ -97,69 +97,6 @@ app.use(session({
 
 app.use('/api/auth', authRoutes);
 
-// Web proxy for embedded browser panels (http-proxy based)
-const webProxy = httpProxy.createProxyServer({
-  secure: false,
-  changeOrigin: true,
-  selfHandleResponse: true
-});
-
-webProxy.on('proxyRes', function(proxyRes, req, res) {
-  // Strip iframe-blocking headers
-  delete proxyRes.headers['x-frame-options'];
-  delete proxyRes.headers['content-security-policy'];
-  delete proxyRes.headers['content-security-policy-report-only'];
-
-  // Fix cookies for proxy context
-  if (proxyRes.headers['set-cookie']) {
-    proxyRes.headers['set-cookie'] = proxyRes.headers['set-cookie'].map(cookie =>
-      cookie.replace(/;\s*secure/gi, '').replace(/;\s*domain=[^;]*/gi, '')
-    );
-  }
-
-  const contentType = proxyRes.headers['content-type'] || '';
-  if (contentType.includes('text/html')) {
-    // Buffer HTML to inject <base> tag for relative URL resolution
-    let body = [];
-    proxyRes.on('data', chunk => body.push(chunk));
-    proxyRes.on('end', () => {
-      let html = Buffer.concat(body).toString('utf8');
-      const targetOrigin = req._webProxyTarget;
-      if (targetOrigin && !html.includes('<base ')) {
-        html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${targetOrigin}/">`);
-      }
-      delete proxyRes.headers['content-length'];
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      res.end(html);
-    });
-  } else {
-    // Non-HTML: stream directly
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res);
-  }
-});
-
-webProxy.on('error', (err, req, res) => {
-  if (res.writeHead) {
-    res.writeHead(502, { 'Content-Type': 'text/html' });
-    res.end(`<html><body style="background:#111;color:#f44;font-family:monospace;padding:20px"><h3>Proxy Error</h3><p>${err.message}</p></body></html>`);
-  }
-});
-
-app.all('/webproxy/*', (req, res) => {
-  const targetUrl = req.url.replace(/^\/webproxy\//, '');
-  if (!targetUrl || !targetUrl.match(/^https?:\/\//)) {
-    return res.status(400).json({ error: 'Invalid URL' });
-  }
-  try {
-    const parsed = new URL(targetUrl);
-    req._webProxyTarget = parsed.origin;
-    req.url = parsed.pathname + parsed.search + (parsed.hash || '');
-    webProxy.web(req, res, { target: parsed.origin });
-  } catch (e) {
-    res.status(400).json({ error: 'Invalid URL: ' + e.message });
-  }
-});
 
 // Serve CA certificate for easy installation on other devices
 // SFTP file browser API (mounted after authenticateToken is defined)
@@ -512,14 +449,12 @@ if (process.env.NODE_ENV === 'production') {
   // Prefer client/dist (fresh build) over public/ (legacy/copy)
   if (fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'))) {
     app.use(express.static(distPath));
-    app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/webproxy/')) return next();
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   } else if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'index.html'))) {
     app.use(express.static(publicPath));
-    app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/webproxy/')) return next();
+    app.get('*', (req, res) => {
       res.sendFile(path.join(publicPath, 'index.html'));
     });
   }
