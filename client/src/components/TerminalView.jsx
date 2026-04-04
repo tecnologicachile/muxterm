@@ -1121,7 +1121,9 @@ function TerminalView() {
                       }}
                     >
                       <DotIcon sx={{ fontSize: 8, color: '#00ff00' }} />
-                      <TerminalIcon sx={{ fontSize: 14, color: panel.id === activePanel ? '#00ff00' : '#999' }} />
+                      <Typography variant="caption" sx={{ fontSize: '9px', color: panel.id === activePanel ? '#00aa00' : '#666', minWidth: '28px', textTransform: 'uppercase', fontFamily: 'monospace' }}>
+                        {(panel.type || 'local').replace('local', 'term')}
+                      </Typography>
                       <Typography
                         variant="caption"
                         sx={{
@@ -1183,7 +1185,9 @@ function TerminalView() {
                           }}
                         >
                           <DotIcon sx={{ fontSize: 8, color: '#444' }} />
-                          <TerminalIcon sx={{ fontSize: 14, color: '#555' }} />
+                          <Typography variant="caption" sx={{ fontSize: '9px', color: '#555', minWidth: '28px', textTransform: 'uppercase', fontFamily: 'monospace' }}>
+                            {(panel.type || 'local').replace('local', 'term')}
+                          </Typography>
                           <Typography
                             variant="caption"
                             sx={{
