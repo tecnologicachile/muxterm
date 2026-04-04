@@ -45,6 +45,8 @@ function TerminalView() {
   const [activePanel, setActivePanel] = useState(null);
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
+  const [dragMinId, setDragMinId] = useState(null);
+  const [dragOverMinId, setDragOverMinId] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renamingPanel, setRenamingPanel] = useState(null);
@@ -1164,6 +1166,33 @@ function TerminalView() {
                       {filteredMinimized.map(panel => (
                         <Box
                           key={`sidebar-min-${panel.id}`}
+                          draggable={!sidebarFilter}
+                          onDragStart={(e) => {
+                            setDragMinId(panel.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (dragMinId && panel.id !== dragMinId) setDragOverMinId(panel.id);
+                          }}
+                          onDragLeave={() => { if (dragOverMinId === panel.id) setDragOverMinId(null); }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (dragMinId && dragMinId !== panel.id) {
+                              setMinimizedPanels(prev => {
+                                const arr = [...prev];
+                                const fromIdx = arr.findIndex(p => p.id === dragMinId);
+                                const toIdx = arr.findIndex(p => p.id === panel.id);
+                                if (fromIdx < 0 || toIdx < 0) return prev;
+                                [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                                return arr;
+                              });
+                            }
+                            setDragMinId(null);
+                            setDragOverMinId(null);
+                          }}
+                          onDragEnd={() => { setDragMinId(null); setDragOverMinId(null); }}
                           onClick={() => {
                             handleRestorePanel(panel);
                             setSidebarOpen(false);
@@ -1174,10 +1203,12 @@ function TerminalView() {
                             alignItems: 'center',
                             gap: '8px',
                             padding: '7px 12px',
-                            cursor: 'pointer',
+                            cursor: dragMinId ? 'grabbing' : 'grab',
                             borderLeft: '2px solid transparent',
-                            opacity: 0.5,
-                            transition: 'all 0.1s ease',
+                            borderTop: dragOverMinId === panel.id ? '2px solid #00ff00' : '2px solid transparent',
+                            backgroundColor: dragOverMinId === panel.id ? 'rgba(0, 255, 0, 0.1)' : 'transparent',
+                            opacity: dragMinId === panel.id ? 0.3 : 0.5,
+                            transition: 'background-color 0.1s ease, opacity 0.1s ease',
                             '&:hover': {
                               backgroundColor: 'rgba(255, 255, 255, 0.06)',
                               opacity: 1
