@@ -984,6 +984,8 @@ function TerminalView() {
                 }}
                 onMouseLeave={() => {
                   sidebarTimeoutRef.current = setTimeout(() => {
+                    // Don't close if filter input is focused
+                    if (sidebarFilterRef.current && sidebarFilterRef.current === document.activeElement) return;
                     setSidebarOpen(false);
                     setSidebarFilter('');
                   }, 400);
@@ -1109,7 +1111,7 @@ function TerminalView() {
                         alignItems: 'center',
                         gap: '8px',
                         padding: '7px 12px',
-                        cursor: dragPanelId ? 'grabbing' : 'grab',
+                        cursor: dragPanelId ? 'grabbing' : 'pointer',
                         backgroundColor: dragOverPanelId === panel.id ? 'rgba(0, 255, 0, 0.15)' :
                           panel.id === activePanel ? 'rgba(0, 255, 0, 0.08)' : 'transparent',
                         borderLeft: panel.id === activePanel ? '2px solid #00ff00' : '2px solid transparent',
@@ -1203,7 +1205,7 @@ function TerminalView() {
                             alignItems: 'center',
                             gap: '8px',
                             padding: '7px 12px',
-                            cursor: dragMinId ? 'grabbing' : 'grab',
+                            cursor: dragMinId ? 'grabbing' : 'pointer',
                             borderLeft: '2px solid transparent',
                             borderTop: dragOverMinId === panel.id ? '2px solid #00ff00' : '2px solid transparent',
                             backgroundColor: dragOverMinId === panel.id ? 'rgba(0, 255, 0, 0.1)' : 'transparent',

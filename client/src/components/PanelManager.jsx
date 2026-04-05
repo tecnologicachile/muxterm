@@ -141,7 +141,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             borderBottom: '1px solid #333',
             padding: '2px 8px',
             minHeight: '24px',
-            cursor: panels.length > 1 ? 'grab' : 'default',
+            cursor: dragPanelId ? 'grabbing' : 'default',
             transition: 'background-color 0.1s'
           }}
         >
