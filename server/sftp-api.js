@@ -46,6 +46,39 @@ router.post('/connect', async (req, res) => {
   }
 });
 
+// Connect by SSH connection ID (uses saved credentials + encrypted password cache)
+router.post('/connect-by-id', async (req, res) => {
+  try {
+    const { sshConnectionId } = req.body;
+    const database = require('../db/database');
+    const credEncryption = require('./credential-encryption');
+    const conn = database.getSshConnection(sshConnectionId);
+    if (!conn || conn.user_id !== req.userId) {
+      return res.status(404).json({ status: 'error', message: 'SSH connection not found' });
+    }
+    // Get password from encrypted cache
+    let password = conn.password;
+    if (!password) {
+      const cacheKey = `ssh:${conn.host}:${conn.port || 22}:${conn.username}`;
+      const cached = database.getCachedCredential(req.userId, cacheKey);
+      if (cached) password = credEncryption.decrypt(cached.encrypted_password, cached.password_iv);
+    }
+    if (!password) return res.status(400).json({ status: 'error', message: 'No credentials available' });
+
+    const sessionId = `${req.userId}_${conn.host}_${conn.username}`;
+    const client = await getConnection(sessionId, {
+      host: conn.host, port: conn.port || 22, username: conn.username, password
+    });
+    // Get home directory
+    let homePath = '.';
+    try { homePath = await client.realPath('.'); } catch (e) { homePath = `/home/${conn.username}`; }
+    const list = await client.list(homePath);
+    res.json({ status: 'ok', sessionId, path: homePath, files: formatFiles(list, homePath) });
+  } catch (e) {
+    res.status(400).json({ status: 'error', message: e.message });
+  }
+});
+
 // List directory
 router.post('/list', async (req, res) => {
   try {
@@ -53,7 +86,7 @@ router.post('/list', async (req, res) => {
     const conn = connections.get(sessionId);
     if (!conn) return res.status(401).json({ status: 'error', message: 'Not connected' });
     const list = await conn.client.list(dirPath || '/');
-    res.json({ status: 'ok', files: formatFiles(list, dirPath || '/') });
+    res.json({ status: 'ok', path: dirPath || '/', files: formatFiles(list, dirPath || '/') });
   } catch (e) {
     res.status(500).json({ status: 'error', message: e.message });
   }
@@ -148,6 +181,7 @@ router.post('/disconnect', async (req, res) => {
 function formatFiles(list, parentPath) {
   return list.map(item => ({
     id: path.join(parentPath, item.name),
+    path: path.join(parentPath, item.name),
     name: item.name,
     type: item.type === 'd' ? 'folder' : 'file',
     size: item.size,

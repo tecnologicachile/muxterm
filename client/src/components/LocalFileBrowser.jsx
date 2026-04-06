@@ -10,7 +10,7 @@ import {
   Download as DownloadIcon, Edit as EditIcon
 } from '@mui/icons-material';
 
-function LocalFileBrowser({ open, onClose, terminalId }) {
+function LocalFileBrowser({ open, onClose, terminalId, mode = 'local', sshConnectionId = null }) {
   const [currentPath, setCurrentPath] = useState('');
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -19,26 +19,45 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
   const [renameValue, setRenameValue] = useState('');
   const [newFolderDialog, setNewFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [sftpSessionId, setSftpSessionId] = useState(null);
   const fileInputRef = useRef(null);
 
   const getToken = () => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } };
+  const apiBase = mode === 'ssh' ? '/api/sftp' : '/api/localfs';
 
   const loadCwd = async () => {
-    if (!terminalId) return;
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/localfs/cwd/${terminalId}?_=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-        cache: 'no-store'
-      });
-      const d = await r.json();
-      if (d.status === 'ok') {
-        setCurrentPath(d.cwd);
-        // Always list, even if path hasn't changed
-        listDir(d.cwd);
+      if (mode === 'ssh') {
+        if (!sshConnectionId) { setError('No SSH connection'); return; }
+        const r = await fetch('/api/sftp/connect-by-id', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ sshConnectionId })
+        });
+        const d = await r.json();
+        if (d.status === 'ok') {
+          setSftpSessionId(d.sessionId);
+          setCurrentPath(d.path);
+          setFiles(d.files);
+        } else {
+          setError(d.message || 'Failed to connect');
+        }
       } else {
-        setError(d.message || 'Could not get CWD');
+        if (!terminalId) return;
+        const r = await fetch(`/api/localfs/cwd/${terminalId}?_=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+          cache: 'no-store'
+        });
+        const d = await r.json();
+        if (d.status === 'ok') {
+          setCurrentPath(d.cwd);
+          listDir(d.cwd);
+        } else {
+          setError(d.message || 'Could not get CWD');
+        }
       }
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -48,16 +67,19 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch('/api/localfs/list', {
+      const body = mode === 'ssh'
+        ? { sessionId: sftpSessionId, path: dirPath }
+        : { path: dirPath, _: Date.now() };
+      const r = await fetch(`${apiBase}/list`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         cache: 'no-store',
-        body: JSON.stringify({ path: dirPath, _: Date.now() })
+        body: JSON.stringify(body)
       });
       const d = await r.json();
       if (d.status === 'ok') {
         setFiles(d.files);
-        setCurrentPath(d.path);
+        setCurrentPath(d.path || dirPath);
       } else {
         setError(d.message);
       }
@@ -66,8 +88,8 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
   };
 
   useEffect(() => {
-    if (open && terminalId) loadCwd();
-  }, [open, terminalId]);
+    if (open) loadCwd();
+  }, [open, terminalId, sshConnectionId]);
 
   useEffect(() => {
     if (currentPath) listDir(currentPath);
@@ -82,10 +104,13 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
     if (file.type === 'folder') setCurrentPath(file.path);
   };
 
+  const withSession = (obj) => mode === 'ssh' ? { ...obj, sessionId: sftpSessionId } : obj;
+
   const downloadFile = (file) => {
-    const url = `/api/localfs/download?path=${encodeURIComponent(file.path)}&token=${encodeURIComponent(getToken())}`;
-    // Use fetch with auth header instead
-    fetch(`/api/localfs/download?path=${encodeURIComponent(file.path)}`, {
+    const qs = mode === 'ssh'
+      ? `?sessionId=${encodeURIComponent(sftpSessionId)}&path=${encodeURIComponent(file.path)}`
+      : `?path=${encodeURIComponent(file.path)}`;
+    fetch(`${apiBase}/download${qs}`, {
       headers: { Authorization: `Bearer ${getToken()}` }
     }).then(r => r.blob()).then(blob => {
       const a = document.createElement('a');
@@ -99,10 +124,10 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
   const deleteFile = async (file) => {
     if (!confirm(`Delete ${file.name}?`)) return;
     try {
-      const r = await fetch('/api/localfs/delete', {
+      const r = await fetch(`${apiBase}/delete`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: file.path, isDir: file.type === 'folder' })
+        body: JSON.stringify(withSession({ path: file.path, isDir: file.type === 'folder' }))
       });
       const d = await r.json();
       if (d.status === 'ok') listDir(currentPath);
@@ -114,10 +139,10 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
     if (!renameDialog || !renameValue.trim()) return;
     const to = renameDialog.path.replace(/\/[^/]+$/, '/' + renameValue.trim());
     try {
-      const r = await fetch('/api/localfs/rename', {
+      const r = await fetch(`${apiBase}/rename`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: renameDialog.path, to })
+        body: JSON.stringify(withSession({ from: renameDialog.path, to }))
       });
       const d = await r.json();
       if (d.status === 'ok') { setRenameDialog(null); setRenameValue(''); listDir(currentPath); }
@@ -128,10 +153,10 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
   const doMkdir = async () => {
     if (!newFolderName.trim()) return;
     try {
-      const r = await fetch('/api/localfs/mkdir', {
+      const r = await fetch(`${apiBase}/mkdir`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: `${currentPath}/${newFolderName.trim()}` })
+        body: JSON.stringify(withSession({ path: `${currentPath}/${newFolderName.trim()}` }))
       });
       const d = await r.json();
       if (d.status === 'ok') { setNewFolderDialog(false); setNewFolderName(''); listDir(currentPath); }
@@ -145,8 +170,9 @@ function LocalFileBrowser({ open, onClose, terminalId }) {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('path', `${currentPath}/${file.name}`);
+    if (mode === 'ssh') fd.append('sessionId', sftpSessionId);
     try {
-      const r = await fetch('/api/localfs/upload', {
+      const r = await fetch(`${apiBase}/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}` },
         body: fd
