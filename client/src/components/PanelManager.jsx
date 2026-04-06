@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, IconButton } from '@mui/material';
 import {
   Close as CloseIcon,
-  Minimize as MinimizeIcon
+  Minimize as MinimizeIcon,
+  Folder as FolderIcon
 } from '@mui/icons-material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
 import RdpViewer from './RdpViewer';
 import SftpViewer from './SftpViewer';
+import LocalFileBrowser from './LocalFileBrowser';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
@@ -20,6 +22,14 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // Drag & drop reorder state
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
+
+  // Local file browser modal
+  const [fileBrowserTerminalId, setFileBrowserTerminalId] = useState(null);
+  const [fileBrowserKey, setFileBrowserKey] = useState(0);
+  const openFileBrowser = (tid) => {
+    setFileBrowserKey(k => k + 1);
+    setFileBrowserTerminalId(tid);
+  };
 
   // Detect mobile for single-panel mode (initialize with correct value to avoid flash)
   const [isMobile, setIsMobile] = useState(() => {
@@ -222,6 +232,25 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               }}
             />
             
+            {/* File browser (local terminals only) */}
+            {(!panel.type || panel.type === 'local') && panel.terminalId && (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openFileBrowser(panel.terminalId);
+                }}
+                sx={{
+                  padding: '2px',
+                  color: '#666',
+                  '&:hover': { color: '#00aaff' }
+                }}
+                title="File browser"
+              >
+                <FolderIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+
             {/* Maximize/Restore */}
             {panels.length > 1 && (
               <IconButton
@@ -314,6 +343,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     );
   };
 
+  const renderLayout = () => {
   if (panels.length === 0) return null;
 
   // Maximized panel: show only that panel fullscreen, others hidden but mounted
@@ -552,6 +582,19 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </PanelGroup>
       </Panel>
     </PanelGroup>
+  );
+  };
+
+  return (
+    <>
+      {renderLayout()}
+      <LocalFileBrowser
+        key={`fb-${fileBrowserKey}`}
+        open={!!fileBrowserTerminalId}
+        onClose={() => setFileBrowserTerminalId(null)}
+        terminalId={fileBrowserTerminalId}
+      />
+    </>
   );
 }
 

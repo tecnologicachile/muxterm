@@ -132,12 +132,18 @@ const authenticateToken = (req, res, next) => {
 
 // SFTP file browser API
 const sftpApi = require('./sftp-api');
+// Local filesystem browser API (for local terminals)
+const localFsApi = require('./local-fs-api');
 // Vaultwarden integration
 const vaultwardenApi = require('./vaultwarden-api');
 app.use('/api/sftp', authenticateToken, (req, res, next) => {
   req.userId = req.user.id;
   next();
 }, sftpApi);
+app.use('/api/localfs', authenticateToken, (req, res, next) => {
+  req.userId = req.user.id;
+  next();
+}, localFsApi);
 
 app.use('/api/vault', authenticateToken, (req, res, next) => {
   req.userId = req.user.id;
