@@ -36,7 +36,18 @@ async function getConnection(sessionId, config) {
 // Connect endpoint
 router.post('/connect', async (req, res) => {
   try {
-    const { host, port, username, password } = req.body;
+    const { host, port, username } = req.body;
+    let { password } = req.body;
+    // If no password provided, try local encrypted cache (ssh credentials shared)
+    if (!password) {
+      try {
+        const database = require('../db/database');
+        const credEncryption = require('./credential-encryption');
+        const cacheKey = `ssh:${host}:${port || 22}:${username}`;
+        const cached = database.getCachedCredential(req.userId, cacheKey);
+        if (cached) password = credEncryption.decrypt(cached.encrypted_password, cached.password_iv);
+      } catch (e) {}
+    }
     const sessionId = `${req.userId}_${host}_${username}`;
     const client = await getConnection(sessionId, { host, port, username, password });
     const list = await client.list('/');

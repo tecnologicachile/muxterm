@@ -1,9 +1,18 @@
 import React, { useState, useRef, useCallback } from 'react';
 
-function SftpViewer({ sftpConfig, panelId }) {
+function SftpViewer({ sftpConfig, panelId, initialPath, onPathChange }) {
+  // Per-credential last-path key
+  const credKey = sftpConfig
+    ? `sftp_lastpath:${sftpConfig.host}:${sftpConfig.port || 22}:${sftpConfig.username}`
+    : null;
+  const getStoredPath = () => {
+    if (!credKey) return null;
+    try { return localStorage.getItem(credKey); } catch (e) { return null; }
+  };
+
   const [connected, setConnected] = useState(false);
   const [sessionId, setSessionId] = useState(null);
-  const [currentPath, setCurrentPath] = useState('/');
+  const [currentPath, setCurrentPath] = useState(initialPath || getStoredPath() || '/');
   const [files, setFiles] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -31,9 +40,22 @@ function SftpViewer({ sftpConfig, panelId }) {
       const data = await apiCall('connect', sftpConfig);
       if (data.status === 'ok') {
         setSessionId(data.sessionId);
-        setFiles(data.files);
-        setCurrentPath('/');
         setConnected(true);
+        // Resolve start path: panel state > localStorage > root
+        const startPath = initialPath || getStoredPath() || '/';
+        if (startPath && startPath !== '/') {
+          const listData = await apiCall('list', { sessionId: data.sessionId, path: startPath });
+          if (listData.status === 'ok') {
+            setFiles(listData.files);
+            setCurrentPath(startPath);
+          } else {
+            setFiles(data.files);
+            setCurrentPath('/');
+          }
+        } else {
+          setFiles(data.files);
+          setCurrentPath('/');
+        }
       } else {
         setError(data.message);
       }
@@ -51,6 +73,9 @@ function SftpViewer({ sftpConfig, panelId }) {
         setFiles(data.files);
         setCurrentPath(dirPath);
         setSelectedFile(null);
+        if (onPathChange) onPathChange(dirPath);
+        // Persist per credential
+        if (credKey) { try { localStorage.setItem(credKey, dirPath); } catch (e) {} }
       }
     } catch (e) {
       setError(e.message);

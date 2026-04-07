@@ -760,10 +760,14 @@ function TerminalView() {
                 const fromIdx = arr.findIndex(p => p.id === fromId);
                 const toIdx = arr.findIndex(p => p.id === toId);
                 if (fromIdx < 0 || toIdx < 0) return prev;
-                // Swap positions
                 [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
                 return arr;
               });
+            }}
+            onSftpPathChange={(panelId, newPath) => {
+              setPanels(prev => prev.map(p =>
+                p.id === panelId ? { ...p, sftpPath: newPath } : p
+              ));
             }}
             onTerminalCreated={(panelId, newTerminalId) => {
               setPanels(prev => prev.map(p =>
@@ -1411,8 +1415,10 @@ function TerminalView() {
                               if (newTerminalType === 'rdp') setSelectedRdpConnection(String(conn.id));
                               else if (newTerminalType === 'vnc') setSelectedVncConnection(String(conn.id));
                               else setSelectedSshConnection(String(conn.id));
-                              if (newTerminalType === 'ssh' || newTerminalType === 'sftp') {
+                              if (newTerminalType === 'ssh') {
                                 setSshHost(conn.host); setSshPort(String(conn.port || 22)); setSshUsername(conn.username || '');
+                              } else if (newTerminalType === 'sftp') {
+                                setSftpHost(conn.host); setSftpPort(String(conn.port || 22)); setSftpUsername(conn.username || '');
                               } else if (newTerminalType === 'rdp') {
                                 setRdpHost(conn.host); setRdpPort(String(conn.port || 3389)); setRdpUsername(conn.username || '');
                               } else if (newTerminalType === 'vnc') {

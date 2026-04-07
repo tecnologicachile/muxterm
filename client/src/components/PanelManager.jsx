@@ -13,7 +13,7 @@ import LocalFileBrowser from './LocalFileBrowser';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange }) {
   const { socket } = useSocket();
 
   // Track activity state for each panel
@@ -317,6 +317,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               key={`sftp-${panel.id}`}
               sftpConfig={panel.sftpConfig}
               panelId={panel.id}
+              initialPath={panel.sftpPath || null}
+              onPathChange={(newPath) => onSftpPathChange && onSftpPathChange(panel.id, newPath)}
             />
           ) : (panel.type === 'rdp' || panel.type === 'vnc') ? (
             <RdpViewer
