@@ -69,6 +69,21 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // Maximized panel state
   const [maximizedPanel, setMaximizedPanel] = useState(null);
 
+  // Trigger resize on iframes (ttyd/xterm) and window after maximize toggle
+  // so xterm.js redraws — fixes black screen issue
+  useEffect(() => {
+    const timers = [];
+    [60, 200, 500].forEach(delay => {
+      timers.push(setTimeout(() => {
+        try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+        document.querySelectorAll('iframe').forEach(iframe => {
+          try { iframe.contentWindow?.dispatchEvent(new Event('resize')); } catch (e) {}
+        });
+      }, delay));
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [maximizedPanel]);
+
   // Handle activity changes from terminals
   const handleActivityChange = (panelId, isActive) => {
     setActivityStates(prev => ({
