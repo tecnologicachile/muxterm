@@ -110,6 +110,7 @@ function TerminalView() {
   const sidebarTimeoutRef = React.useRef(null);
   const sidebarFilterRef = React.useRef(null);
   const [mobilePanelListOpen, setMobilePanelListOpen] = useState(false);
+  const [mobileFilter, setMobileFilter] = useState('');
   const mobileSwipeRef = React.useRef({ startX: 0, startY: 0 });
 
   // Check vault status on mount — server is source of truth
@@ -866,14 +867,32 @@ function TerminalView() {
       {/* Mobile panel drawer */}
       {isMobile && mobilePanelListOpen ? (
         <div>
-          <div onClick={function() { setMobilePanelListOpen(false); }}
+          <div onClick={function() { setMobilePanelListOpen(false); setMobileFilter(''); }}
             style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999 }} />
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '60vh', backgroundColor: '#1a1a1a',
             borderTop: '2px solid #00ff00', borderRadius: '16px 16px 0 0', overflow: 'auto', zIndex: 1001, padding: '12px 0' }}>
-            <div style={{ padding: '0 16px 8px', fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>Panels</div>
-            {panels.map(function(panel, idx) {
+            <div style={{ padding: '0 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>Panels</span>
+              <span style={{ fontSize: 10, color: '#444' }}>{panels.length} active · {minimizedPanels.length} min</span>
+            </div>
+            <div style={{ padding: '0 12px 8px' }}>
+              <input
+                type="text"
+                placeholder="Filter..."
+                value={mobileFilter}
+                onChange={function(e) { setMobileFilter(e.target.value); }}
+                style={{
+                  width: '100%', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.06)',
+                  border: '1px solid #333', borderRadius: 6, color: '#ccc', fontSize: 13,
+                  outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            {panels
+              .filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); })
+              .map(function(panel, idx) {
               return (
-                <div key={'mp-' + panel.id} onClick={function() { setActivePanel(panel.id); setMobilePanelListOpen(false); }}
+                <div key={'mp-' + panel.id} onClick={function() { setActivePanel(panel.id); setMobilePanelListOpen(false); setMobileFilter(''); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
                     backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.08)' : 'transparent',
                     borderLeft: panel.id === activePanel ? '3px solid #00ff00' : '3px solid transparent' }}>
@@ -885,12 +904,14 @@ function TerminalView() {
                 </div>
               );
             })}
-            {minimizedPanels.length > 0 ? (
+            {minimizedPanels.filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); }).length > 0 ? (
               <div>
                 <div style={{ padding: '8px 16px 4px', fontSize: 11, color: '#555', textTransform: 'uppercase' }}>Minimized</div>
-                {minimizedPanels.map(function(panel) {
+                {minimizedPanels
+                  .filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); })
+                  .map(function(panel) {
                   return (
-                    <div key={'mpm-' + panel.id} onClick={function() { handleRestorePanel(panel); setMobilePanelListOpen(false); }}
+                    <div key={'mpm-' + panel.id} onClick={function() { handleRestorePanel(panel); setMobilePanelListOpen(false); setMobileFilter(''); }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', opacity: 0.5 }}>
                       <span style={{ fontSize: 16 }}>⬛</span>
                       <div style={{ fontSize: 13, color: '#888' }}>{panel.name || 'Panel'}</div>
