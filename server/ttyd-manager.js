@@ -14,7 +14,7 @@ class TtydProcessManager {
   /**
    * Create a new terminal with tmux for session persistence
    */
-  async createTerminal(userId, sessionId, rows = 24, cols = 80, terminalId = null, sshConfig = null, initialCwd = null) {
+  async createTerminal(userId, sessionId, rows = 24, cols = 80, terminalId = null, sshConfig = null, initialCwd = null, startupCommand = null) {
     if (!terminalId) {
       terminalId = uuidv4();
     }
@@ -69,6 +69,15 @@ class TtydProcessManager {
     try {
       execSync(`tmux ${tmuxArgs.join(' ')}`, { stdio: 'ignore' });
       logger.debug(`Created tmux session: ${tmuxSessionName}`);
+      // Execute startup command if provided (only for local terminals, after session created)
+      if (startupCommand && !sshConfig) {
+        setTimeout(() => {
+          try {
+            execSync(`tmux -L muxterm send-keys -t ${tmuxSessionName} '${startupCommand.replace(/'/g, "'\\''")}' Enter`, { stdio: 'ignore' });
+            logger.info(`Startup command sent to ${tmuxSessionName}: ${startupCommand}`);
+          } catch (e) {}
+        }, 500);
+      }
     } catch (e) {
       logger.debug(`tmux new-session (may already exist): ${e.message}`);
     }
@@ -183,7 +192,7 @@ class TtydProcessManager {
   /**
    * Restore an existing terminal or create a new one
    */
-  async restoreTerminal(terminalId, userId, sessionId, rows = 24, cols = 80, sshConfig = null, initialCwd = null) {
+  async restoreTerminal(terminalId, userId, sessionId, rows = 24, cols = 80, sshConfig = null, initialCwd = null, startupCommand = null) {
     const existing = this.terminals.get(terminalId);
     if (existing && !existing._exited) {
       existing.lastActivity = new Date();
@@ -204,11 +213,11 @@ class TtydProcessManager {
         return await this._spawnTtyd(terminalId, userId, sessionId, tmuxSessionName, socketPath);
       } else {
         logger.info(`Restoring terminal ${terminalId.substring(0, 8)}: tmux not found, creating fresh${initialCwd ? ' at ' + initialCwd : ''}`);
-        return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig, initialCwd);
+        return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig, initialCwd, startupCommand);
       }
     } catch (error) {
       logger.error(`Error restoring terminal: ${error.message}`);
-      return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig, initialCwd);
+      return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig, initialCwd, startupCommand);
     }
   }
 

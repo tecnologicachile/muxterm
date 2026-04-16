@@ -4,7 +4,8 @@ import {
   Close as CloseIcon,
   Minimize as MinimizeIcon,
   Folder as FolderIcon,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
+  Settings as SettingsIcon
 } from '@mui/icons-material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
@@ -14,7 +15,7 @@ import LocalFileBrowser from './LocalFileBrowser';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings }) {
   const { socket } = useSocket();
 
   // Track activity state for each panel
@@ -273,6 +274,18 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               }}
             />
             
+            {/* Panel settings */}
+            {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) && (
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); if (onPanelSettings) onPanelSettings(panel.id); }}
+                sx={{ padding: '2px', color: '#666', '&:hover': { color: '#fff' } }}
+                title="Panel settings"
+              >
+                <SettingsIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+
             {/* Capture terminal content (for mobile copy) */}
             {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) && (
               <IconButton

@@ -51,6 +51,10 @@ function TerminalView() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renamingPanel, setRenamingPanel] = useState(null);
   const [newPanelName, setNewPanelName] = useState('');
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [settingsPanel, setSettingsPanel] = useState(null);
+  const [settingsPanelName, setSettingsPanelName] = useState('');
+  const [settingsStartupCommand, setSettingsStartupCommand] = useState('');
   const [minimizedPanels, setMinimizedPanels] = useState([]);
   
   const [terminalCounter, setTerminalCounter] = useState(1);
@@ -627,31 +631,46 @@ function TerminalView() {
 
   
   const handleRenamePanel = (panelId) => {
-    const panel = panels.find(p => p.id === panelId);
+    const panel = [...panels, ...minimizedPanels].find(p => p.id === panelId);
     if (panel) {
       setRenamingPanel(panelId);
       setNewPanelName(panel.name || '');
       setRenameDialogOpen(true);
     }
   };
-  
+
   const confirmRenamePanel = () => {
     if (renamingPanel && newPanelName.trim()) {
-      setPanels(panels.map(p => 
-        p.id === renamingPanel 
-          ? { ...p, name: newPanelName.trim() }
-          : p
+      setPanels(panels.map(p =>
+        p.id === renamingPanel ? { ...p, name: newPanelName.trim() } : p
       ));
-      // También actualizar paneles minimizados si existe
-      setMinimizedPanels(minimizedPanels.map(p => 
-        p.id === renamingPanel 
-          ? { ...p, name: newPanelName.trim() }
-          : p
+      setMinimizedPanels(minimizedPanels.map(p =>
+        p.id === renamingPanel ? { ...p, name: newPanelName.trim() } : p
       ));
     }
     setRenameDialogOpen(false);
     setRenamingPanel(null);
     setNewPanelName('');
+  };
+
+  const handlePanelSettings = (panelId) => {
+    const panel = [...panels, ...minimizedPanels].find(p => p.id === panelId);
+    if (panel) {
+      setSettingsPanel(panelId);
+      setSettingsPanelName(panel.name || '');
+      setSettingsStartupCommand(panel.startupCommand || '');
+      setSettingsDialogOpen(true);
+    }
+  };
+
+  const confirmPanelSettings = () => {
+    if (settingsPanel) {
+      const updates = { name: settingsPanelName.trim(), startupCommand: settingsStartupCommand.trim() || undefined };
+      setPanels(panels.map(p => p.id === settingsPanel ? { ...p, ...updates } : p));
+      setMinimizedPanels(minimizedPanels.map(p => p.id === settingsPanel ? { ...p, ...updates } : p));
+    }
+    setSettingsDialogOpen(false);
+    setSettingsPanel(null);
   };
   
   const handleMinimizePanel = (panelId) => {
@@ -754,6 +773,7 @@ function TerminalView() {
             onPanelSelect={setActivePanel}
             onPanelClose={handleClosePanel}
             onRenamePanel={handleRenamePanel}
+            onPanelSettings={handlePanelSettings}
             onMinimizePanel={handleMinimizePanel}
             onReorderPanels={(fromId, toId) => {
               setPanels(prev => {
@@ -1315,6 +1335,28 @@ function TerminalView() {
           <Button onClick={confirmRenamePanel} variant="contained">
             Rename
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Panel Settings Dialog */}
+      <Dialog open={settingsDialogOpen} onClose={() => setSettingsDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontSize: '16px' }}>Panel Settings</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus margin="dense" label="Panel Name" fullWidth variant="outlined"
+            value={settingsPanelName} onChange={(e) => setSettingsPanelName(e.target.value)}
+          />
+          <TextField
+            margin="dense" label="Startup command (runs on reboot)" fullWidth variant="outlined" size="small"
+            placeholder="e.g. claude --dangerously-skip-permissions --continue"
+            value={settingsStartupCommand} onChange={(e) => setSettingsStartupCommand(e.target.value)}
+            helperText="This command will execute automatically when the terminal is restored after a reboot"
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsDialogOpen(false)}>Cancel</Button>
+          <Button onClick={confirmPanelSettings} variant="contained">Save</Button>
         </DialogActions>
       </Dialog>
 

@@ -766,14 +766,18 @@ io.on('connection', (socket) => {
         }
       }
 
-      // Get lastCwd from workspace layout if available
+      // Get lastCwd and startupCommand from workspace layout if available
       let initialCwd = null;
+      let startupCommand = null;
       try {
         const layout = database.getWorkspaceLayout(socket.userId);
         if (layout) {
           const allPanels = [...(layout.panels || []), ...(layout.minimizedPanels || [])];
           const panel = allPanels.find(p => p.terminalId === data.terminalId);
-          if (panel && panel.lastCwd) initialCwd = panel.lastCwd;
+          if (panel) {
+            if (panel.lastCwd) initialCwd = panel.lastCwd;
+            if (panel.startupCommand) startupCommand = panel.startupCommand;
+          }
         }
       } catch (e) {}
 
@@ -784,7 +788,8 @@ io.on('connection', (socket) => {
         data.rows || 24,
         data.cols || 80,
         sshConfig,
-        initialCwd
+        initialCwd,
+        startupCommand
       );
       if (terminal && terminal.userId === socket.userId) {
         socket.emit('terminal-restored', {
