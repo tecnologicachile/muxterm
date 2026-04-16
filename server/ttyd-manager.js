@@ -14,7 +14,7 @@ class TtydProcessManager {
   /**
    * Create a new terminal with tmux for session persistence
    */
-  async createTerminal(userId, sessionId, rows = 24, cols = 80, terminalId = null, sshConfig = null) {
+  async createTerminal(userId, sessionId, rows = 24, cols = 80, terminalId = null, sshConfig = null, initialCwd = null) {
     if (!terminalId) {
       terminalId = uuidv4();
     }
@@ -60,7 +60,7 @@ class TtydProcessManager {
       '-s', tmuxSessionName,
       '-x', cols.toString(),
       '-y', rows.toString(),
-      '-c', process.env.HOME
+      '-c', (initialCwd && fs.existsSync(initialCwd)) ? initialCwd : process.env.HOME
     );
     if (shellCommand) {
       tmuxArgs.push(shellCommand);
@@ -183,7 +183,7 @@ class TtydProcessManager {
   /**
    * Restore an existing terminal or create a new one
    */
-  async restoreTerminal(terminalId, userId, sessionId, rows = 24, cols = 80, sshConfig = null) {
+  async restoreTerminal(terminalId, userId, sessionId, rows = 24, cols = 80, sshConfig = null, initialCwd = null) {
     const existing = this.terminals.get(terminalId);
     if (existing && !existing._exited) {
       existing.lastActivity = new Date();
@@ -203,12 +203,12 @@ class TtydProcessManager {
         }
         return await this._spawnTtyd(terminalId, userId, sessionId, tmuxSessionName, socketPath);
       } else {
-        logger.info(`Restoring terminal ${terminalId.substring(0, 8)}: tmux not found, creating fresh`);
-        return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig);
+        logger.info(`Restoring terminal ${terminalId.substring(0, 8)}: tmux not found, creating fresh${initialCwd ? ' at ' + initialCwd : ''}`);
+        return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig, initialCwd);
       }
     } catch (error) {
       logger.error(`Error restoring terminal: ${error.message}`);
-      return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig);
+      return await this.createTerminal(userId, sessionId, rows, cols, terminalId, sshConfig, initialCwd);
     }
   }
 
@@ -299,6 +299,86 @@ class TtydProcessManager {
       }
     }
     return result;
+  }
+
+  /**
+   * Get CWD of a terminal's shell via tmux pane_pid + /proc/PID/cwd
+   */
+  getTerminalCwd(terminalId) {
+    const terminal = this.terminals.get(terminalId);
+    if (!terminal || !terminal.tmuxSessionName) return null;
+    try {
+      const panePid = execSync(
+        `tmux -L muxterm display-message -p -t ${terminal.tmuxSessionName} '#{pane_pid}'`,
+        { encoding: 'utf8' }
+      ).trim();
+      if (!panePid) return null;
+      let pid = panePid;
+      try {
+        const children = execSync(`pgrep -P ${pid}`, { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+        if (children.length > 0) pid = children[children.length - 1];
+      } catch (e) {}
+      return fs.readlinkSync(`/proc/${pid}/cwd`);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Save CWDs of all active terminals into workspace layouts (for reboot persistence)
+   */
+  /**
+   * Get CWD by tmux session name directly (doesn't need terminals Map)
+   */
+  getCwdByTmuxSession(tmuxSessionName) {
+    try {
+      const panePid = execSync(
+        `tmux -L muxterm display-message -p -t ${tmuxSessionName} '#{pane_pid}'`,
+        { encoding: 'utf8' }
+      ).trim();
+      if (!panePid) return null;
+      let pid = panePid;
+      try {
+        const children = execSync(`pgrep -P ${pid}`, { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+        if (children.length > 0) pid = children[children.length - 1];
+      } catch (e) {}
+      return fs.readlinkSync(`/proc/${pid}/cwd`);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  saveAllCwds() {
+    let saved = 0;
+    try {
+      const allUsers = database.getAllUsers();
+      for (const user of allUsers) {
+        const layout = database.getWorkspaceLayout(user.id);
+        if (!layout) continue;
+        let changed = false;
+        const sessionId = `ws_${user.id}`;
+        const allPanels = [...(layout.panels || []), ...(layout.minimizedPanels || [])];
+        for (const panel of allPanels) {
+          if (panel.terminalId && (!panel.type || panel.type === 'local' || panel.type === 'ssh')) {
+            // Build tmux session name directly from userId + terminalId
+            const tmuxName = `webssh_${sessionId}_${panel.terminalId}`.replace(/-/g, '_');
+            const cwd = this.getCwdByTmuxSession(tmuxName);
+            if (cwd) {
+              panel.lastCwd = cwd;
+              changed = true;
+              saved++;
+            }
+          }
+        }
+        if (changed) {
+          database.saveWorkspaceLayout(user.id, layout);
+        }
+      }
+    } catch (e) {
+      console.error('Error saving CWDs:', e.message);
+    }
+    console.log(`[SHUTDOWN] Saved CWDs for ${saved} terminals`);
+    return saved;
   }
 
   /**

@@ -45,6 +45,7 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     const handleTerminalCreated = (data) => {
       if (!localTerminalId) {
         setLocalTerminalId(data.terminalId);
+        setIframeReady(true);
         if (onTerminalCreated) onTerminalCreated(data.terminalId);
       }
     };
@@ -53,6 +54,20 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
       if (data.terminalId === (localTerminalId || terminalId)) {
         if (!localTerminalId) setLocalTerminalId(data.terminalId);
         setIframeReady(true);
+        // Reload iframe if ttyd showed "no sessions" error (after reboot)
+        setTimeout(() => {
+          if (iframeRef.current) {
+            try {
+              const doc = iframeRef.current.contentDocument;
+              const body = doc?.body?.textContent || '';
+              if (body.includes('no sessions') || body.includes('Reconnect')) {
+                iframeRef.current.src = iframeRef.current.src;
+              }
+            } catch (e) {
+              iframeRef.current.src = iframeRef.current.src;
+            }
+          }
+        }, 500);
       }
     };
 
@@ -134,7 +149,10 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
 
   const tid = localTerminalId || terminalId;
   const token = getToken();
-  const ttydUrl = tid ? `/ttyd/${tid}/?token=${encodeURIComponent(token)}` : null;
+  // Only load iframe after server confirms terminal is ready (iframeReady)
+  // For new terminals: iframeReady is set by handleTerminalCreated flow
+  // For restored terminals: iframeReady is set by handleTerminalRestored
+  const ttydUrl = tid && iframeReady ? `/ttyd/${tid}/?token=${encodeURIComponent(token)}` : null;
 
   return (
     <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>

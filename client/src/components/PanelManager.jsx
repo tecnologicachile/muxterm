@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, IconButton } from '@mui/material';
+import { Box, Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import {
   Close as CloseIcon,
   Minimize as MinimizeIcon,
-  Folder as FolderIcon
+  Folder as FolderIcon,
+  ContentCopy as CopyIcon
 } from '@mui/icons-material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
@@ -22,6 +23,27 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // Drag & drop reorder state
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
+
+  // Terminal capture modal (for mobile copy/paste)
+  const [captureContent, setCaptureContent] = useState(null);
+  const [captureLoading, setCaptureLoading] = useState(false);
+
+  const captureTerminal = (terminalId) => {
+    if (!socket || !terminalId) return;
+    setCaptureLoading(true);
+    setCaptureContent('');
+    const handler = (data) => {
+      if (data.terminalId === terminalId) {
+        socket.off('terminal-captured', handler);
+        setCaptureContent(data.content || '(empty)');
+        setCaptureLoading(false);
+      }
+    };
+    socket.on('terminal-captured', handler);
+    socket.emit('capture-terminal', { terminalId });
+    // Timeout
+    setTimeout(() => { socket.off('terminal-captured', handler); setCaptureLoading(false); }, 5000);
+  };
 
   // File browser modal (local terminal CWD or SSH home)
   const [fileBrowserTerminalId, setFileBrowserTerminalId] = useState(null);
@@ -251,6 +273,18 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               }}
             />
             
+            {/* Capture terminal content (for mobile copy) */}
+            {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) && (
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); captureTerminal(panel.terminalId); }}
+                sx={{ padding: '2px', color: '#666', '&:hover': { color: '#00ff00' } }}
+                title="Copy terminal content"
+              >
+                <CopyIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+
             {/* File browser - local (CWD) or SSH (home) */}
             {((!panel.type || panel.type === 'local') && panel.terminalId) && (
               <IconButton
@@ -620,6 +654,44 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         mode={fileBrowserMode}
         sshConnectionId={fileBrowserSshId}
       />
+      {/* Terminal capture modal */}
+      <Dialog open={captureContent !== null} onClose={() => setCaptureContent(null)} maxWidth="md" fullWidth
+        PaperProps={{ sx: { backgroundColor: '#1a1a1a', maxHeight: '80vh' } }}>
+        <DialogTitle sx={{ color: '#ccc', fontSize: '14px', borderBottom: '1px solid #333', py: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Terminal Content</span>
+          <Button size="small" sx={{ fontSize: '11px', textTransform: 'none', color: '#00ff00' }}
+            onClick={() => {
+              if (!captureContent) return;
+              const ta = document.createElement('textarea');
+              ta.value = captureContent;
+              ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+              document.body.appendChild(ta);
+              ta.focus(); ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+            }}>
+            Copy all
+          </Button>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {captureLoading ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: '#888' }}>Capturing...</Box>
+          ) : (
+            <pre
+              style={{
+                margin: 0, padding: '12px', color: '#ccc', fontSize: '12px',
+                fontFamily: '"Fira Code", monospace', backgroundColor: '#000',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'auto',
+                userSelect: 'text', WebkitUserSelect: 'text', maxHeight: '60vh',
+                lineHeight: '1.4'
+              }}
+            >{captureContent}</pre>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid #333' }}>
+          <Button onClick={() => setCaptureContent(null)} sx={{ color: '#888' }}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

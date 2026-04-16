@@ -766,13 +766,25 @@ io.on('connection', (socket) => {
         }
       }
 
+      // Get lastCwd from workspace layout if available
+      let initialCwd = null;
+      try {
+        const layout = database.getWorkspaceLayout(socket.userId);
+        if (layout) {
+          const allPanels = [...(layout.panels || []), ...(layout.minimizedPanels || [])];
+          const panel = allPanels.find(p => p.terminalId === data.terminalId);
+          if (panel && panel.lastCwd) initialCwd = panel.lastCwd;
+        }
+      } catch (e) {}
+
       const terminal = await ttydManager.restoreTerminal(
         data.terminalId,
         socket.userId,
         sessionId,
         data.rows || 24,
         data.cols || 80,
-        sshConfig
+        sshConfig,
+        initialCwd
       );
       if (terminal && terminal.userId === socket.userId) {
         socket.emit('terminal-restored', {
@@ -850,6 +862,23 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Capture terminal screen content via tmux capture-pane
+  socket.on('capture-terminal', async (data) => {
+    try {
+      const terminal = ttydManager.getTerminal(data.terminalId);
+      if (terminal && terminal.userId === socket.userId && terminal.tmuxSessionName) {
+        const { execSync } = require('child_process');
+        const content = execSync(
+          `tmux -L muxterm capture-pane -t ${terminal.tmuxSessionName} -p`,
+          { encoding: 'utf8' }
+        );
+        socket.emit('terminal-captured', { terminalId: data.terminalId, content });
+      }
+    } catch (error) {
+      socket.emit('terminal-captured', { terminalId: data.terminalId, content: '', error: error.message });
+    }
+  });
+
   // Send keys via tmux (for SpecialKeysToolbar on mobile)
   socket.on('send-keys', async (data) => {
     try {
@@ -878,6 +907,27 @@ io.on('connection', (socket) => {
     logger.info(`User ${socket.username} disconnected`);
   });
 });
+
+// Save terminal CWDs on ANY exit (SIGTERM, SIGINT, guacamole-lite exit, etc.)
+let cwdsSaved = false;
+const saveCwdsOnce = () => {
+  if (cwdsSaved) return;
+  cwdsSaved = true;
+  try {
+    const saved = ttydManager.saveAllCwds();
+    console.log(`[SHUTDOWN] Saved CWDs for ${saved} terminals`);
+  } catch (e) {
+    console.error('[SHUTDOWN] Error saving CWDs:', e.message);
+  }
+};
+process.on('exit', saveCwdsOnce);
+process.on('SIGTERM', saveCwdsOnce);
+process.on('SIGINT', saveCwdsOnce);
+
+// Periodic CWD save every 3 minutes (protects against power loss / crash)
+setInterval(() => {
+  try { ttydManager.saveAllCwds(); } catch (e) {}
+}, 3 * 60 * 1000);
 
 const PORT = process.env.PORT || 3002;
 // Initialize Guacamole proxy for RDP (separate WebSocket port)
@@ -947,4 +997,5 @@ server.listen(PORT, async () => {
       }
     }
   }
+
 });
