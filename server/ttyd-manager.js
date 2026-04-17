@@ -357,7 +357,7 @@ class TtydProcessManager {
     }
   }
 
-  saveAllCwds() {
+  saveAllCwds(includeMinimized = true) {
     let saved = 0;
     try {
       const allUsers = database.getAllUsers();
@@ -366,7 +366,9 @@ class TtydProcessManager {
         if (!layout) continue;
         let changed = false;
         const sessionId = `ws_${user.id}`;
-        const allPanels = [...(layout.panels || []), ...(layout.minimizedPanels || [])];
+        const allPanels = includeMinimized
+          ? [...(layout.panels || []), ...(layout.minimizedPanels || [])]
+          : [...(layout.panels || [])];
         for (const panel of allPanels) {
           if (panel.terminalId && (!panel.type || panel.type === 'local' || panel.type === 'ssh')) {
             // Build tmux session name directly from userId + terminalId

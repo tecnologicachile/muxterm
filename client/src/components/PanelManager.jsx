@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -20,6 +20,13 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
 
   // Track activity state for each panel
   const [activityStates, setActivityStates] = useState({});
+  const scrollThrottleRef = useRef(0);
+  const emitScroll = (terminalId, direction) => {
+    const now = Date.now();
+    if (now - scrollThrottleRef.current < 150) return;
+    scrollThrottleRef.current = now;
+    if (socket) socket.emit('terminal-scroll', { terminalId, direction });
+  };
 
   // Drag & drop reorder state
   const [dragPanelId, setDragPanelId] = useState(null);
@@ -221,7 +228,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 <Box
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (socket) socket.emit('terminal-scroll', { terminalId: panel.terminalId, direction: 'up' });
+                    emitScroll(panel.terminalId, 'up');
                   }}
                   sx={{
                     width: '22px', height: '18px',
@@ -234,7 +241,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 <Box
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (socket) socket.emit('terminal-scroll', { terminalId: panel.terminalId, direction: 'down' });
+                    emitScroll(panel.terminalId, 'down');
                   }}
                   sx={{
                     width: '22px', height: '18px',
@@ -247,7 +254,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 <Box
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (socket) socket.emit('terminal-scroll', { terminalId: panel.terminalId, direction: 'exit' });
+                    emitScroll(panel.terminalId, 'exit');
                   }}
                   sx={{
                     width: '22px', height: '18px',

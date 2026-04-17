@@ -847,20 +847,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Scroll terminal history via tmux copy-mode
-  socket.on('terminal-scroll', async (data) => {
+  // Scroll terminal history via tmux copy-mode (async to avoid blocking event loop)
+  socket.on('terminal-scroll', (data) => {
     try {
       const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId && terminal.tmuxSessionName) {
-        const { execSync } = require('child_process');
+        const { exec } = require('child_process');
         const sess = terminal.tmuxSessionName;
+        let cmd = null;
         if (data.direction === 'up') {
-          execSync(`tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X page-up`, { timeout: 2000 });
+          cmd = `tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X page-up`;
         } else if (data.direction === 'down') {
-          execSync(`tmux -L muxterm send-keys -t ${sess} -X page-down 2>/dev/null || true`, { timeout: 2000 });
+          cmd = `tmux -L muxterm send-keys -t ${sess} -X page-down 2>/dev/null || true`;
         } else if (data.direction === 'exit') {
-          execSync(`tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`, { timeout: 2000 });
+          cmd = `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`;
         }
+        if (cmd) exec(cmd, { timeout: 2000 }, () => {});
       }
     } catch (error) {
       logger.debug('Scroll error:', error.message);
@@ -930,8 +932,9 @@ process.on('SIGTERM', saveCwdsOnce);
 process.on('SIGINT', saveCwdsOnce);
 
 // Periodic CWD save every 3 minutes (protects against power loss / crash)
+// Excludes minimized panels — they don't change CWD while minimized
 setInterval(() => {
-  try { ttydManager.saveAllCwds(); } catch (e) {}
+  try { ttydManager.saveAllCwds(false); } catch (e) {}
 }, 3 * 60 * 1000);
 
 const PORT = process.env.PORT || 3002;
