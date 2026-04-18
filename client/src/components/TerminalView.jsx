@@ -1020,7 +1020,6 @@ function TerminalView() {
                       )}
                       <style>{`@keyframes muxpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
                       <span>{win.name}</span>
-                      <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: 4 }}>{panelCount}</span>
                       {windows.length > 1 && (
                         <span onClick={(e) => {
                           e.stopPropagation();
