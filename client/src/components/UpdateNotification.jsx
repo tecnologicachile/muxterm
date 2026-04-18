@@ -43,25 +43,17 @@ function UpdateNotification() {
 
   const handleUpdate = async () => {
     setUpdating(true);
-    
     try {
-      console.log('[UPDATE-CLIENT] Calling /api/update-execute');
       const response = await axios.post('/api/update-execute');
-      console.log('[UPDATE-CLIENT] Response:', response.data);
-      
       if (response.data.success) {
-        alert(`Update to v${response.data.version} started!\n\nThe service will restart automatically.\n\nThe page will reload in 30 seconds...`);
-        
-        // Wait and then reload
-        setTimeout(() => {
-          window.location.reload();
-        }, 30000);
+        // Server emits 'auto-update-starting' socket event → TerminalView toast takes over.
+        // Hide this banner; user keeps working while update runs in background.
+        setOpen(false);
       } else {
         alert('Error starting update: ' + (response.data.error || 'Unknown error'));
         setUpdating(false);
       }
     } catch (error) {
-      console.error('[UPDATE-CLIENT] Error:', error);
       logger.error('Failed to execute update:', error);
       alert('Failed to start update. Please check the logs.');
       setUpdating(false);

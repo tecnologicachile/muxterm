@@ -349,7 +349,10 @@ app.post('/api/update-execute', authenticateToken, async (req, res) => {
     }
     
     logger.info(`Update initiated by user ${req.user.username} from ${updateInfo.current} to ${updateInfo.latest}`);
-    
+
+    // Notify all clients so the non-blocking progress toast shows up
+    io.emit('auto-update-starting', { current: updateInfo.current, latest: updateInfo.latest });
+
     // Execute update in background using muxterm update command
     const { spawn } = require('child_process');
     

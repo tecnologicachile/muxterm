@@ -53,6 +53,8 @@ function TerminalView() {
   const [dragOverWindowTab, setDragOverWindowTab] = useState(null);
   const [draggingTabId, setDraggingTabId] = useState(null);
   const [dragOverTabId, setDragOverTabId] = useState(null);
+  const tabsScrollRef = useRef(null);
+  const [tabsOverflow, setTabsOverflow] = useState({ canLeft: false, canRight: false });
   // Global activity tracking — maps terminalId → lastActivityTs
   const [activityMap, setActivityMap] = useState({});
   // Update status: { state: 'idle' | 'in-progress' | 'applied', target?: string }
@@ -296,6 +298,35 @@ function TerminalView() {
       });
     }
   }, [panels, activePanel, socket, minimizedPanels, windows, activeWindowId]);
+
+  // Update overflow state on tabs (show/hide arrow buttons)
+  useEffect(() => {
+    const updateOverflow = () => {
+      const el = tabsScrollRef.current;
+      if (!el) { setTabsOverflow({ canLeft: false, canRight: false }); return; }
+      const canLeft = el.scrollLeft > 2;
+      const canRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+      setTabsOverflow(prev => (prev.canLeft === canLeft && prev.canRight === canRight) ? prev : { canLeft, canRight });
+    };
+    updateOverflow();
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateOverflow, { passive: true });
+    window.addEventListener('resize', updateOverflow);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateOverflow) : null;
+    if (ro) ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', updateOverflow);
+      window.removeEventListener('resize', updateOverflow);
+      if (ro) ro.disconnect();
+    };
+  }, [windows.length, isMobile]);
+
+  const scrollTabs = (delta) => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: delta, behavior: 'smooth' });
+  };
 
   // Global terminal-activity listener — track activity across all windows
   useEffect(() => {
@@ -836,14 +867,21 @@ function TerminalView() {
         sessionName="Workspace"
         panelCount={panels.length}
         centerContent={!isMobile && (
-          <Box sx={{
-            display: 'flex', alignItems: 'center', gap: '2px', maxWidth: '100%',
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, maxWidth: '100%' }}>
+            {tabsOverflow.canLeft && (
+              <Box onClick={() => scrollTabs(-200)} title="Scroll left"
+                sx={{
+                  flexShrink: 0, px: 0.8, py: 0.5, cursor: 'pointer',
+                  color: 'rgba(255,255,255,0.7)', fontSize: 14, userSelect: 'none',
+                  '&:hover': { color: '#fff', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '4px' }
+                }}
+              >◀</Box>
+            )}
+          <Box ref={tabsScrollRef} sx={{
+            display: 'flex', alignItems: 'center', gap: '2px', flex: 1, minWidth: 0,
             overflowX: 'auto', overflowY: 'hidden',
-            scrollbarWidth: 'thin', scrollbarColor: '#333 transparent',
-            '&::-webkit-scrollbar': { height: 4 },
-            '&::-webkit-scrollbar-track': { background: 'transparent' },
-            '&::-webkit-scrollbar-thumb': { background: '#333', borderRadius: 2 },
-            '&::-webkit-scrollbar-thumb:hover': { background: '#555' }
+            scrollbarWidth: 'none',
+            '&::-webkit-scrollbar': { display: 'none' }
           }}>
             {windows.map(win => {
               const isActive = win.id === activeWindowId;
@@ -1003,17 +1041,28 @@ function TerminalView() {
                 </Box>
               );
             })}
-            <Box onClick={() => {
-              const newId = 'w' + Date.now();
-              setWindows(ws => [...ws, { id: newId, name: `Window ${ws.length + 1}` }]);
-              setActiveWindowId(newId);
-            }}
-            title="New window"
-            sx={{
-              padding: '2px 10px', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '14px',
-              borderRadius: '4px', '&:hover': { color: '#00ff00', backgroundColor: 'rgba(0,255,0,0.08)' }
-            }}
-            >+</Box>
+          </Box>
+          {tabsOverflow.canRight && (
+            <Box onClick={() => scrollTabs(200)} title="Scroll right"
+              sx={{
+                flexShrink: 0, px: 0.8, py: 0.5, cursor: 'pointer',
+                color: 'rgba(255,255,255,0.7)', fontSize: 14, userSelect: 'none',
+                '&:hover': { color: '#fff', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '4px' }
+              }}
+            >▶</Box>
+          )}
+          <Box onClick={() => {
+            const newId = 'w' + Date.now();
+            setWindows(ws => [...ws, { id: newId, name: `Window ${ws.length + 1}` }]);
+            setActiveWindowId(newId);
+          }}
+          title="New window"
+          sx={{
+            flexShrink: 0,
+            padding: '2px 10px', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '14px',
+            borderRadius: '4px', '&:hover': { color: '#00ff00', backgroundColor: 'rgba(0,255,0,0.08)' }
+          }}
+          >+</Box>
           </Box>
         )}
         onLogout={() => { logout(); navigate('/login'); }}
