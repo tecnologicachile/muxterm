@@ -51,6 +51,8 @@ function TerminalView() {
   const [renameWindowValue, setRenameWindowValue] = useState('');
   const [draggingPanelForWindow, setDraggingPanelForWindow] = useState(null);
   const [dragOverWindowTab, setDragOverWindowTab] = useState(null);
+  const [draggingTabId, setDraggingTabId] = useState(null);
+  const [dragOverTabId, setDragOverTabId] = useState(null);
   // Global activity tracking — maps terminalId → lastActivityTs
   const [activityMap, setActivityMap] = useState({});
   // Update status: { state: 'idle' | 'in-progress' | 'applied', target?: string }
@@ -834,7 +836,15 @@ function TerminalView() {
         sessionName="Workspace"
         panelCount={panels.length}
         centerContent={!isMobile && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', overflow: 'auto', maxWidth: '100%' }}>
+          <Box sx={{
+            display: 'flex', alignItems: 'center', gap: '2px', maxWidth: '100%',
+            overflowX: 'auto', overflowY: 'hidden',
+            scrollbarWidth: 'thin', scrollbarColor: '#333 transparent',
+            '&::-webkit-scrollbar': { height: 4 },
+            '&::-webkit-scrollbar-track': { background: 'transparent' },
+            '&::-webkit-scrollbar-thumb': { background: '#333', borderRadius: 2 },
+            '&::-webkit-scrollbar-thumb:hover': { background: '#555' }
+          }}>
             {windows.map(win => {
               const isActive = win.id === activeWindowId;
               const winPanels = panels.filter(p => (p.windowId || 'w1') === win.id);
@@ -844,22 +854,63 @@ function TerminalView() {
               // Has recent activity (within 2s) on any panel of this window?
               const now = Date.now();
               const hasActivity = winPanels.some(p => p.terminalId && activityMap[p.terminalId] && (now - activityMap[p.terminalId] < 2000));
+              const isTabDragTarget = dragOverTabId === win.id && draggingTabId && draggingTabId !== win.id;
+              const isBeingDraggedTab = draggingTabId === win.id;
               return (
                 <Box key={win.id}
+                  draggable={!isRenaming}
+                  onDragStart={(e) => {
+                    if (isRenaming) { e.preventDefault(); return; }
+                    setDraggingTabId(win.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    // Lightweight drag ghost (prevents renderer crashes)
+                    try {
+                      const g = document.createElement('div');
+                      g.textContent = win.name;
+                      g.style.cssText = 'position:absolute;top:-1000px;padding:4px 10px;background:#1a1a1a;color:#00ff00;border:1px solid #00ff00;border-radius:4px;font-size:11px;white-space:nowrap;font-family:monospace';
+                      document.body.appendChild(g);
+                      e.dataTransfer.setDragImage(g, 10, 10);
+                      setTimeout(() => { try { document.body.removeChild(g); } catch (_) {} }, 0);
+                    } catch (_) {}
+                  }}
+                  onDragEnd={() => { setDraggingTabId(null); setDragOverTabId(null); }}
                   onClick={() => {
                     if (isRenaming) return;
                     if (isActive) { setRenamingWindowId(win.id); setRenameWindowValue(win.name); }
                     else setActiveWindowId(win.id);
                   }}
                   onDragOver={(e) => {
-                    if (!draggingPanelForWindow) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    if (dragOverWindowTab !== win.id) setDragOverWindowTab(win.id);
+                    if (draggingPanelForWindow || draggingTabId) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (draggingTabId && draggingTabId !== win.id) {
+                        if (dragOverTabId !== win.id) setDragOverTabId(win.id);
+                      } else if (draggingPanelForWindow && dragOverWindowTab !== win.id) {
+                        setDragOverWindowTab(win.id);
+                      }
+                    }
                   }}
-                  onDragLeave={() => { if (dragOverWindowTab === win.id) setDragOverWindowTab(null); }}
+                  onDragLeave={() => {
+                    if (dragOverWindowTab === win.id) setDragOverWindowTab(null);
+                    if (dragOverTabId === win.id) setDragOverTabId(null);
+                  }}
                   onDrop={(e) => {
                     e.preventDefault();
+                    // Tab reorder: swap dragged tab with this tab
+                    if (draggingTabId && draggingTabId !== win.id) {
+                      setWindows(prev => {
+                        const arr = [...prev];
+                        const fromIdx = arr.findIndex(w => w.id === draggingTabId);
+                        const toIdx = arr.findIndex(w => w.id === win.id);
+                        if (fromIdx < 0 || toIdx < 0) return prev;
+                        const [moved] = arr.splice(fromIdx, 1);
+                        arr.splice(toIdx, 0, moved);
+                        return arr;
+                      });
+                      setDraggingTabId(null);
+                      setDragOverTabId(null);
+                      return;
+                    }
                     if (draggingPanelForWindow) {
                       // Minimized → restore to target window
                       const minPanel = minimizedPanels.find(p => p.id === draggingPanelForWindow);
@@ -889,16 +940,21 @@ function TerminalView() {
                     setDraggingPanelForWindow(null);
                     setDragOverWindowTab(null);
                   }}
-                  title={isActive ? 'Click to rename' : 'Click to switch — or drop panel here to move it'}
+                  title={isActive ? 'Click to rename · drag to reorder' : 'Click to switch · drag to reorder · drop a panel here to move it'}
                   sx={{
                     display: 'flex', alignItems: 'center', gap: 0.5,
                     padding: '2px 10px', borderRadius: '4px',
-                    backgroundColor: isDropTarget ? 'rgba(0,255,0,0.3)' : isActive ? 'rgba(0,255,0,0.15)' : 'transparent',
-                    border: isDropTarget ? '1px solid #00ff00' : isActive ? '1px solid #00ff00' : '1px solid transparent',
+                    backgroundColor: isDropTarget ? 'rgba(0,255,0,0.3)' :
+                      isTabDragTarget ? 'rgba(100,180,255,0.25)' :
+                      isActive ? 'rgba(0,255,0,0.15)' : 'transparent',
+                    border: isDropTarget ? '1px solid #00ff00' :
+                      isTabDragTarget ? '1px dashed #64b4ff' :
+                      isActive ? '1px solid #00ff00' : '1px solid transparent',
                     color: isActive ? '#00ff00' : 'rgba(255,255,255,0.7)',
                     cursor: isRenaming ? 'text' : 'pointer',
                     fontSize: '11px', whiteSpace: 'nowrap',
-                    transition: 'background-color 0.1s',
+                    opacity: isBeingDraggedTab ? 0.4 : 1,
+                    transition: 'background-color 0.1s, opacity 0.1s',
                     '&:hover': !isActive && !isRenaming ? { backgroundColor: 'rgba(255,255,255,0.08)' } : {}
                   }}
                 >
