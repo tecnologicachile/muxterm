@@ -924,10 +924,18 @@ main() {
 
         print_color "\nRestarting MuxTerm service..." "$YELLOW"
 
-        if command -v sudo &>/dev/null && [ "$(id -u)" != "0" ]; then
-            exec_log "sudo systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
-        else
+        # Restart using SIGKILL — works without sudo AND regardless of Restart= setting
+        # (systemd considers SIGKILL as failure → triggers restart on both on-failure and always)
+        local NODE_PID=$(pgrep -f "node server/index.js" | head -1)
+        if [ -n "$NODE_PID" ]; then
+            exec_log "kill -9 $NODE_PID" "Signaling MuxTerm to restart (systemd will auto-restart)"
+            sleep 4
+        elif command -v sudo &>/dev/null && sudo -n systemctl restart $SERVICE_NAME 2>/dev/null; then
+            exec_log "sudo systemctl restart $SERVICE_NAME" "Restarting MuxTerm service via sudo"
+        elif [ "$(id -u)" = "0" ]; then
             exec_log "systemctl restart $SERVICE_NAME" "Restarting MuxTerm service"
+        else
+            print_color "Could not restart service automatically. Please run: sudo systemctl restart $SERVICE_NAME" "$RED"
         fi
 
         
