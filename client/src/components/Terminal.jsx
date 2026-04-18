@@ -142,28 +142,42 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     }
   }, [isReconnected, localTerminalId, socket]);
 
-  // Watch container size changes: dispatch resize to ttyd iframe so xterm.js re-measures.
-  // Fixes distorted rendering after tab switches, panel resizes, or window size changes.
+  // Watch container size changes + periodic re-measure on activation/mount.
+  // Fixes distorted rendering when xterm.js gets out of sync with actual container size
+  // (tab switches, panel activations, resize handle drags, etc.)
   useEffect(() => {
     if (!iframeRef.current) return;
     const dispatchResize = () => {
       try { iframeRef.current?.contentWindow?.dispatchEvent(new Event('resize')); } catch (e) {}
     };
-    // Debounce to coalesce rapid size changes
-    let timer = null;
+    let debounceTimer = null;
     const schedule = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(dispatchResize, 120);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(dispatchResize, 120);
     };
 
-    // Observe the iframe's parent container for size changes
+    // 1) ResizeObserver for actual size changes
     const target = iframeRef.current.parentElement;
-    if (!target || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(schedule);
-    ro.observe(target);
-    // Also dispatch once on mount + when becomes active
-    if (isActive) schedule();
-    return () => { ro.disconnect(); if (timer) clearTimeout(timer); };
+    let ro = null;
+    if (target && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(schedule);
+      ro.observe(target);
+    }
+
+    // 2) Staggered dispatch on activate/remount to cover cases where the container
+    //    size doesn't change but xterm.js still has a stale column count (tab switch, etc.)
+    const timers = [];
+    if (isActive && iframeReady) {
+      [100, 350, 800, 1500].forEach(delay => {
+        timers.push(setTimeout(dispatchResize, delay));
+      });
+    }
+
+    return () => {
+      if (ro) ro.disconnect();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      timers.forEach(clearTimeout);
+    };
   }, [iframeReady, isActive]);
 
 
