@@ -51,6 +51,8 @@ function TerminalView() {
   const [renameWindowValue, setRenameWindowValue] = useState('');
   const [draggingPanelForWindow, setDraggingPanelForWindow] = useState(null);
   const [dragOverWindowTab, setDragOverWindowTab] = useState(null);
+  // Global activity tracking — maps terminalId → lastActivityTs
+  const [activityMap, setActivityMap] = useState({});
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
   const [dragMinId, setDragMinId] = useState(null);
@@ -286,6 +288,19 @@ function TerminalView() {
       });
     }
   }, [panels, activePanel, socket, minimizedPanels, windows, activeWindowId]);
+
+  // Global terminal-activity listener — track activity across all windows
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data) => {
+      if (!data?.terminalId) return;
+      setActivityMap(prev => ({ ...prev, [data.terminalId]: Date.now() }));
+    };
+    socket.on('terminal-activity', handler);
+    // Refresh UI every 2s to re-evaluate stale activity timestamps
+    const tick = setInterval(() => setActivityMap(prev => ({ ...prev })), 2000);
+    return () => { socket.off('terminal-activity', handler); clearInterval(tick); };
+  }, [socket]);
 
   // Ensure activePanel belongs to the active window
   useEffect(() => {
@@ -785,9 +800,13 @@ function TerminalView() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', overflow: 'auto', maxWidth: '100%' }}>
             {windows.map(win => {
               const isActive = win.id === activeWindowId;
-              const panelCount = panels.filter(p => (p.windowId || 'w1') === win.id).length;
+              const winPanels = panels.filter(p => (p.windowId || 'w1') === win.id);
+              const panelCount = winPanels.length;
               const isRenaming = renamingWindowId === win.id;
               const isDropTarget = dragOverWindowTab === win.id && draggingPanelForWindow;
+              // Has recent activity (within 2s) on any panel of this window?
+              const now = Date.now();
+              const hasActivity = !isActive && winPanels.some(p => p.terminalId && activityMap[p.terminalId] && (now - activityMap[p.terminalId] < 2000));
               return (
                 <Box key={win.id}
                   onClick={() => {
@@ -804,11 +823,31 @@ function TerminalView() {
                   onDragLeave={() => { if (dragOverWindowTab === win.id) setDragOverWindowTab(null); }}
                   onDrop={(e) => {
                     e.preventDefault();
-                    if (draggingPanelForWindow && win.id !== activeWindowId) {
-                      setPanels(prev => prev.map(p =>
-                        p.id === draggingPanelForWindow ? { ...p, windowId: win.id } : p
-                      ));
-                      setActiveWindowId(win.id);
+                    if (draggingPanelForWindow) {
+                      // Minimized → restore to target window
+                      const minPanel = minimizedPanels.find(p => p.id === draggingPanelForWindow);
+                      if (minPanel) {
+                        setMinimizedPanels(prev => prev.filter(p => p.id !== draggingPanelForWindow));
+                        setPanels(prev => prev.some(p => p.id === draggingPanelForWindow)
+                          ? prev
+                          : [...prev, { ...minPanel, windowId: win.id, _restoreKey: Date.now() }]);
+                        if (minPanel.terminalId && socket) {
+                          socket.emit('restore-terminal', { terminalId: minPanel.terminalId, sshConnectionId: minPanel.sshConnectionId || null });
+                        }
+                        setActiveWindowId(win.id);
+                        setActivePanel(draggingPanelForWindow);
+                      } else {
+                        // Active panel: move to target window if it isn't already there
+                        const sourcePanel = panels.find(p => p.id === draggingPanelForWindow);
+                        const currentWin = sourcePanel?.windowId || 'w1';
+                        if (currentWin !== win.id) {
+                          setPanels(prev => prev.map(p =>
+                            p.id === draggingPanelForWindow ? { ...p, windowId: win.id } : p
+                          ));
+                          setActiveWindowId(win.id);
+                          setActivePanel(draggingPanelForWindow);
+                        }
+                      }
                     }
                     setDraggingPanelForWindow(null);
                     setDragOverWindowTab(null);
@@ -842,6 +881,13 @@ function TerminalView() {
                     />
                   ) : (
                     <>
+                      {hasActivity && (
+                        <span style={{
+                          width: 6, height: 6, borderRadius: '50%', backgroundColor: '#00ff00',
+                          animation: 'muxpulse 1s ease-in-out infinite', marginRight: 2
+                        }} title="Activity in this window" />
+                      )}
+                      <style>{`@keyframes muxpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
                       <span>{win.name}</span>
                       <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: 4 }}>{panelCount}</span>
                       {windows.length > 1 && (
@@ -1307,6 +1353,7 @@ function TerminalView() {
                       draggable={!sidebarFilter}
                       onDragStart={(e) => {
                         setDragPanelId(panel.id);
+                        setDraggingPanelForWindow(panel.id);
                         e.dataTransfer.effectAllowed = 'move';
                       }}
                       onDragOver={(e) => {
@@ -1329,8 +1376,9 @@ function TerminalView() {
                         }
                         setDragPanelId(null);
                         setDragOverPanelId(null);
+                        setDraggingPanelForWindow(null);
                       }}
-                      onDragEnd={() => { setDragPanelId(null); setDragOverPanelId(null); }}
+                      onDragEnd={() => { setDragPanelId(null); setDragOverPanelId(null); setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
                       onClick={() => {
                         const panelWin = panel.windowId || 'w1';
                         if (panelWin !== activeWindowId) setActiveWindowId(panelWin);
@@ -1411,6 +1459,7 @@ function TerminalView() {
                           draggable={!sidebarFilter}
                           onDragStart={(e) => {
                             setDragMinId(panel.id);
+                            setDraggingPanelForWindow(panel.id);
                             e.dataTransfer.effectAllowed = 'move';
                           }}
                           onDragOver={(e) => {
@@ -1433,8 +1482,9 @@ function TerminalView() {
                             }
                             setDragMinId(null);
                             setDragOverMinId(null);
+                            setDraggingPanelForWindow(null);
                           }}
-                          onDragEnd={() => { setDragMinId(null); setDragOverMinId(null); }}
+                          onDragEnd={() => { setDragMinId(null); setDragOverMinId(null); setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
                           onClick={() => {
                             handleRestorePanel(panel);
                             setSidebarOpen(false);

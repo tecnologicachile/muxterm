@@ -501,6 +501,47 @@ ttydManager.onAuthFailed = (terminalId, userId) => {
   }
 };
 
+// Terminal activity detector: compare tmux pane content hashes periodically
+// and emit 'terminal-activity' when content changes.
+const _activityHashes = new Map(); // terminalId → last hash
+const _hashString = (s) => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return h;
+};
+setInterval(() => {
+  try {
+    const { execSync } = require('child_process');
+    const terminals = ttydManager.terminals;
+    if (!terminals || terminals.size === 0) return;
+    for (const [tid, term] of terminals) {
+      if (!term.tmuxSessionName || term._exited) continue;
+      try {
+        const content = execSync(
+          `tmux -L muxterm capture-pane -p -t ${term.tmuxSessionName}`,
+          { encoding: 'utf8', timeout: 300 }
+        );
+        const hash = _hashString(content);
+        const prev = _activityHashes.get(tid);
+        if (prev !== undefined && prev !== hash) {
+          // Activity detected — notify user sockets
+          const sockets = io.sockets.sockets;
+          for (const [, s] of sockets) {
+            if (s.userId === term.userId) {
+              s.emit('terminal-activity', { terminalId: tid });
+            }
+          }
+        }
+        _activityHashes.set(tid, hash);
+      } catch (e) {}
+    }
+    // Cleanup hashes of removed terminals
+    for (const key of _activityHashes.keys()) {
+      if (!terminals.has(key)) _activityHashes.delete(key);
+    }
+  } catch (e) {}
+}, 800);
+
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
 
