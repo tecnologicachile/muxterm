@@ -1152,18 +1152,57 @@ function TerminalView() {
                 }}
               />
             </div>
+
+            {/* Windows section (only if more than one window exists) */}
+            {windows.length > 1 ? (
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ padding: '4px 16px', fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>Windows</div>
+                <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', overflowX: 'auto' }}>
+                  {windows.map(function(win) {
+                    const isWinActive = win.id === activeWindowId;
+                    const count = panels.filter(function(p) { return (p.windowId || 'w1') === win.id; }).length;
+                    return (
+                      <div key={'mw-' + win.id}
+                        onClick={function() { setActiveWindowId(win.id); }}
+                        style={{
+                          padding: '6px 12px', borderRadius: 6, whiteSpace: 'nowrap',
+                          backgroundColor: isWinActive ? 'rgba(0,255,0,0.15)' : 'rgba(255,255,255,0.05)',
+                          border: isWinActive ? '1px solid #00ff00' : '1px solid transparent',
+                          color: isWinActive ? '#00ff00' : '#ccc',
+                          fontSize: 12, display: 'flex', alignItems: 'center', gap: 4
+                        }}>
+                        <span>{win.name}</span>
+                        <span style={{ fontSize: 10, opacity: 0.6 }}>{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             {panels
               .filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); })
               .map(function(panel, idx) {
+              const panelWin = panel.windowId || 'w1';
+              const winLabel = (windows.find(function(w) { return w.id === panelWin; }) || {}).name || '';
               return (
-                <div key={'mp-' + panel.id} onClick={function() { setActivePanel(panel.id); setMobilePanelListOpen(false); setMobileFilter(''); }}
+                <div key={'mp-' + panel.id}
+                  onClick={function() {
+                    if (panelWin !== activeWindowId) setActiveWindowId(panelWin);
+                    setActivePanel(panel.id);
+                    setMobilePanelListOpen(false);
+                    setMobileFilter('');
+                  }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
                     backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.08)' : 'transparent',
                     borderLeft: panel.id === activePanel ? '3px solid #00ff00' : '3px solid transparent' }}>
                   <span style={{ fontSize: 16 }}>{panel.type === 'rdp' || panel.type === 'vnc' ? '🖥️' : panel.type === 'sftp' ? '📁' : '⬛'}</span>
-                  <div>
-                    <div style={{ fontSize: 13, color: panel.id === activePanel ? '#00ff00' : '#ccc' }}>{panel.name || 'Panel ' + (idx + 1)}</div>
-                    <div style={{ fontSize: 10, color: '#555' }}>{(panel.type || 'local').toUpperCase()}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: panel.id === activePanel ? '#00ff00' : '#ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{panel.name || 'Panel ' + (idx + 1)}</div>
+                    <div style={{ fontSize: 10, color: '#555' }}>
+                      {(panel.type || 'local').toUpperCase()}
+                      {windows.length > 1 && winLabel ? ' · ' + winLabel : ''}
+                    </div>
                   </div>
                 </div>
               );
@@ -1174,11 +1213,18 @@ function TerminalView() {
                 {minimizedPanels
                   .filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); })
                   .map(function(panel) {
+                  const panelWin = panel.windowId || 'w1';
+                  const winLabel = (windows.find(function(w) { return w.id === panelWin; }) || {}).name || '';
                   return (
                     <div key={'mpm-' + panel.id} onClick={function() { handleRestorePanel(panel); setMobilePanelListOpen(false); setMobileFilter(''); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', opacity: 0.5 }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', opacity: 0.6 }}>
                       <span style={{ fontSize: 16 }}>⬛</span>
-                      <div style={{ fontSize: 13, color: '#888' }}>{panel.name || 'Panel'}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{panel.name || 'Panel'}</div>
+                        {windows.length > 1 && winLabel ? (
+                          <div style={{ fontSize: 10, color: '#555' }}>{winLabel}</div>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })}
