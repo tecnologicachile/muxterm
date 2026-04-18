@@ -16,6 +16,7 @@ const tmuxManager = require('../utils/tmuxManager');
 const logger = require('./utils/logger');
 const tracer = require('./utils/persistenceTracer');
 const updateChecker = require('./update-checker');
+const systemSettings = require('./system-settings');
 const httpProxy = require('http-proxy');
 const guacamoleManager = require('./guacamole-manager');
 const credEncryption = require('./credential-encryption');
@@ -183,6 +184,25 @@ app.get('/api/update-check', async (req, res) => {
   const updateInfo = await updateChecker.checkForUpdates(forceCheck);
   const isDocker = fs.existsSync('/.dockerenv') || fs.existsSync('/app/start.sh');
   res.json({ update: updateInfo, isDocker });
+});
+
+// System settings endpoints
+app.get('/api/system-settings', authenticateToken, (req, res) => {
+  res.json({ status: 'ok', settings: systemSettings.read() });
+});
+app.post('/api/system-settings', authenticateToken, (req, res) => {
+  try {
+    // Admin-only: only admins can change system settings
+    const user = database.findUserById(req.user.id);
+    if (!user || !user.is_admin) return res.status(403).json({ status: 'error', message: 'Admin only' });
+    const allowed = ['autoUpdateEnabled'];
+    const changes = {};
+    for (const k of allowed) if (k in req.body) changes[k] = req.body[k];
+    const merged = systemSettings.write(changes);
+    res.json({ status: 'ok', settings: merged });
+  } catch (e) {
+    res.status(500).json({ status: 'error', message: e.message });
+  }
 });
 
 // Debug endpoint for update system
@@ -984,6 +1004,42 @@ process.on('SIGINT', saveCwdsOnce);
 setInterval(() => {
   try { ttydManager.saveAllCwds(false); } catch (e) {}
 }, 3 * 60 * 1000);
+
+// Auto-update checker — runs every 6 hours if enabled
+const AUTO_UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
+const checkAutoUpdate = async () => {
+  try {
+    const settings = systemSettings.read();
+    if (!settings.autoUpdateEnabled) return;
+    systemSettings.write({ lastAutoUpdateCheck: Date.now() });
+
+    const updateInfo = await updateChecker.checkForUpdates(true);
+    if (!updateInfo) return;
+
+    logger.info(`[AUTO-UPDATE] Update ${updateInfo.current} → ${updateInfo.latest} detected, triggering...`);
+
+    const muxTermDir = path.join(__dirname, '..');
+    const updateScript = path.join(muxTermDir, 'scripts', 'update-independent.sh');
+    if (!fs.existsSync(updateScript)) {
+      logger.warn('[AUTO-UPDATE] update-independent.sh not found — skipping auto-update');
+      return;
+    }
+
+    // Notify connected clients
+    io.emit('auto-update-starting', { current: updateInfo.current, latest: updateInfo.latest });
+    systemSettings.write({ lastAutoUpdateTriggered: Date.now() });
+
+    const { spawn } = require('child_process');
+    const proc = spawn('bash', [updateScript, muxTermDir], { detached: true, stdio: 'ignore' });
+    proc.unref();
+    logger.info(`[AUTO-UPDATE] Launched update script (pid ${proc.pid})`);
+  } catch (e) {
+    logger.error('[AUTO-UPDATE] Error:', e.message);
+  }
+};
+// Initial check 60 seconds after startup, then every 6h
+setTimeout(checkAutoUpdate, 60 * 1000);
+setInterval(checkAutoUpdate, AUTO_UPDATE_INTERVAL);
 
 const PORT = process.env.PORT || 3002;
 // Initialize Guacamole proxy for RDP (separate WebSocket port)

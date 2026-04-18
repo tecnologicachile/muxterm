@@ -96,6 +96,7 @@ function TerminalView() {
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
   const [diagOpen, setDiagOpen] = useState(false);
   const [diagLogs, setDiagLogs] = useState([]);
   const [diagLoading, setDiagLoading] = useState(false);
@@ -297,9 +298,18 @@ function TerminalView() {
       setActivityMap(prev => ({ ...prev, [data.terminalId]: Date.now() }));
     };
     socket.on('terminal-activity', handler);
+    // Auto-update notification
+    const autoUpdateHandler = (data) => {
+      alert(`🔄 Auto-updating MuxTerm from v${data.current} to v${data.latest}…\n\nThe page will reload automatically.`);
+    };
+    socket.on('auto-update-starting', autoUpdateHandler);
     // Refresh UI every 2s to re-evaluate stale activity timestamps
     const tick = setInterval(() => setActivityMap(prev => ({ ...prev })), 2000);
-    return () => { socket.off('terminal-activity', handler); clearInterval(tick); };
+    return () => {
+      socket.off('terminal-activity', handler);
+      socket.off('auto-update-starting', autoUpdateHandler);
+      clearInterval(tick);
+    };
   }, [socket]);
 
   // Ensure activePanel belongs to the active window
@@ -544,6 +554,11 @@ function TerminalView() {
   useEffect(() => {
     if (settingsOpen && isAdmin) {
       fetchAdminUsers();
+      // Load system settings (auto-update toggle)
+      fetch('/api/system-settings', { headers: { 'Authorization': `Bearer ${getToken()}` } })
+        .then(r => r.json())
+        .then(d => { if (d.status === 'ok' && d.settings) setAutoUpdateEnabled(!!d.settings.autoUpdateEnabled); })
+        .catch(() => {});
     }
   }, [settingsOpen, isAdmin]);
 
@@ -1861,6 +1876,34 @@ function TerminalView() {
       >
         <DialogTitle>Settings</DialogTitle>
         <DialogContent>
+          {/* Auto-update */}
+          {isAdmin && (
+            <Box sx={{ mb: 2, p: 1.5, border: '1px solid #333', borderRadius: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box>
+                  <Typography sx={{ fontSize: '13px', color: '#ccc' }}>⬆️ Automatic updates</Typography>
+                  <Typography sx={{ fontSize: '11px', color: '#666' }}>
+                    Checks for updates every 6 hours and applies them in the background.
+                  </Typography>
+                </Box>
+                <Button size="small" variant={autoUpdateEnabled ? 'contained' : 'outlined'}
+                  color={autoUpdateEnabled ? 'success' : 'inherit'}
+                  onClick={async () => {
+                    const next = !autoUpdateEnabled;
+                    setAutoUpdateEnabled(next);
+                    try {
+                      await fetch('/api/system-settings', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ autoUpdateEnabled: next })
+                      });
+                    } catch (e) {}
+                  }}
+                >{autoUpdateEnabled ? 'ON' : 'OFF'}</Button>
+              </Box>
+            </Box>
+          )}
+
           {/* Diagnostics */}
           <Box sx={{ mb: 2, p: 1.5, border: '1px solid #333', borderRadius: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
