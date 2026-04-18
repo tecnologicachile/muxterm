@@ -142,6 +142,30 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     }
   }, [isReconnected, localTerminalId, socket]);
 
+  // Watch container size changes: dispatch resize to ttyd iframe so xterm.js re-measures.
+  // Fixes distorted rendering after tab switches, panel resizes, or window size changes.
+  useEffect(() => {
+    if (!iframeRef.current) return;
+    const dispatchResize = () => {
+      try { iframeRef.current?.contentWindow?.dispatchEvent(new Event('resize')); } catch (e) {}
+    };
+    // Debounce to coalesce rapid size changes
+    let timer = null;
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(dispatchResize, 120);
+    };
+
+    // Observe the iframe's parent container for size changes
+    const target = iframeRef.current.parentElement;
+    if (!target || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(schedule);
+    ro.observe(target);
+    // Also dispatch once on mount + when becomes active
+    if (isActive) schedule();
+    return () => { ro.disconnect(); if (timer) clearTimeout(timer); };
+  }, [iframeReady, isActive]);
+
 
   const getToken = () => {
     try { return localStorage.getItem('token') || ''; } catch (e) { return ''; }
