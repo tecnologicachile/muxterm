@@ -207,33 +207,30 @@ check_dependencies() {
 
 
 # Function to get latest version
+# Primary: git ls-remote (no GitHub API rate limits)
+# Fallback: GitHub API (rate-limited but works offline git scenarios are rare)
 
 get_latest_version() {
 
-    # Get all releases and find the one with highest version number
+    local latest=""
 
-    local releases=$(curl -s "https://api.github.com/repos/$REPO/releases" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-
-    if [ -z "$releases" ]; then
-
-        print_color "Failed to fetch releases" "$RED"
-
-        exit 1
-
-    fi
-
-    
-
-    # Sort versions and get the highest one
-
-    local latest=$(echo "$releases" | sort -V | tail -1)
+    # Try git ls-remote first — no API rate limits
+    latest=$(git ls-remote --tags --refs "https://github.com/$REPO.git" 2>/dev/null \
+        | awk -F'refs/tags/' '{print $2}' \
+        | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+        | sort -V | tail -1)
 
     if [ -z "$latest" ]; then
+        # Fallback to GitHub API (rate-limited)
+        local releases=$(curl -s "https://api.github.com/repos/$REPO/releases" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        if [ -n "$releases" ]; then
+            latest=$(echo "$releases" | sort -V | tail -1)
+        fi
+    fi
 
+    if [ -z "$latest" ]; then
         print_color "Failed to determine latest version" "$RED"
-
         exit 1
-
     fi
 
     echo "$latest"
