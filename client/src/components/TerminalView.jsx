@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../utils/AuthContext';
 import {
@@ -24,6 +24,7 @@ import {
 import PanelManager from './PanelManager';
 import UpdateNotification from './UpdateNotification';
 import AppHeader from './AppHeader';
+import { isDiagEnabled, setDiagEnabled } from '../utils/diagLogger';
 import SpecialKeysToolbar from './SpecialKeysToolbar';
 import { useSocket } from '../utils/SocketContext';
 import { v4 as uuidv4 } from 'uuid';
@@ -48,6 +49,8 @@ function TerminalView() {
   const [activeWindowId, setActiveWindowId] = useState('w1');
   const [renamingWindowId, setRenamingWindowId] = useState(null);
   const [renameWindowValue, setRenameWindowValue] = useState('');
+  const [draggingPanelForWindow, setDraggingPanelForWindow] = useState(null);
+  const [dragOverWindowTab, setDragOverWindowTab] = useState(null);
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
   const [dragMinId, setDragMinId] = useState(null);
@@ -91,6 +94,26 @@ function TerminalView() {
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagLogs, setDiagLogs] = useState([]);
+  const [diagLoading, setDiagLoading] = useState(false);
+
+  const loadDiagLogs = async () => {
+    setDiagLoading(true);
+    try {
+      const r = await fetch('/api/diag/logs?limit=500', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
+      });
+      const d = await r.json();
+      if (d.status === 'ok') setDiagLogs(d.logs);
+    } catch (e) {}
+    setDiagLoading(false);
+  };
+  const clearDiagLogs = async () => {
+    if (!confirm('Clear all diagnostic logs?')) return;
+    await fetch('/api/diag/logs', { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` } });
+    setDiagLogs([]);
+  };
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [resetPwUserId, setResetPwUserId] = useState(null);
@@ -628,20 +651,40 @@ function TerminalView() {
     setNewTerminalDialogOpen(false);
   };
 
+  const closeInProgressRef = useRef(false);
   const handleClosePanel = (panelId) => {
+    // Prevent rapid consecutive closes that saturate the main thread
+    if (closeInProgressRef.current) return;
+    closeInProgressRef.current = true;
+
     const panel = panels.find(p => p.id === panelId);
+
+    // Defuse iframe: set src to about:blank to close websocket cleanly
+    // Prevents Chrome renderer crashes when closing active terminals.
+    try {
+      const panelEl = document.querySelector(`[data-panel-id="${panelId}"]`);
+      if (panelEl) {
+        const iframe = panelEl.querySelector('iframe');
+        if (iframe) iframe.src = 'about:blank';
+      }
+    } catch (e) {}
+
     if (panel && panel.terminalId && socket) {
-      socket.emit('close-terminal', {
-        terminalId: panel.terminalId
+      socket.emit('close-terminal', { terminalId: panel.terminalId });
+    }
+
+    // Wait longer for iframe cleanup (xterm.js teardown can take >1s)
+    setTimeout(() => {
+      setPanels(prev => {
+        const newPanels = prev.filter(p => p.id !== panelId);
+        if (activePanel === panelId && newPanels.length > 0) {
+          setActivePanel(newPanels[0].id);
+        }
+        return newPanels;
       });
-    }
-    
-    const newPanels = panels.filter(p => p.id !== panelId);
-    setPanels(newPanels);
-    
-    if (activePanel === panelId && newPanels.length > 0) {
-      setActivePanel(newPanels[0].id);
-    }
+      // Release lock after state update
+      setTimeout(() => { closeInProgressRef.current = false; }, 400);
+    }, 150);
   };
 
 
@@ -744,6 +787,7 @@ function TerminalView() {
               const isActive = win.id === activeWindowId;
               const panelCount = panels.filter(p => (p.windowId || 'w1') === win.id).length;
               const isRenaming = renamingWindowId === win.id;
+              const isDropTarget = dragOverWindowTab === win.id && draggingPanelForWindow;
               return (
                 <Box key={win.id}
                   onClick={() => {
@@ -751,15 +795,34 @@ function TerminalView() {
                     if (isActive) { setRenamingWindowId(win.id); setRenameWindowValue(win.name); }
                     else setActiveWindowId(win.id);
                   }}
-                  title={isActive ? 'Click to rename' : 'Click to switch'}
+                  onDragOver={(e) => {
+                    if (!draggingPanelForWindow) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragOverWindowTab !== win.id) setDragOverWindowTab(win.id);
+                  }}
+                  onDragLeave={() => { if (dragOverWindowTab === win.id) setDragOverWindowTab(null); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggingPanelForWindow && win.id !== activeWindowId) {
+                      setPanels(prev => prev.map(p =>
+                        p.id === draggingPanelForWindow ? { ...p, windowId: win.id } : p
+                      ));
+                      setActiveWindowId(win.id);
+                    }
+                    setDraggingPanelForWindow(null);
+                    setDragOverWindowTab(null);
+                  }}
+                  title={isActive ? 'Click to rename' : 'Click to switch — or drop panel here to move it'}
                   sx={{
                     display: 'flex', alignItems: 'center', gap: 0.5,
                     padding: '2px 10px', borderRadius: '4px',
-                    backgroundColor: isActive ? 'rgba(0,255,0,0.15)' : 'transparent',
-                    border: isActive ? '1px solid #00ff00' : '1px solid transparent',
+                    backgroundColor: isDropTarget ? 'rgba(0,255,0,0.3)' : isActive ? 'rgba(0,255,0,0.15)' : 'transparent',
+                    border: isDropTarget ? '1px solid #00ff00' : isActive ? '1px solid #00ff00' : '1px solid transparent',
                     color: isActive ? '#00ff00' : 'rgba(255,255,255,0.7)',
                     cursor: isRenaming ? 'text' : 'pointer',
                     fontSize: '11px', whiteSpace: 'nowrap',
+                    transition: 'background-color 0.1s',
                     '&:hover': !isActive && !isRenaming ? { backgroundColor: 'rgba(255,255,255,0.08)' } : {}
                   }}
                 >
@@ -864,6 +927,8 @@ function TerminalView() {
           <PanelManager
             key="panel-manager"
             windowId={activeWindowId}
+            onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
+            onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
             panels={panels.filter(p => (p.windowId || 'w1') === activeWindowId)}
             activePanel={activePanel}
             onPanelSelect={setActivePanel}
@@ -1046,10 +1111,29 @@ function TerminalView() {
           const w = windows.find(x => x.id === (wid || 'w1'));
           return w ? w.name : 'Window 1';
         };
-        const winPrefix = (wid) => windows.length > 1 ? `[${winName(wid)}] ` : '';
+        const winShort = (wid) => {
+          const w = windows.find(x => x.id === (wid || 'w1'));
+          if (!w) return 'W1';
+          // Build short badge from window name: "Window 2" → "W2", "Proyecto A" → "PA", "Work" → "Wo"
+          const words = w.name.trim().split(/\s+/);
+          if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+          const match = w.name.match(/(\D*)(\d+)/);
+          if (match) return (match[1][0] || 'W').toUpperCase() + match[2];
+          return w.name.slice(0, 2).toUpperCase();
+        };
         const allPanels = [
-          ...panels.map((p, i) => ({ ...p, status: 'active', displayName: winPrefix(p.windowId) + (p.name || `Terminal ${i + 1}`) })),
-          ...minimizedPanels.map(p => ({ ...p, status: 'minimized', displayName: winPrefix(p.windowId) + (p.name || 'Terminal') }))
+          ...panels.map((p, i) => ({
+            ...p, status: 'active',
+            displayName: p.name || `Terminal ${i + 1}`,
+            windowShort: winShort(p.windowId),
+            windowFullName: winName(p.windowId)
+          })),
+          ...minimizedPanels.map(p => ({
+            ...p, status: 'minimized',
+            displayName: p.name || 'Terminal',
+            windowShort: winShort(p.windowId),
+            windowFullName: winName(p.windowId)
+          }))
         ];
         const filtered = sidebarFilter
           ? allPanels.filter(p => p.displayName.toLowerCase().includes(sidebarFilter.toLowerCase()))
@@ -1276,6 +1360,13 @@ function TerminalView() {
                       <Typography variant="caption" sx={{ fontSize: '9px', color: panel.id === activePanel ? '#00aa00' : '#666', minWidth: '28px', textTransform: 'uppercase', fontFamily: 'monospace' }}>
                         {(panel.type || 'local').replace('local', 'term')}
                       </Typography>
+                      {windows.length > 1 && (
+                        <Box title={panel.windowFullName} sx={{
+                          fontSize: '8px', color: panel.id === activePanel ? '#00aa00' : '#888',
+                          backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.1)' : 'rgba(255,255,255,0.05)',
+                          padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace', flexShrink: 0
+                        }}>{panel.windowShort}</Box>
+                      )}
                       <Typography
                         variant="caption"
                         sx={{
@@ -1286,6 +1377,7 @@ function TerminalView() {
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
                         }}
+                        title={panel.displayName}
                       >
                         {panel.displayName}
                       </Typography>
@@ -1369,6 +1461,13 @@ function TerminalView() {
                           <Typography variant="caption" sx={{ fontSize: '9px', color: '#555', minWidth: '28px', textTransform: 'uppercase', fontFamily: 'monospace' }}>
                             {(panel.type || 'local').replace('local', 'term')}
                           </Typography>
+                          {windows.length > 1 && (
+                            <Box title={panel.windowFullName} sx={{
+                              fontSize: '8px', color: '#888',
+                              backgroundColor: 'rgba(255,255,255,0.05)',
+                              padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace', flexShrink: 0
+                            }}>{panel.windowShort}</Box>
+                          )}
                           <Typography
                             variant="caption"
                             sx={{
@@ -1379,6 +1478,7 @@ function TerminalView() {
                               overflow: 'hidden',
                               textOverflow: 'ellipsis'
                             }}
+                            title={panel.displayName}
                           >
                             {panel.displayName}
                           </Typography>
@@ -1711,6 +1811,23 @@ function TerminalView() {
       >
         <DialogTitle>Settings</DialogTitle>
         <DialogContent>
+          {/* Diagnostics */}
+          <Box sx={{ mb: 2, p: 1.5, border: '1px solid #333', borderRadius: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography sx={{ fontSize: '13px', color: '#ccc' }}>🩺 Diagnostics</Typography>
+                <Typography sx={{ fontSize: '11px', color: '#666' }}>Collect events to help debug issues. Only enable if reporting a problem.</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Button size="small" variant="outlined" onClick={() => { loadDiagLogs(); setDiagOpen(true); }}>View logs</Button>
+                <Button size="small" variant={isDiagEnabled() ? 'contained' : 'outlined'}
+                  color={isDiagEnabled() ? 'success' : 'inherit'}
+                  onClick={() => { setDiagEnabled(!isDiagEnabled()); setSettingsOpen(false); setTimeout(() => setSettingsOpen(true), 100); }}
+                >{isDiagEnabled() ? 'ON' : 'OFF'}</Button>
+              </Box>
+            </Box>
+          </Box>
+
           {/* Bitwarden Integration */}
           <Typography variant="subtitle2" sx={{ mt: 1, mb: 1, color: '#aaa' }}>
             🔐 Bitwarden Integration
@@ -2127,6 +2244,43 @@ function TerminalView() {
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      {/* Diagnostics logs modal */}
+      <Dialog open={diagOpen} onClose={() => setDiagOpen(false)} maxWidth="md" fullWidth
+        PaperProps={{ sx: { backgroundColor: '#1a1a1a', height: '80vh' } }}>
+        <DialogTitle sx={{ fontSize: '14px', borderBottom: '1px solid #333', py: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>🩺 Diagnostics ({diagLogs.length} events)</span>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button size="small" onClick={loadDiagLogs}>Refresh</Button>
+            <Button size="small" color="error" onClick={clearDiagLogs}>Clear</Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, fontFamily: 'monospace', fontSize: '11px' }}>
+          {diagLoading ? <Box sx={{ p: 2, textAlign: 'center', color: '#888' }}>Loading...</Box> : (
+            <Box sx={{ overflow: 'auto', height: '100%' }}>
+              {diagLogs.length === 0 ? (
+                <Box sx={{ p: 3, textAlign: 'center', color: '#555' }}>No events yet</Box>
+              ) : diagLogs.map((log) => {
+                let data = null;
+                try { data = JSON.parse(log.data); } catch (e) { data = log.data; }
+                const date = new Date(log.ts);
+                const time = date.toLocaleTimeString('es-CL', { hour12: false }) + '.' + String(date.getMilliseconds()).padStart(3, '0');
+                const color = log.kind === 'js-error' || log.kind === 'promise-reject' ? '#f44'
+                  : log.kind === 'metrics' ? '#888' : '#0f0';
+                return (
+                  <Box key={log.id} sx={{ display: 'flex', gap: 1, p: '2px 8px', borderBottom: '1px solid #1e1e1e', '&:hover': { backgroundColor: '#222' } }}>
+                    <span style={{ color: '#666', width: 90, flexShrink: 0 }}>{time}</span>
+                    <span style={{ color, width: 120, flexShrink: 0 }}>{log.kind}</span>
+                    <span style={{ color: '#ccc', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
+                      {typeof data === 'object' ? JSON.stringify(data) : String(data || '')}
+                    </span>
+                  </Box>
+                );
+              })}
+            </Box>
+          )}
+        </DialogContent>
       </Dialog>
 
     </Box>

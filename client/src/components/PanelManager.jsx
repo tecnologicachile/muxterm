@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+
+// Module-level throttle (persists across all renders/instances)
+let _lastScrollTs = 0;
+const SCROLL_MIN_INTERVAL = 300;
 import { Box, Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -15,17 +19,16 @@ import LocalFileBrowser from './LocalFileBrowser';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, windowId }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, windowId, onPanelDragStart, onPanelDragEnd }) {
   const saveKey = (suffix) => windowId ? `muxterm-${windowId}-${suffix}` : undefined;
   const { socket } = useSocket();
 
   // Track activity state for each panel
   const [activityStates, setActivityStates] = useState({});
-  const scrollThrottleRef = useRef(0);
   const emitScroll = (terminalId, direction) => {
     const now = Date.now();
-    if (now - scrollThrottleRef.current < 150) return;
-    scrollThrottleRef.current = now;
+    if (now - _lastScrollTs < SCROLL_MIN_INTERVAL) return;
+    _lastScrollTs = now;
     if (socket) socket.emit('terminal-scroll', { terminalId, direction });
   };
 
@@ -101,7 +104,6 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   const [maximizedPanel, setMaximizedPanel] = useState(null);
 
   // Trigger resize on iframes (ttyd/xterm) and window after maximize toggle
-  // so xterm.js redraws — fixes black screen issue
   useEffect(() => {
     const timers = [];
     [60, 200, 500].forEach(delay => {
@@ -186,13 +188,22 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           onDragStart={(e) => {
             setDragPanelId(panel.id);
             e.dataTransfer.effectAllowed = 'move';
-            // Use full panel as drag ghost image
-            const panelEl = e.currentTarget.closest('[data-panel-id]');
-            if (panelEl) {
-              e.dataTransfer.setDragImage(panelEl, panelEl.offsetWidth / 2, 20);
-            }
+            // Lightweight drag ghost — rasterizing an iframe-containing panel
+            // can crash the Chrome renderer (STATUS_BREAKPOINT).
+            try {
+              const dragGhost = document.createElement('div');
+              dragGhost.textContent = panel.name || 'Terminal';
+              dragGhost.style.cssText = 'position:absolute;top:-1000px;left:-1000px;padding:4px 12px;background:#1a1a1a;color:#00ff00;border:1px solid #00ff00;border-radius:4px;font-family:monospace;font-size:12px;white-space:nowrap';
+              document.body.appendChild(dragGhost);
+              e.dataTransfer.setDragImage(dragGhost, 10, 10);
+              setTimeout(() => { try { document.body.removeChild(dragGhost); } catch (_) {} }, 0);
+            } catch (err) {}
+            if (onPanelDragStart) onPanelDragStart(panel.id);
           }}
-          onDragEnd={() => { setDragPanelId(null); setDragOverPanelId(null); }}
+          onDragEnd={() => {
+            setDragPanelId(null); setDragOverPanelId(null);
+            if (onPanelDragEnd) onPanelDragEnd();
+          }}
           sx={{
             display: 'flex',
             alignItems: 'center',
@@ -474,7 +485,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
 
   if (panels.length === 1) {
     return (
-      <PanelGroup direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
+      <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
         <Panel id="panel-0" minSize={5}>
           {renderTerminal(panels[0])}
         </Panel>
@@ -484,7 +495,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   
   if (panels.length === 2) {
     return (
-      <PanelGroup direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
+      <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
         <Panel id="panel-0" minSize={5}>
           {renderTerminal(panels[0])}
         </Panel>
@@ -498,13 +509,13 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   
   if (panels.length === 3) {
     return (
-      <PanelGroup direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
+      <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
         <Panel id="panel-0" minSize={5}>
           {renderTerminal(panels[0])}
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-1" minSize={5}>
               {renderTerminal(panels[1])}
             </Panel>
@@ -552,9 +563,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // 5 paneles: 2 columnas (2 + 3)
   if (panels.length === 5) {
     return (
-      <PanelGroup direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
+      <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
         <Panel id="panel-left" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
@@ -562,7 +573,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
@@ -577,9 +588,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // 6 paneles: 2x3 grid
   if (panels.length === 6) {
     return (
-      <PanelGroup direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
+      <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
         <Panel id="panel-left" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
@@ -589,7 +600,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
@@ -604,9 +615,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // 7 paneles: 3 columnas (2 + 2 + 3)
   if (panels.length === 7) {
     return (
-      <PanelGroup direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
+      <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
         <Panel id="panel-left" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
@@ -614,7 +625,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-center" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
@@ -622,7 +633,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
-          <PanelGroup direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
             <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-5" minSize={5}>{renderTerminal(panels[5])}</Panel>

@@ -112,8 +112,9 @@ app.get('/ca.pem', (req, res) => {
 
 // Simple auth middleware for update endpoint
 const authenticateToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
+  // Accept token from header (standard) or query (for sendBeacon which can't set headers)
+  const token = req.headers.authorization?.split(' ')[1] || req.query.token;
+
   if (!token) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -144,6 +145,12 @@ app.use('/api/localfs', authenticateToken, (req, res, next) => {
   req.userId = req.user.id;
   next();
 }, localFsApi);
+
+const diagApi = require('./diag-api');
+app.use('/api/diag', authenticateToken, (req, res, next) => {
+  req.userId = req.user.id;
+  next();
+}, diagApi);
 
 app.use('/api/vault', authenticateToken, (req, res, next) => {
   req.userId = req.user.id;

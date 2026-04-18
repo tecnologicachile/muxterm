@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import TerminalView from './components/TerminalView';
 import { AuthProvider, useAuth } from './utils/AuthContext';
 import { SocketProvider } from './utils/SocketContext';
+import { startDiagLogger } from './utils/diagLogger';
 
 function AppContent() {
   const { user, loading } = useAuth();
+  useEffect(() => { if (user) startDiagLogger(); }, [user]);
 
   if (loading) {
     return (

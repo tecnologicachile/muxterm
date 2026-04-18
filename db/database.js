@@ -112,6 +112,16 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS diag_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    ts INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    data TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_diag_user_ts ON diag_logs(user_id, ts DESC);
 `);
 
 // Add user_id and ssh_connection_id columns to terminals if not present
@@ -450,6 +460,23 @@ const dbHelpers = {
   },
   clearUserCredentialCache(userId) {
     statements.deleteAllCredentialCacheByUser.run(userId);
+  },
+
+  // Diagnostic logs (circular: max 1000 per user)
+  addDiagLog(userId, kind, data) {
+    db.prepare('INSERT INTO diag_logs (user_id, ts, kind, data) VALUES (?, ?, ?, ?)').run(
+      userId, Date.now(), kind, typeof data === 'string' ? data : JSON.stringify(data || null)
+    );
+    // Trim to last 1000 per user
+    db.prepare(`DELETE FROM diag_logs WHERE user_id = ? AND id NOT IN (
+      SELECT id FROM diag_logs WHERE user_id = ? ORDER BY ts DESC LIMIT 1000
+    )`).run(userId, userId);
+  },
+  getDiagLogs(userId, limit = 500) {
+    return db.prepare('SELECT id, ts, kind, data FROM diag_logs WHERE user_id = ? ORDER BY ts DESC LIMIT ?').all(userId, limit);
+  },
+  clearDiagLogs(userId) {
+    db.prepare('DELETE FROM diag_logs WHERE user_id = ?').run(userId);
   }
 };
 
