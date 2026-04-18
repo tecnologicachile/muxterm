@@ -1365,7 +1365,7 @@ function TerminalView() {
                   {filteredActive.map(panel => (
                     <Box
                       key={`sidebar-active-${panel.id}`}
-                      draggable={!sidebarFilter}
+                      draggable
                       onDragStart={(e) => {
                         setDragPanelId(panel.id);
                         setDraggingPanelForWindow(panel.id);
@@ -1471,7 +1471,7 @@ function TerminalView() {
                       {filteredMinimized.map(panel => (
                         <Box
                           key={`sidebar-min-${panel.id}`}
-                          draggable={!sidebarFilter}
+                          draggable
                           onDragStart={(e) => {
                             setDragMinId(panel.id);
                             setDraggingPanelForWindow(panel.id);
