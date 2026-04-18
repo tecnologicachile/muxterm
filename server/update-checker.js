@@ -1,7 +1,10 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const logger = require('./utils/logger');
+
+const REPO_URL = 'https://github.com/tecnologicachile/muxterm.git';
 
 class UpdateChecker {
   constructor() {
@@ -18,31 +21,66 @@ class UpdateChecker {
         return null;
       }
 
-      const latestRelease = await this.fetchLatestRelease();
-      
-      if (!latestRelease) {
-        return null;
+      // Primary: git ls-remote (no rate limits, works worldwide).
+      // Fallback: GitHub API (with rate limit, but returns richer data).
+      let latestTag = await this.fetchLatestTagViaGit();
+      let latestRelease = null;
+      if (!latestTag) {
+        latestRelease = await this.fetchLatestRelease();
+        if (latestRelease) latestTag = latestRelease.tag_name;
       }
+      if (!latestTag) return null;
 
-      // Save last check time
       this.saveLastCheckTime();
 
-      // Compare versions
-      if (this.isNewerVersion(latestRelease.tag_name)) {
+      if (this.isNewerVersion(latestTag)) {
         return {
           current: this.currentVersion,
-          latest: latestRelease.tag_name.replace('v', ''),
-          url: latestRelease.html_url,
-          changelog: this.parseChangelog(latestRelease.body),
-          publishedAt: latestRelease.published_at
+          latest: latestTag.replace('v', ''),
+          url: latestRelease?.html_url || `https://github.com/tecnologicachile/muxterm/releases/tag/${latestTag}`,
+          changelog: latestRelease ? this.parseChangelog(latestRelease.body) : [],
+          publishedAt: latestRelease?.published_at || null
         };
       }
-
       return null;
     } catch (error) {
       logger.error('Failed to check for updates:', error);
       return null;
     }
+  }
+
+  // Query tags via git ls-remote — no GitHub API rate limits
+  fetchLatestTagViaGit() {
+    return new Promise((resolve) => {
+      execFile('git', ['ls-remote', '--tags', '--refs', REPO_URL], { timeout: 15000 }, (err, stdout) => {
+        if (err) {
+          logger.debug('git ls-remote failed, will try API fallback:', err.message);
+          resolve(null);
+          return;
+        }
+        try {
+          // Output lines: "<sha>\trefs/tags/vX.Y.Z"
+          const tags = stdout.split('\n')
+            .map(line => {
+              const match = line.match(/refs\/tags\/(v?\d+\.\d+\.\d+(?:-[\w.]+)?)\s*$/);
+              return match ? match[1] : null;
+            })
+            .filter(Boolean)
+            .filter(t => !t.includes('-')); // Skip pre-releases like v1.2.0-rc1
+          if (tags.length === 0) return resolve(null);
+          // Find highest by semver compare
+          let latest = tags[0];
+          for (const t of tags) {
+            if (this.compareVersions(this.parseVersion(t), this.parseVersion(latest)) > 0) {
+              latest = t;
+            }
+          }
+          resolve(latest);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    });
   }
 
   shouldSkipCheck() {
