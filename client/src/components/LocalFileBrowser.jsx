@@ -13,6 +13,8 @@ import {
 function LocalFileBrowser({ open, onClose, terminalId, mode = 'local', sshConnectionId = null }) {
   const [currentPath, setCurrentPath] = useState('');
   const [files, setFiles] = useState([]);
+  const [filter, setFilter] = useState('');
+  const filterInputRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [renameDialog, setRenameDialog] = useState(null);
@@ -94,6 +96,24 @@ function LocalFileBrowser({ open, onClose, terminalId, mode = 'local', sshConnec
   useEffect(() => {
     if (currentPath) listDir(currentPath);
   }, [currentPath]);
+
+  // Clear filter when changing directories
+  useEffect(() => { setFilter(''); }, [currentPath]);
+
+  // Keyboard shortcut: "/" or Ctrl+F focuses the filter
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      // Skip if user is typing in an input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f')) {
+        e.preventDefault();
+        filterInputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
 
   const goUp = () => {
     const parent = currentPath.replace(/\/[^/]+\/?$/, '') || '/';
@@ -214,11 +234,50 @@ function LocalFileBrowser({ open, onClose, terminalId, mode = 'local', sshConnec
             </Box>
           </Box>
 
+          {/* Filter bar */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.5, borderBottom: '1px solid #222', backgroundColor: '#1a1a1a' }}>
+            <Typography sx={{ fontSize: '11px', color: '#666' }}>🔍</Typography>
+            <input
+              ref={filterInputRef}
+              type="text"
+              placeholder="Filter files and folders... (try 'report' or '.pdf')"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setFilter(''); }}
+              style={{
+                flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                color: '#ccc', fontSize: '12px', fontFamily: 'inherit', padding: '4px 0'
+              }}
+            />
+            {filter && (() => {
+              const total = files.length;
+              const matching = files.filter(f => {
+                const q = filter.toLowerCase();
+                if (q.startsWith('.')) return f.name.toLowerCase().endsWith(q);
+                return f.name.toLowerCase().includes(q);
+              }).length;
+              return (
+                <>
+                  <Typography sx={{ fontSize: '10px', color: '#888' }}>{matching} / {total}</Typography>
+                  <IconButton size="small" onClick={() => { setFilter(''); filterInputRef.current?.focus(); }} sx={{ p: 0.3, color: '#666' }} title="Clear">
+                    <CloseIcon sx={{ fontSize: 12 }} />
+                  </IconButton>
+                </>
+              );
+            })()}
+          </Box>
+
           {/* File list */}
           <Box sx={{ flex: 1, overflow: 'auto' }}>
             {loading && <Box sx={{ p: 2, textAlign: 'center' }}><CircularProgress size={20} /></Box>}
             {error && <Box sx={{ p: 2, color: '#f44', fontSize: '12px' }}>{error}</Box>}
-            {!loading && !error && files.map(file => (
+            {!loading && !error && files.filter(file => {
+              if (!filter) return true;
+              const q = filter.toLowerCase();
+              const name = file.name.toLowerCase();
+              if (q.startsWith('.')) return name.endsWith(q);
+              return name.includes(q);
+            }).map(file => (
               <Box key={file.path}
                 onDoubleClick={() => enterFolder(file)}
                 sx={{
