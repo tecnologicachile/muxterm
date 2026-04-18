@@ -117,20 +117,17 @@ function UpdateProgress({ open, onClose, version }) {
       logger.debug(`Poll response status: ${response.status}`);
       if (response.status === 200) {
         // Service is back! Mark restart as complete and verify as active
-        setSteps(prev => prev.map((step, index) => ({ 
-          ...step, 
-          status: index < 5 ? 'completed' : index === 5 ? 'active' : 'pending' 
+        setSteps(prev => prev.map((step, index) => ({
+          ...step,
+          status: index < 5 ? 'completed' : index === 5 ? 'active' : 'pending'
         })));
-        
-        // Quick verification then mark complete
+
+        // Quick verification then mark complete — do NOT auto-reload.
+        // The global update toast in TerminalView already shows a "Recargar" button
+        // so the user decides when to reload (won't interrupt in-progress work).
         setTimeout(() => {
           setSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
           setStatus('completed');
-          
-          // Wait a bit then reload
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
         }, 1000);
       } else {
         // Service not ready yet, continue polling
@@ -162,13 +159,14 @@ function UpdateProgress({ open, onClose, version }) {
     return (completed / steps.length) * 100;
   };
 
+  const isRunning = status === 'updating' || status === 'polling';
+
   return (
-    <Dialog 
-      open={open} 
-      onClose={status === 'completed' || status === 'error' ? onClose : undefined}
-      maxWidth="sm" 
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown={status === 'updating' || status === 'polling'}
     >
       <DialogContent sx={{ py: 4 }}>
         <Box sx={{ textAlign: 'center', mb: 3 }}>
@@ -245,6 +243,29 @@ function UpdateProgress({ open, onClose, version }) {
               }}
             >
               Keep Waiting
+            </Button>
+          </Box>
+        )}
+
+        {isRunning && (
+          <Box sx={{ mt: 3, textAlign: 'center' }}>
+            <Button variant="outlined" onClick={onClose}>
+              Ejecutar en background
+            </Button>
+            <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
+              Podés seguir trabajando, la actualización continúa y verás un aviso cuando termine.
+            </Typography>
+          </Box>
+        )}
+
+        {status === 'completed' && (
+          <Box sx={{ mt: 3, textAlign: 'center' }}>
+            <Button variant="contained" color="success" startIcon={<RefreshIcon />}
+              onClick={() => window.location.reload()} sx={{ mr: 1 }}>
+              Recargar ahora
+            </Button>
+            <Button variant="outlined" onClick={onClose}>
+              Después
             </Button>
           </Box>
         )}
