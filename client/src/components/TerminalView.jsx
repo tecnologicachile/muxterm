@@ -43,6 +43,11 @@ function TerminalView() {
   const { socket } = useSocket();
   const [panels, setPanels] = useState([]);
   const [activePanel, setActivePanel] = useState(null);
+  // Windows (tabs) — each panel belongs to one window
+  const [windows, setWindows] = useState([{ id: 'w1', name: 'Window 1' }]);
+  const [activeWindowId, setActiveWindowId] = useState('w1');
+  const [renamingWindowId, setRenamingWindowId] = useState(null);
+  const [renameWindowValue, setRenameWindowValue] = useState('');
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
   const [dragMinId, setDragMinId] = useState(null);
@@ -206,16 +211,25 @@ function TerminalView() {
       workspaceReceived = true;
       clearTimeout(timeoutId);
       if (data && data.panels && data.panels.length > 0) {
-        setPanels(data.panels);
-        setActivePanel(data.activePanel || data.panels[0].id);
-        const allRestored = [...data.panels];
+        // Ensure all panels have a windowId (migration from old format)
+        const defaultWin = data.windows && data.windows.length > 0 ? data.windows[0].id : 'w1';
+        const migrated = data.panels.map(p => p.windowId ? p : { ...p, windowId: defaultWin });
+        setPanels(migrated);
+        setActivePanel(data.activePanel || migrated[0].id);
+        // Load windows or create default
+        if (data.windows && data.windows.length > 0) {
+          setWindows(data.windows);
+          setActiveWindowId(data.activeWindowId || data.windows[0].id);
+        } else {
+          setWindows([{ id: 'w1', name: 'Window 1' }]);
+          setActiveWindowId('w1');
+        }
+        const allRestored = [...migrated];
         if (data.minimizedPanels && Array.isArray(data.minimizedPanels)) {
           const seen = new Set();
-          const dedupedMinimized = data.minimizedPanels.filter(p => {
-            if (seen.has(p.id)) return false;
-            seen.add(p.id);
-            return true;
-          });
+          const dedupedMinimized = data.minimizedPanels
+            .filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true; })
+            .map(p => p.windowId ? p : { ...p, windowId: defaultWin });
           setMinimizedPanels(dedupedMinimized);
           allRestored.push(...dedupedMinimized);
         }
@@ -225,11 +239,7 @@ function TerminalView() {
         }, 0);
         setTerminalCounter(maxNum + 1);
       } else {
-        const initialPanel = {
-          id: uuidv4(),
-          terminalId: null,
-          name: 'Terminal 1'
-        };
+        const initialPanel = { id: uuidv4(), terminalId: null, name: 'Terminal 1', windowId: 'w1' };
         setPanels([initialPanel]);
         setActivePanel(initialPanel.id);
         setTerminalCounter(2);
@@ -245,16 +255,22 @@ function TerminalView() {
     };
   }, [socket]);
 
-  // Save workspace whenever panels change
+  // Save workspace whenever panels/windows change
   useEffect(() => {
     if (socket && panels.length > 0) {
       socket.emit('update-workspace', {
-        panels,
-        activePanel,
-        minimizedPanels
+        panels, activePanel, minimizedPanels, windows, activeWindowId
       });
     }
-  }, [panels, activePanel, socket, minimizedPanels]);
+  }, [panels, activePanel, socket, minimizedPanels, windows, activeWindowId]);
+
+  // Ensure activePanel belongs to the active window
+  useEffect(() => {
+    const visiblePanels = panels.filter(p => (p.windowId || 'w1') === activeWindowId);
+    if (visiblePanels.length === 0) return;
+    const currentValid = visiblePanels.some(p => p.id === activePanel);
+    if (!currentValid) setActivePanel(visiblePanels[0].id);
+  }, [activeWindowId, panels, activePanel]);
 
   // Keyboard shortcut Ctrl+B to toggle sidebar
   useEffect(() => {
@@ -545,7 +561,7 @@ function TerminalView() {
           username: sshUsername, authType: 'password', password: sshPassword
         });
         socket.once('ssh-connection-created', (conn) => {
-          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'ssh', sshConnectionId: conn.id };
+          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'ssh', sshConnectionId: conn.id, windowId: activeWindowId };
           setTerminalCounter(prev => prev + 1);
           setPanels(prev => [...prev, p]);
           setActivePanel(p.id);
@@ -565,7 +581,7 @@ function TerminalView() {
           username: rdpUsername, password: rdpPassword, domain: rdpDomain
         });
         socket.once('rdp-connection-created', (conn) => {
-          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'rdp', rdpConnectionId: conn.id, displayMode: 'fit' };
+          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'rdp', rdpConnectionId: conn.id, displayMode: 'fit', windowId: activeWindowId };
           setTerminalCounter(prev => prev + 1);
           setPanels(prev => [...prev, p]);
           setActivePanel(p.id);
@@ -584,7 +600,7 @@ function TerminalView() {
           name: selectedVaultItem?.name || `VNC ${vncHost}`, host: vncHost, port: parseInt(vncPort) || 5900, password: vncPassword
         });
         socket.once('vnc-connection-created', (conn) => {
-          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'vnc', vncConnectionId: conn.id };
+          const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'vnc', vncConnectionId: conn.id, windowId: activeWindowId };
           setTerminalCounter(prev => prev + 1);
           setPanels(prev => [...prev, p]);
           setActivePanel(p.id);
@@ -607,7 +623,7 @@ function TerminalView() {
     }
 
     setTerminalCounter(prev => prev + 1);
-    setPanels(prev => [...prev, newPanel]);
+    setPanels(prev => [...prev, { ...newPanel, windowId: activeWindowId }]);
     setActivePanel(newPanel.id);
     setNewTerminalDialogOpen(false);
   };
@@ -696,11 +712,15 @@ function TerminalView() {
     // Remover de minimizados
     setMinimizedPanels(prev => prev.filter(p => p.id !== panel.id));
 
-    // Agregar a paneles activos con new key to force remount
-    const restoredPanel = { ...panel, _restoreKey: Date.now() };
-    setPanels(prev =>
-      prev.some(p => p.id === panel.id) ? prev : [...prev, restoredPanel]
-    );
+    // Restore to original window if it exists, otherwise to active window
+    const targetWindowId = (panel.windowId && windows.some(w => w.id === panel.windowId))
+      ? panel.windowId : activeWindowId;
+
+    const restoredPanel = { ...panel, _restoreKey: Date.now(), windowId: targetWindowId };
+    setPanels(prev => prev.some(p => p.id === panel.id) ? prev : [...prev, restoredPanel]);
+
+    // Switch to the window where the panel was restored
+    if (targetWindowId !== activeWindowId) setActiveWindowId(targetWindowId);
     setActivePanel(panel.id);
 
     // Force restore-terminal emit for terminals
@@ -718,6 +738,82 @@ function TerminalView() {
         mode="terminal"
         sessionName="Workspace"
         panelCount={panels.length}
+        centerContent={!isMobile && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', overflow: 'auto', maxWidth: '100%' }}>
+            {windows.map(win => {
+              const isActive = win.id === activeWindowId;
+              const panelCount = panels.filter(p => (p.windowId || 'w1') === win.id).length;
+              const isRenaming = renamingWindowId === win.id;
+              return (
+                <Box key={win.id}
+                  onClick={() => {
+                    if (isRenaming) return;
+                    if (isActive) { setRenamingWindowId(win.id); setRenameWindowValue(win.name); }
+                    else setActiveWindowId(win.id);
+                  }}
+                  title={isActive ? 'Click to rename' : 'Click to switch'}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: 0.5,
+                    padding: '2px 10px', borderRadius: '4px',
+                    backgroundColor: isActive ? 'rgba(0,255,0,0.15)' : 'transparent',
+                    border: isActive ? '1px solid #00ff00' : '1px solid transparent',
+                    color: isActive ? '#00ff00' : 'rgba(255,255,255,0.7)',
+                    cursor: isRenaming ? 'text' : 'pointer',
+                    fontSize: '11px', whiteSpace: 'nowrap',
+                    '&:hover': !isActive && !isRenaming ? { backgroundColor: 'rgba(255,255,255,0.08)' } : {}
+                  }}
+                >
+                  {isRenaming ? (
+                    <input
+                      autoFocus value={renameWindowValue}
+                      onChange={(e) => setRenameWindowValue(e.target.value)}
+                      onBlur={() => {
+                        setWindows(ws => ws.map(w => w.id === win.id ? { ...w, name: renameWindowValue.trim() || w.name } : w));
+                        setRenamingWindowId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.target.blur();
+                        if (e.key === 'Escape') setRenamingWindowId(null);
+                      }}
+                      style={{ background: '#000', color: '#0f0', border: '1px solid #333', outline: 'none', fontSize: '11px', padding: '1px 4px', width: '80px' }}
+                    />
+                  ) : (
+                    <>
+                      <span>{win.name}</span>
+                      <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: 4 }}>{panelCount}</span>
+                      {windows.length > 1 && (
+                        <span onClick={(e) => {
+                          e.stopPropagation();
+                          if (panelCount > 0 && !confirm(`Close ${win.name} with ${panelCount} panel(s)? Panels will move to first window.`)) return;
+                          const fallback = windows.find(w => w.id !== win.id).id;
+                          setPanels(prev => prev.map(p => p.windowId === win.id ? { ...p, windowId: fallback } : p));
+                          setMinimizedPanels(prev => prev.map(p => p.windowId === win.id ? { ...p, windowId: fallback } : p));
+                          const remaining = windows.filter(w => w.id !== win.id);
+                          setWindows(remaining);
+                          if (activeWindowId === win.id) setActiveWindowId(remaining[0].id);
+                        }}
+                        style={{ marginLeft: 6, cursor: 'pointer', fontSize: '10px', opacity: 0.6 }}
+                        title="Close window"
+                        >✕</span>
+                      )}
+                    </>
+                  )}
+                </Box>
+              );
+            })}
+            <Box onClick={() => {
+              const newId = 'w' + Date.now();
+              setWindows(ws => [...ws, { id: newId, name: `Window ${ws.length + 1}` }]);
+              setActiveWindowId(newId);
+            }}
+            title="New window"
+            sx={{
+              padding: '2px 10px', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '14px',
+              borderRadius: '4px', '&:hover': { color: '#00ff00', backgroundColor: 'rgba(0,255,0,0.08)' }
+            }}
+            >+</Box>
+          </Box>
+        )}
         onLogout={() => { logout(); navigate('/login'); }}
         rightContent={
           <>
@@ -759,7 +855,6 @@ function TerminalView() {
         }
       />
 
-
       <Box sx={{
         flex: 1,
         overflow: 'hidden',
@@ -768,7 +863,8 @@ function TerminalView() {
         {panels.length > 0 ? (
           <PanelManager
             key="panel-manager"
-            panels={panels}
+            windowId={activeWindowId}
+            panels={panels.filter(p => (p.windowId || 'w1') === activeWindowId)}
             activePanel={activePanel}
             onPanelSelect={setActivePanel}
             onPanelClose={handleClosePanel}
@@ -946,9 +1042,14 @@ function TerminalView() {
 
       {/* Sidebar colapsable izquierdo - navegación de terminales */}
       {!isMobile && (panels.length + minimizedPanels.length) > 1 && (() => {
+        const winName = (wid) => {
+          const w = windows.find(x => x.id === (wid || 'w1'));
+          return w ? w.name : 'Window 1';
+        };
+        const winPrefix = (wid) => windows.length > 1 ? `[${winName(wid)}] ` : '';
         const allPanels = [
-          ...panels.map((p, i) => ({ ...p, status: 'active', displayName: p.name || `Terminal ${i + 1}` })),
-          ...minimizedPanels.map(p => ({ ...p, status: 'minimized', displayName: p.name || 'Terminal' }))
+          ...panels.map((p, i) => ({ ...p, status: 'active', displayName: winPrefix(p.windowId) + (p.name || `Terminal ${i + 1}`) })),
+          ...minimizedPanels.map(p => ({ ...p, status: 'minimized', displayName: winPrefix(p.windowId) + (p.name || 'Terminal') }))
         ];
         const filtered = sidebarFilter
           ? allPanels.filter(p => p.displayName.toLowerCase().includes(sidebarFilter.toLowerCase()))
@@ -1147,6 +1248,8 @@ function TerminalView() {
                       }}
                       onDragEnd={() => { setDragPanelId(null); setDragOverPanelId(null); }}
                       onClick={() => {
+                        const panelWin = panel.windowId || 'w1';
+                        if (panelWin !== activeWindowId) setActiveWindowId(panelWin);
                         setActivePanel(panel.id);
                         setSidebarOpen(false);
                         setSidebarFilter('');
