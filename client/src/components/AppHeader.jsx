@@ -6,7 +6,8 @@ import {
   Box,
   IconButton,
   Divider,
-  Chip
+  Chip,
+  Tooltip
 } from '@mui/material';
 import { 
   Terminal as TerminalIcon,
@@ -123,20 +124,12 @@ function AppHeader({
         }}>
           {rightContent}
 
-          {/* Connection Status - icon only on mobile */}
-          {isMobileHeader ? (
-            <Box sx={{ color: connected ? '#4caf50' : '#ff9800', display: 'flex' }}>
-              {connected ? <WifiIcon sx={{ fontSize: 18 }} /> : <WifiOffIcon sx={{ fontSize: 18 }} />}
+          {/* Connection Status — compact icon with tooltip on both mobile and desktop */}
+          <Tooltip title={connected ? 'Connected' : 'Reconnecting...'} arrow>
+            <Box sx={{ color: connected ? '#4caf50' : '#ff9800', display: 'flex', alignItems: 'center', cursor: 'default', px: 0.5 }}>
+              {connected ? <WifiIcon sx={{ fontSize: isMobileHeader ? 18 : 20 }} /> : <WifiOffIcon sx={{ fontSize: isMobileHeader ? 18 : 20 }} />}
             </Box>
-          ) : (
-            <Chip
-              icon={connected ? <WifiIcon /> : <WifiOffIcon />}
-              label={connected ? "Connected" : "Reconnecting..."}
-              size="small"
-              color={connected ? "success" : "warning"}
-              sx={{ height: 24, fontSize: '0.75rem', '& .MuiChip-icon': { fontSize: 16 } }}
-            />
-          )}
+          </Tooltip>
 
           {!isMobileHeader && <GitHubStars />}
           {!isMobileHeader && <VersionIndicator />}
