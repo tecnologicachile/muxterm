@@ -565,6 +565,9 @@ setInterval(() => {
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
 
+  // Send server version so client can detect updates after restart
+  socket.emit('server-info', { version: require('../package.json').version });
+
   // Keep vault session alive on any socket activity
   socket.onAny(() => {
     if (vaultwardenApi.keepAlive) vaultwardenApi.keepAlive(socket.userId);

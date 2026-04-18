@@ -53,6 +53,11 @@ function TerminalView() {
   const [dragOverWindowTab, setDragOverWindowTab] = useState(null);
   // Global activity tracking — maps terminalId → lastActivityTs
   const [activityMap, setActivityMap] = useState({});
+  // Update status: { state: 'idle' | 'in-progress' | 'applied', target?: string }
+  const [updateStatus, setUpdateStatus] = useState({ state: 'idle' });
+  // Client version (bundled at build time) vs server version (live)
+  const clientVersion = (() => { try { return require('../../package.json').version; } catch (e) { return null; } })();
+  const [serverVersion, setServerVersion] = useState(null);
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
   const [dragMinId, setDragMinId] = useState(null);
@@ -298,16 +303,33 @@ function TerminalView() {
       setActivityMap(prev => ({ ...prev, [data.terminalId]: Date.now() }));
     };
     socket.on('terminal-activity', handler);
-    // Auto-update notification
+
+    // Auto-update: show non-blocking toast, track progress
     const autoUpdateHandler = (data) => {
-      alert(`🔄 Auto-updating MuxTerm from v${data.current} to v${data.latest}…\n\nThe page will reload automatically.`);
+      setUpdateStatus({ state: 'in-progress', target: data.latest });
     };
     socket.on('auto-update-starting', autoUpdateHandler);
+
+    // Server version: track to detect when update has been applied
+    const serverInfoHandler = (data) => {
+      if (!data?.version) return;
+      setServerVersion(data.version);
+      // If client was tracking an update and server now has a new version → applied
+      setUpdateStatus(prev => {
+        if (prev.state === 'in-progress' && clientVersion && data.version !== clientVersion) {
+          return { state: 'applied', target: data.version };
+        }
+        return prev;
+      });
+    };
+    socket.on('server-info', serverInfoHandler);
+
     // Refresh UI every 2s to re-evaluate stale activity timestamps
     const tick = setInterval(() => setActivityMap(prev => ({ ...prev })), 2000);
     return () => {
       socket.off('terminal-activity', handler);
       socket.off('auto-update-starting', autoUpdateHandler);
+      socket.off('server-info', serverInfoHandler);
       clearInterval(tick);
     };
   }, [socket]);
@@ -2375,6 +2397,64 @@ function TerminalView() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Auto-update non-blocking toast */}
+      {updateStatus.state === 'in-progress' && (
+        <Box sx={{
+          position: 'fixed', top: 70, right: 16, zIndex: 2000,
+          backgroundColor: 'rgba(30, 30, 30, 0.95)', backdropFilter: 'blur(8px)',
+          border: '1px solid #333', borderRadius: 2, padding: '10px 14px',
+          display: 'flex', alignItems: 'center', gap: 1.5, maxWidth: 320,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          animation: 'slideInRight 0.25s ease-out',
+          '@keyframes slideInRight': { from: { opacity: 0, transform: 'translateX(20px)' }, to: { opacity: 1, transform: 'translateX(0)' } }
+        }}>
+          <CircularProgress size={18} sx={{ color: '#00ff00' }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ fontSize: '12px', color: '#fff', fontWeight: 500 }}>
+              Actualizando muxterm{updateStatus.target ? ` a v${updateStatus.target}` : ''}...
+            </Typography>
+            <Typography sx={{ fontSize: '10px', color: '#888' }}>
+              Se aplicará sin interrumpir tu trabajo
+            </Typography>
+          </Box>
+          <IconButton size="small" sx={{ color: '#666', p: 0.3 }}
+            onClick={() => setUpdateStatus({ state: 'idle' })}
+            title="Ocultar">
+            <Typography sx={{ fontSize: 14 }}>✕</Typography>
+          </IconButton>
+        </Box>
+      )}
+
+      {updateStatus.state === 'applied' && (
+        <Box sx={{
+          position: 'fixed', top: 70, right: 16, zIndex: 2000,
+          backgroundColor: 'rgba(20, 40, 20, 0.97)', backdropFilter: 'blur(8px)',
+          border: '1px solid #00aa00', borderRadius: 2, padding: '12px 16px',
+          display: 'flex', alignItems: 'center', gap: 1.5, maxWidth: 360,
+          boxShadow: '0 8px 24px rgba(0,255,0,0.15)'
+        }}>
+          <Typography sx={{ fontSize: '18px' }}>✅</Typography>
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ fontSize: '12px', color: '#fff', fontWeight: 500 }}>
+              muxterm actualizado a v{updateStatus.target}
+            </Typography>
+            <Typography sx={{ fontSize: '10px', color: '#aaa' }}>
+              Recargá la página para usar la nueva versión
+            </Typography>
+          </Box>
+          <Button size="small" variant="contained" color="success"
+            onClick={() => window.location.reload()}
+            sx={{ fontSize: '11px', textTransform: 'none' }}>
+            Recargar
+          </Button>
+          <IconButton size="small" sx={{ color: '#888', p: 0.3 }}
+            onClick={() => setUpdateStatus({ state: 'idle' })}
+            title="Después">
+            <Typography sx={{ fontSize: 14 }}>✕</Typography>
+          </IconButton>
+        </Box>
+      )}
 
     </Box>
   );
