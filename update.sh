@@ -919,6 +919,20 @@ main() {
 
     if service_exists; then
 
+        # Auto-fix systemd service: add KillMode=process if missing so tmux/Claude/etc
+        # survive muxterm restarts. Old installations didn't include this line.
+        local SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
+        if [ -f "$SERVICE_FILE" ] && ! grep -q "^KillMode=" "$SERVICE_FILE"; then
+            print_color "Upgrading service file: adding KillMode=process..." "$YELLOW"
+            if command -v sudo &>/dev/null && sudo -n sed -i '/^Restart=/a KillMode=process' "$SERVICE_FILE" 2>/dev/null; then
+                sudo -n systemctl daemon-reload 2>/dev/null || true
+                print_color "✓ Service file upgraded (KillMode=process added)" "$GREEN"
+            else
+                print_color "⚠ Could not auto-add KillMode=process. Run manually to prevent tmux sessions from dying on update:" "$YELLOW"
+                print_color "    sudo sed -i '/^Restart=/a KillMode=process' $SERVICE_FILE && sudo systemctl daemon-reload" "$YELLOW"
+            fi
+        fi
+
         print_color "\nRestarting MuxTerm service..." "$YELLOW"
 
         # Restart using SIGKILL — works without sudo AND regardless of Restart= setting
