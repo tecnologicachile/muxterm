@@ -821,7 +821,7 @@ function TerminalView() {
               const isDropTarget = dragOverWindowTab === win.id && draggingPanelForWindow;
               // Has recent activity (within 2s) on any panel of this window?
               const now = Date.now();
-              const hasActivity = !isActive && winPanels.some(p => p.terminalId && activityMap[p.terminalId] && (now - activityMap[p.terminalId] < 2000));
+              const hasActivity = winPanels.some(p => p.terminalId && activityMap[p.terminalId] && (now - activityMap[p.terminalId] < 2000));
               return (
                 <Box key={win.id}
                   onClick={() => {
