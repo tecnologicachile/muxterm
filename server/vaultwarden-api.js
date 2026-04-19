@@ -242,7 +242,7 @@ router.get('/items', async (req, res) => {
         if (parsed.length === 0) return null;
 
         const initPathField = Array.isArray(item.fields)
-          ? item.fields.find(f => f && f.name === 'muxterm_init_path')
+          ? item.fields.find(f => f && f.name === 'Initial_Path')
           : null;
 
         return {
@@ -280,7 +280,7 @@ router.get('/item/:id', async (req, res) => {
     const item = JSON.parse(output);
 
     const initPathField = Array.isArray(item.fields)
-      ? item.fields.find(f => f && f.name === 'muxterm_init_path')
+      ? item.fields.find(f => f && f.name === 'Initial_Path')
       : null;
 
     res.json({
@@ -335,7 +335,7 @@ router.post('/create', async (req, res) => {
 
     // Store initialPath as a custom text field so it roundtrips through Bitwarden
     if (initialPath) {
-      item.fields = [{ name: 'muxterm_init_path', value: initialPath, type: 0 }];
+      item.fields = [{ name: 'Initial_Path', value: initialPath, type: 0 }];
     }
 
     // Auto-assign to "Remote Access" collection if available
@@ -429,11 +429,15 @@ router.put('/item/:id', async (req, res) => {
       }
     }
 
-    // Sync muxterm_init_path custom field with incoming initialPath
+    // Sync Initial_Path custom field with incoming initialPath.
+    // Also strips the legacy `muxterm_init_path` name so items created
+    // before the rename get migrated to the protocol-scoped name on next update.
     if (initialPath !== undefined) {
-      const fields = Array.isArray(item.fields) ? item.fields.filter(f => f && f.name !== 'muxterm_init_path') : [];
+      const fields = Array.isArray(item.fields)
+        ? item.fields.filter(f => f && f.name !== 'Initial_Path' && f.name !== 'muxterm_init_path')
+        : [];
       if (initialPath) {
-        fields.push({ name: 'muxterm_init_path', value: initialPath, type: 0 });
+        fields.push({ name: 'Initial_Path', value: initialPath, type: 0 });
       }
       item.fields = fields;
     }
