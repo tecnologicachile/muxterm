@@ -627,7 +627,8 @@ function TerminalView() {
   };
 
   const handleNewTerminal = () => {
-    if (panels.length >= 8) {
+    const panelsInActiveWindow = panels.filter(p => (p.windowId || 'w1') === activeWindowId).length;
+    if (panelsInActiveWindow >= 8) {
       alert('Maximum 8 panels supported');
       return;
     }
@@ -859,13 +860,15 @@ function TerminalView() {
 
 
 
+  const activePanelsCount = panels.filter(p => (p.windowId || 'w1') === activeWindowId).length;
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100dvh', maxHeight: '100dvh', overflow: 'hidden' }}>
       <UpdateNotification />
       <AppHeader
         mode="terminal"
         sessionName="Workspace"
-        panelCount={panels.length}
+        panelCount={activePanelsCount}
         centerContent={!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, maxWidth: '100%' }}>
             {tabsOverflow.canLeft && (
@@ -1073,9 +1076,9 @@ function TerminalView() {
                   size="small"
                   startIcon={<AddIcon />}
                   onClick={handleNewTerminal}
-                  disabled={panels.length >= 8}
-                  title={panels.length >= 8 ? 'Maximum 8 panels' : 'New terminal'}
-                  sx={{ mr: 1, opacity: panels.length >= 8 ? 0.4 : 1 }}
+                  disabled={activePanelsCount >= 8}
+                  title={activePanelsCount >= 8 ? 'Maximum 8 panels' : 'New terminal'}
+                  sx={{ mr: 1, opacity: activePanelsCount >= 8 ? 0.4 : 1 }}
                 >
                   Terminal
                 </Button>
@@ -1084,8 +1087,8 @@ function TerminalView() {
                   color="inherit"
                   size="small"
                   onClick={handleNewTerminal}
-                  disabled={panels.length >= 8}
-                  sx={{ ml: 1, opacity: panels.length >= 8 ? 0.4 : 1 }}
+                  disabled={activePanelsCount >= 8}
+                  sx={{ ml: 1, opacity: activePanelsCount >= 8 ? 0.4 : 1 }}
                 >
                   <AddIcon />
                 </IconButton>
