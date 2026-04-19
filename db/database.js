@@ -168,6 +168,14 @@ try {
   // Column already exists
 }
 
+// Add expires_at to credential_cache so vault-sourced passwords can TTL out
+// (protects against stale passwords when a user edits them in Bitwarden)
+try {
+  db.exec('ALTER TABLE credential_cache ADD COLUMN expires_at DATETIME');
+} catch (e) {
+  // Column already exists
+}
+
 // Prepared statements
 const statements = {
   // Users
@@ -235,7 +243,7 @@ const statements = {
   deleteVncConnection: db.prepare('DELETE FROM vnc_connections WHERE id = ? AND user_id = ?'),
 
   // Credential Cache
-  upsertCredentialCache: db.prepare('INSERT INTO credential_cache (user_id, cache_key, encrypted_password, password_iv, source, vault_item_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id, cache_key) DO UPDATE SET encrypted_password=excluded.encrypted_password, password_iv=excluded.password_iv, source=excluded.source, vault_item_id=excluded.vault_item_id, updated_at=CURRENT_TIMESTAMP'),
+  upsertCredentialCache: db.prepare('INSERT INTO credential_cache (user_id, cache_key, encrypted_password, password_iv, source, vault_item_id, updated_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?) ON CONFLICT(user_id, cache_key) DO UPDATE SET encrypted_password=excluded.encrypted_password, password_iv=excluded.password_iv, source=excluded.source, vault_item_id=excluded.vault_item_id, updated_at=CURRENT_TIMESTAMP, expires_at=excluded.expires_at'),
   getCredentialCache: db.prepare('SELECT * FROM credential_cache WHERE user_id = ? AND cache_key = ?'),
   deleteCredentialCache: db.prepare('DELETE FROM credential_cache WHERE user_id = ? AND cache_key = ?'),
   deleteAllCredentialCacheByUser: db.prepare('DELETE FROM credential_cache WHERE user_id = ?')
@@ -456,11 +464,24 @@ const dbHelpers = {
   },
 
   // Credential Cache
+  // Vault-sourced passwords get a 30-min TTL so they don't go stale if the user
+  // edits them in Bitwarden. Local passwords never expire (they're the master copy).
   cacheCredential(userId, cacheKey, encryptedPassword, passwordIv, source, vaultItemId) {
-    statements.upsertCredentialCache.run(userId, cacheKey, encryptedPassword, passwordIv, source || 'local', vaultItemId || null);
+    const expiresAt = source === 'vault'
+      ? new Date(Date.now() + 30 * 60 * 1000).toISOString()
+      : null;
+    statements.upsertCredentialCache.run(userId, cacheKey, encryptedPassword, passwordIv, source || 'local', vaultItemId || null, expiresAt);
   },
   getCachedCredential(userId, cacheKey) {
-    return statements.getCredentialCache.get(userId, cacheKey);
+    const row = statements.getCredentialCache.get(userId, cacheKey);
+    if (!row) return null;
+    // Honor TTL: an expired vault-cached password is treated as missing so the
+    // caller will prompt for the password again (or refetch from vault).
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+      statements.deleteCredentialCache.run(userId, cacheKey);
+      return null;
+    }
+    return row;
   },
   deleteCachedCredential(userId, cacheKey) {
     statements.deleteCredentialCache.run(userId, cacheKey);

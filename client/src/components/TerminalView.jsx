@@ -133,6 +133,7 @@ function TerminalView() {
   const [resetPwValue, setResetPwValue] = useState('');
   const [vaultEditDialog, setVaultEditDialog] = useState(null); // { mode: 'save'|'edit'|'delete'|'loading', item? }
   const [vaultEditFields, setVaultEditFields] = useState({ name: '', username: '', password: '', host: '', port: '', type: '', initialPath: '' });
+  const [migrationPrompt, setMigrationPrompt] = useState(null); // { candidates: [...], uploading: bool }
   const [vaultActionLoading, setVaultActionLoading] = useState(false);
   const [vaultOrgLoading, setVaultOrgLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
@@ -499,6 +500,55 @@ function TerminalView() {
       if (data.status === 'ok') setVaultCollections(data.items);
     } catch (e) {}
     setVaultOrgLoading(false);
+  };
+
+  // One-time prompt: if vault is connected and there are local SSH connections
+  // that aren't mirrored in Bitwarden, offer to upload them in bulk.
+  // Dismissable permanently via localStorage.
+  useEffect(() => {
+    if (!vaultLoggedIn) return;
+    if (migrationPrompt) return;
+    if (localStorage.getItem('muxterm_vault_migration_dismissed') === 'true') return;
+    if (!Array.isArray(vaultItems) || !Array.isArray(sshConnections)) return;
+    // Only makes sense once we've at least attempted to load items once
+    if (vaultItemsLoading) return;
+    const vaultKeys = new Set();
+    vaultItems.forEach(item => {
+      (item.connections || []).forEach(c => {
+        if (c.scheme === 'ssh') vaultKeys.add(`${c.host}:${c.port || 22}:${item.username || ''}`);
+      });
+    });
+    const candidates = sshConnections.filter(conn =>
+      !vaultKeys.has(`${conn.host}:${conn.port || 22}:${conn.username || ''}`)
+    );
+    if (candidates.length > 0) {
+      setMigrationPrompt({ candidates, uploading: false });
+    }
+  }, [vaultLoggedIn, vaultItems, sshConnections, vaultItemsLoading]);
+
+  const uploadMigrationCandidates = async () => {
+    if (!migrationPrompt || !migrationPrompt.candidates) return;
+    setMigrationPrompt(p => ({ ...p, uploading: true }));
+    try {
+      for (const conn of migrationPrompt.candidates) {
+        await fetch('/api/vault/create', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: conn.name || `${conn.username}@${conn.host}`,
+            type: 'ssh',
+            host: conn.host,
+            port: conn.port,
+            username: conn.username,
+            password: '', // backend falls back to encrypted local cache
+            initialPath: conn.initial_path || ''
+          })
+        }).catch(() => {});
+      }
+      await loadVaultItems(newTerminalType);
+    } finally {
+      setMigrationPrompt(null);
+    }
   };
 
   const loadVaultItems = async (type) => {
@@ -1927,6 +1977,15 @@ function TerminalView() {
                       const localConns = newTerminalType === 'rdp' ? rdpConnections
                         : newTerminalType === 'vnc' ? vncConnections
                         : sshConnections; // ssh and sftp use ssh connections
+                      // Build a Set of vault keys to detect locals that are also stored in Bitwarden.
+                      const scheme = newTerminalType === 'sftp' ? 'ssh' : newTerminalType;
+                      const vaultKeys = new Set();
+                      (vaultItems || []).forEach(item => {
+                        (item.connections || []).forEach(c => {
+                          vaultKeys.add(`${c.scheme}:${c.host}:${c.port || ''}:${item.username || ''}`);
+                        });
+                      });
+                      const isInVault = (conn) => vaultKeys.has(`${scheme}:${conn.host}:${conn.port || ''}:${conn.username || ''}`);
                       return localConns
                         .filter(c => !vaultSearch || c.name?.toLowerCase().includes(vaultSearch.toLowerCase()) || c.host?.includes(vaultSearch))
                         .map(conn => (
@@ -1953,7 +2012,12 @@ function TerminalView() {
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between'
                             }}>
                             <Box sx={{ flex: 1 }}>
-                              <Box sx={{ fontSize: '12px', color: '#ccc' }}>💾 {conn.name || `${conn.username}@${conn.host}`}</Box>
+                              <Box sx={{ fontSize: '12px', color: '#ccc' }}>
+                                💾 {conn.name || `${conn.username}@${conn.host}`}
+                                {isInVault(conn) && (
+                                  <Box component="span" sx={{ ml: 0.5, color: '#00aa55', fontSize: '11px' }} title="Also stored in Bitwarden">🔗</Box>
+                                )}
+                              </Box>
                               <Box sx={{ fontSize: '10px', color: '#666' }}>{conn.host}:{conn.port} {conn.username && `• ${conn.username}`}</Box>
                             </Box>
                             <Box sx={{ display: 'flex', gap: 0.3, ml: 0.5 }}>
@@ -2052,6 +2116,47 @@ function TerminalView() {
             )}
           >
             {newTerminalType === 'local' ? 'Create' : 'Connect'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Vault migration prompt — first time vault is connected with pending local creds */}
+      <Dialog open={!!migrationPrompt} onClose={() => setMigrationPrompt(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>☁️ Subir credenciales locales a Bitwarden</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: '13px', color: '#ccc', mb: 1.5 }}>
+            Se detectaron <b>{migrationPrompt?.candidates?.length || 0}</b> credenciales SSH guardadas localmente que no existen en tu vault.
+            ¿Las subo a Bitwarden?
+          </Typography>
+          <Box sx={{ maxHeight: 180, overflow: 'auto', border: '1px solid #333', borderRadius: 1, p: 1 }}>
+            {(migrationPrompt?.candidates || []).map(conn => (
+              <Box key={conn.id} sx={{ fontSize: '12px', color: '#aaa', py: 0.3 }}>
+                💾 {conn.name || `${conn.username}@${conn.host}`} <Box component="span" sx={{ color: '#666' }}>— {conn.host}:{conn.port}</Box>
+              </Box>
+            ))}
+          </Box>
+          <Typography sx={{ fontSize: '11px', color: '#777', mt: 1 }}>
+            Los passwords se toman del caché local encriptado. Si alguno no existe en caché, el item se creará sin password (lo pedirá al conectar).
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => { localStorage.setItem('muxterm_vault_migration_dismissed', 'true'); setMigrationPrompt(null); }}
+            disabled={migrationPrompt?.uploading}
+            title="Dejar de mostrar este diálogo, incluso si agregás credenciales locales nuevas más adelante."
+            sx={{ color: '#888' }}
+          >
+            No volver a preguntar
+          </Button>
+          <Button
+            onClick={() => setMigrationPrompt(null)}
+            disabled={migrationPrompt?.uploading}
+            title="Volver a preguntar la próxima vez que te conectes a Bitwarden."
+          >
+            Más tarde
+          </Button>
+          <Button variant="contained" onClick={uploadMigrationCandidates} disabled={migrationPrompt?.uploading}>
+            {migrationPrompt?.uploading ? <CircularProgress size={16} /> : `Subir las ${migrationPrompt?.candidates?.length || 0}`}
           </Button>
         </DialogActions>
       </Dialog>
