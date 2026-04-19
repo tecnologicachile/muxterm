@@ -84,6 +84,7 @@ function TerminalView() {
   const [sshHost, setSshHost] = useState('');
   const [sshPort, setSshPort] = useState('22');
   const [sshUsername, setSshUsername] = useState('');
+  const [sshInitialPath, setSshInitialPath] = useState('');
   const [sshPassword, setSshPassword] = useState('');
   const [rdpConnections, setRdpConnections] = useState([]);
   const [selectedRdpConnection, setSelectedRdpConnection] = useState('');
@@ -131,7 +132,7 @@ function TerminalView() {
   const [resetPwUserId, setResetPwUserId] = useState(null);
   const [resetPwValue, setResetPwValue] = useState('');
   const [vaultEditDialog, setVaultEditDialog] = useState(null); // { mode: 'save'|'edit'|'delete'|'loading', item? }
-  const [vaultEditFields, setVaultEditFields] = useState({ name: '', username: '', password: '', host: '', port: '', type: '' });
+  const [vaultEditFields, setVaultEditFields] = useState({ name: '', username: '', password: '', host: '', port: '', type: '', initialPath: '' });
   const [vaultActionLoading, setVaultActionLoading] = useState(false);
   const [vaultOrgLoading, setVaultOrgLoading] = useState(false);
   const [vaultItems, setVaultItems] = useState([]);
@@ -530,6 +531,7 @@ function TerminalView() {
       setSshPort(String(conn.port || 22));
       setSshUsername(item.username || '');
       setSshPassword(item.password || '');
+      setSshInitialPath(item.initialPath || '');
     } else if (conn.scheme === 'rdp') {
       setNewTerminalType('rdp');
       setRdpHost(conn.host);
@@ -567,7 +569,8 @@ function TerminalView() {
     const username = type === 'rdp' ? rdpUsername : type === 'sftp' ? sftpUsername : sshUsername;
     const password = type === 'rdp' ? rdpPassword : type === 'vnc' ? vncPassword : type === 'sftp' ? sftpPassword : sshPassword;
     if (!host) { alert('Fill in at least the host'); return; }
-    setVaultEditFields({ name: `${username || ''}@${host}`, username, password, host, port, type });
+    const initialPath = type === 'ssh' ? sshInitialPath : '';
+    setVaultEditFields({ name: `${username || ''}@${host}`, username, password, host, port, type, initialPath });
     // Check for duplicate in vault
     const duplicate = vaultItems.find(item =>
       item.username === username &&
@@ -582,13 +585,13 @@ function TerminalView() {
   };
 
   const executeVaultSave = async () => {
-    const { name, username, password, host, port, type } = vaultEditFields;
+    const { name, username, password, host, port, type, initialPath } = vaultEditFields;
     setVaultActionLoading(true);
     try {
       const res = await fetch('/api/vault/create', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type, host, port, username, password })
+        body: JSON.stringify({ name, type, host, port, username, password, initialPath })
       });
       if (!vaultSessionCheck(res)) return;
       const data = await res.json();
@@ -638,6 +641,7 @@ function TerminalView() {
     setSshPort('22');
     setSshUsername('');
     setSshPassword('');
+    setSshInitialPath('');
     setSelectedRdpConnection('');
     setRdpHost('');
     setRdpPort('3389');
@@ -667,7 +671,8 @@ function TerminalView() {
       } else if (sshHost) {
         socket.emit('create-ssh-connection', {
           name: selectedVaultItem?.name || `${sshUsername}@${sshHost}`, host: sshHost, port: parseInt(sshPort) || 22,
-          username: sshUsername, authType: 'password', password: sshPassword
+          username: sshUsername, authType: 'password', password: sshPassword,
+          initialPath: sshInitialPath || null
         });
         socket.once('ssh-connection-created', (conn) => {
           const p = { id: uuidv4(), terminalId: null, name: conn.name, type: 'ssh', sshConnectionId: conn.id, windowId: activeWindowId };
@@ -1897,6 +1902,15 @@ function TerminalView() {
                 />
               )}
 
+              {/* Initial path (SSH only) */}
+              {newTerminalType === 'ssh' && (
+                <TextField margin="dense" label="Initial path (optional)" fullWidth variant="outlined" size="small"
+                  value={sshInitialPath} onChange={(e) => setSshInitialPath(e.target.value)}
+                  placeholder="/var/www/myproject"
+                  helperText="Runs `cd <path>` right after login"
+                />
+              )}
+
               {/* Unified credential search */}
               {newTerminalType !== 'local' && (
                 <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333' }}>
@@ -1947,7 +1961,7 @@ function TerminalView() {
                               <Box onClick={(e) => {
                                 e.stopPropagation();
                                 const connType = newTerminalType === 'sftp' ? 'ssh' : newTerminalType;
-                                setVaultEditFields({ name: conn.name || `${conn.username || ''}@${conn.host}`, username: conn.username || '', password: '', host: conn.host || '', port: String(conn.port || ''), type: connType });
+                                setVaultEditFields({ name: conn.name || `${conn.username || ''}@${conn.host}`, username: conn.username || '', password: '', host: conn.host || '', port: String(conn.port || ''), type: connType, initialPath: conn.initial_path || '' });
                                 setVaultEditDialog({ mode: 'edit-local', connId: conn.id, connType });
                               }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
                               {/* Delete local */}
@@ -1990,7 +2004,7 @@ function TerminalView() {
                                 const data = await res.json();
                                 if (data.status !== 'ok') { setVaultEditDialog(null); return; }
                                 const conn = item.connections[0] || {};
-                                setVaultEditFields({ name: data.item.name, username: data.item.username || '', password: data.item.password || '', host: conn.host || '', port: String(conn.port || ''), type: conn.scheme || newTerminalType });
+                                setVaultEditFields({ name: data.item.name, username: data.item.username || '', password: data.item.password || '', host: conn.host || '', port: String(conn.port || ''), type: conn.scheme || newTerminalType, initialPath: data.item.initialPath || '' });
                                 setVaultEditDialog({ mode: 'edit', item });
                               } catch (err) { setVaultEditDialog(null); }
                             }} sx={{ p: 0.3, cursor: 'pointer', color: '#555', fontSize: '11px', '&:hover': { color: '#aaa' } }} title="Edit">✏️</Box>
@@ -2473,6 +2487,13 @@ function TerminalView() {
                 placeholder={localPasswordCached && vaultEditDialog?.mode === 'save' ? '••••••••  (stored locally)' : ''}
                 helperText={localPasswordCached && !vaultEditFields.password && vaultEditDialog?.mode === 'save' ? 'Password from local storage will be used' : ''}
                 onChange={(e) => setVaultEditFields(p => ({ ...p, password: e.target.value }))} />
+              {vaultEditFields.type === 'ssh' && (
+                <TextField margin="dense" label="Initial path (optional)" fullWidth variant="outlined" size="small"
+                  value={vaultEditFields.initialPath || ''}
+                  placeholder="/var/www/myproject"
+                  helperText="Runs `cd <path>` right after SSH login"
+                  onChange={(e) => setVaultEditFields(p => ({ ...p, initialPath: e.target.value }))} />
+              )}
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setVaultEditDialog(null)} disabled={vaultActionLoading}>Cancel</Button>
@@ -2482,9 +2503,10 @@ function TerminalView() {
                 } else if (vaultEditDialog?.mode === 'edit-local') {
                   setVaultActionLoading(true);
                   try {
-                    const { name, host, port, username, password, type } = vaultEditFields;
+                    const { name, host, port, username, password, type, initialPath } = vaultEditFields;
                     socket.emit(`update-${vaultEditDialog.connType}-connection`, {
-                      id: vaultEditDialog.connId, name, host, port: parseInt(port), username, password
+                      id: vaultEditDialog.connId, name, host, port: parseInt(port), username, password,
+                      initialPath: type === 'ssh' ? initialPath : undefined
                     });
                     // Cache password if provided
                     if (password) {

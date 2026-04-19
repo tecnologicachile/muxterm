@@ -47,7 +47,7 @@ class TtydProcessManager {
       } else {
         shellCommand = sshParts.join(' ');
       }
-      logger.info(`SSH terminal: ${sshConfig.username}@${sshConfig.host}:${sshConfig.port || 22}`);
+      logger.info(`SSH terminal: ${sshConfig.username}@${sshConfig.host}:${sshConfig.port || 22}${sshConfig.initialPath ? ` cd:${sshConfig.initialPath}` : ''}`);
     }
 
     // Create tmux session
@@ -77,6 +77,22 @@ class TtydProcessManager {
             logger.info(`Startup command sent to ${tmuxSessionName}: ${startupCommand}`);
           } catch (e) {}
         }, 500);
+      }
+      // SSH initial path: after the SSH handshake + prompt, send `cd <path>`.
+      // 2.5s covers auth handshake on most networks; if unreachable, the command
+      // just posts into a disconnected session and gets ignored.
+      if (sshConfig && sshConfig.initialPath) {
+        setTimeout(() => {
+          try {
+            // Wrap path in single quotes on the remote side so spaces work;
+            // strip any single quotes from the path (rare, avoids nested escaping).
+            const remoteSafePath = sshConfig.initialPath.replace(/'/g, '');
+            const remoteCmd = `cd '${remoteSafePath}'`;
+            // Escape for the local shell single-quote in the send-keys command
+            execSync(`tmux -L muxterm send-keys -t ${tmuxSessionName} '${remoteCmd.replace(/'/g, "'\\''")}' Enter`, { stdio: 'ignore' });
+            logger.info(`Initial path sent to ${tmuxSessionName}: ${sshConfig.initialPath}`);
+          } catch (e) {}
+        }, 2500);
       }
     } catch (e) {
       logger.debug(`tmux new-session (may already exist): ${e.message}`);

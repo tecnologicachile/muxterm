@@ -161,6 +161,13 @@ try {
   // Column already exists
 }
 
+// Add initial_path column to ssh_connections (runs a `cd <path>` after SSH login)
+try {
+  db.exec('ALTER TABLE ssh_connections ADD COLUMN initial_path TEXT');
+} catch (e) {
+  // Column already exists
+}
+
 // Prepared statements
 const statements = {
   // Users
@@ -208,11 +215,11 @@ const statements = {
   deleteTerminalByUser: db.prepare('DELETE FROM terminals WHERE id = ? AND user_id = ?'),
 
   // SSH Connections
-  createSshConnection: db.prepare('INSERT INTO ssh_connections (user_id, name, host, port, username, auth_type, password, private_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
-  findSshConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, auth_type, created_at FROM ssh_connections WHERE user_id = ? ORDER BY name'),
+  createSshConnection: db.prepare('INSERT INTO ssh_connections (user_id, name, host, port, username, auth_type, password, private_key, initial_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+  findSshConnectionsByUserId: db.prepare('SELECT id, user_id, name, host, port, username, auth_type, initial_path, created_at FROM ssh_connections WHERE user_id = ? ORDER BY name'),
   findSshConnectionById: db.prepare('SELECT * FROM ssh_connections WHERE id = ?'),
   findSshConnectionByHostUser: db.prepare('SELECT * FROM ssh_connections WHERE user_id = ? AND host = ? AND port = ? AND username = ?'),
-  updateSshConnection: db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=?, auth_type=?, password=?, private_key=? WHERE id=? AND user_id=?'),
+  updateSshConnection: db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=?, auth_type=?, password=?, private_key=?, initial_path=? WHERE id=? AND user_id=?'),
   deleteSshConnection: db.prepare('DELETE FROM ssh_connections WHERE id = ? AND user_id = ?'),
 
   // RDP Connections
@@ -383,9 +390,9 @@ const dbHelpers = {
   },
 
   // SSH Connections
-  createSshConnection(userId, name, host, port, username, authType, password, privateKey) {
-    const result = statements.createSshConnection.run(userId, name, host, port || 22, username, authType || 'password', null, privateKey || null);
-    return { id: result.lastInsertRowid, name, host, port: port || 22, username };
+  createSshConnection(userId, name, host, port, username, authType, password, privateKey, initialPath) {
+    const result = statements.createSshConnection.run(userId, name, host, port || 22, username, authType || 'password', null, privateKey || null, initialPath || null);
+    return { id: result.lastInsertRowid, name, host, port: port || 22, username, initial_path: initialPath || null };
   },
 
   findSshConnectionByHostUser(userId, host, port, username) {
@@ -400,8 +407,8 @@ const dbHelpers = {
     return statements.findSshConnectionById.get(id);
   },
 
-  updateSshConnection(id, userId, name, host, port, username, authType, password, privateKey) {
-    const result = statements.updateSshConnection.run(name, host, port || 22, username, authType || 'password', password || null, privateKey || null, id, userId);
+  updateSshConnection(id, userId, name, host, port, username, authType, password, privateKey, initialPath) {
+    const result = statements.updateSshConnection.run(name, host, port || 22, username, authType || 'password', password || null, privateKey || null, initialPath || null, id, userId);
     return result.changes > 0;
   },
 

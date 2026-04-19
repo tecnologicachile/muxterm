@@ -241,6 +241,10 @@ router.get('/items', async (req, res) => {
 
         if (parsed.length === 0) return null;
 
+        const initPathField = Array.isArray(item.fields)
+          ? item.fields.find(f => f && f.name === 'muxterm_init_path')
+          : null;
+
         return {
           id: item.id,
           name: item.name,
@@ -248,7 +252,8 @@ router.get('/items', async (req, res) => {
           password: item.login.password,
           connections: parsed,
           folder: item.folderId,
-          notes: item.notes
+          notes: item.notes,
+          initialPath: initPathField ? initPathField.value : null
         };
       })
       .filter(Boolean);
@@ -274,6 +279,10 @@ router.get('/item/:id', async (req, res) => {
     const output = await runBw(['get', 'item', req.params.id, '--session', session.sessionKey], { userId: req.userId });
     const item = JSON.parse(output);
 
+    const initPathField = Array.isArray(item.fields)
+      ? item.fields.find(f => f && f.name === 'muxterm_init_path')
+      : null;
+
     res.json({
       status: 'ok',
       item: {
@@ -281,7 +290,8 @@ router.get('/item/:id', async (req, res) => {
         name: item.name,
         username: item.login?.username,
         password: item.login?.password,
-        uris: (item.login?.uris || []).map(u => u.uri)
+        uris: (item.login?.uris || []).map(u => u.uri),
+        initialPath: initPathField ? initPathField.value : null
       }
     });
   } catch (e) {
@@ -296,7 +306,7 @@ router.post('/create', async (req, res) => {
     const session = bwSessions.get(req.userId);
     if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
 
-    const { name, type, host, port, username, password } = req.body;
+    const { name, type, host, port, username, password, initialPath } = req.body;
     const uri = `${type}://${host}${port ? ':' + port : ''}`;
 
     // If no password provided, try to recover from encrypted local cache
@@ -322,6 +332,11 @@ router.post('/create', async (req, res) => {
         uris: [{ uri: uri, match: null }]
       }
     };
+
+    // Store initialPath as a custom text field so it roundtrips through Bitwarden
+    if (initialPath) {
+      item.fields = [{ name: 'muxterm_init_path', value: initialPath, type: 0 }];
+    }
 
     // Auto-assign to "Remote Access" collection if available
     if (session.organizationId) item.organizationId = session.organizationId;
@@ -387,7 +402,7 @@ router.put('/item/:id', async (req, res) => {
     const session = bwSessions.get(req.userId);
     if (!session) return res.status(401).json({ status: 'error', message: 'Not logged in' });
 
-    const { name, username, password, host, port, type } = req.body;
+    const { name, username, password, host, port, type, initialPath } = req.body;
 
     const output = await runBw(['get', 'item', req.params.id, '--session', session.sessionKey], { userId: req.userId });
     const item = JSON.parse(output);
@@ -412,6 +427,15 @@ router.put('/item/:id', async (req, res) => {
         const uri = `${scheme}://${host}${port ? ':' + port : ''}`;
         item.login.uris = [{ uri, match: null }];
       }
+    }
+
+    // Sync muxterm_init_path custom field with incoming initialPath
+    if (initialPath !== undefined) {
+      const fields = Array.isArray(item.fields) ? item.fields.filter(f => f && f.name !== 'muxterm_init_path') : [];
+      if (initialPath) {
+        fields.push({ name: 'muxterm_init_path', value: initialPath, type: 0 });
+      }
+      item.fields = fields;
     }
 
     const encoded = Buffer.from(JSON.stringify(item)).toString('base64');

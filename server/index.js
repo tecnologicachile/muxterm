@@ -609,7 +609,8 @@ io.on('connection', (socket) => {
             username: conn.username,
             authType: conn.auth_type,
             password: getCachedPassword(socket.userId, 'ssh', conn.host, conn.port, conn.username) || conn.password || null,
-            privateKey: conn.private_key
+            privateKey: conn.private_key,
+            initialPath: conn.initial_path || null
           };
         }
       }
@@ -652,7 +653,8 @@ io.on('connection', (socket) => {
       } else {
         conn = database.createSshConnection(
           socket.userId, data.name, data.host, data.port,
-          data.username, data.authType, data.password, data.privateKey
+          data.username, data.authType, data.password, data.privateKey,
+          data.initialPath
         );
       }
       // Cache password encrypted in DB
@@ -673,8 +675,8 @@ io.on('connection', (socket) => {
 
   socket.on('update-ssh-connection', (data) => {
     try {
-      database.db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=? WHERE id=? AND user_id=?')
-        .run(data.name, data.host, data.port || 22, data.username, data.id, socket.userId);
+      database.db.prepare('UPDATE ssh_connections SET name=?, host=?, port=?, username=?, initial_path=? WHERE id=? AND user_id=?')
+        .run(data.name, data.host, data.port || 22, data.username, data.initialPath || null, data.id, socket.userId);
       if (data.password) cachePassword(socket.userId, 'ssh', data.host, data.port || 22, data.username, data.password, 'local', null);
       socket.emit('ssh-connections', database.getSshConnections(socket.userId));
     } catch (e) {}
@@ -835,7 +837,8 @@ io.on('connection', (socket) => {
         if (conn && conn.user_id === socket.userId) {
           sshConfig = {
             host: conn.host, port: conn.port, username: conn.username,
-            authType: conn.auth_type, password: getCachedPassword(socket.userId, 'ssh', conn.host, conn.port, conn.username) || conn.password || null, privateKey: conn.private_key
+            authType: conn.auth_type, password: getCachedPassword(socket.userId, 'ssh', conn.host, conn.port, conn.username) || conn.password || null, privateKey: conn.private_key,
+            initialPath: conn.initial_path || null
           };
         }
       }
@@ -907,7 +910,8 @@ io.on('connection', (socket) => {
 
       const sshConfig = {
         host: conn.host, port: conn.port, username: conn.username,
-        authType: 'password', password: password, privateKey: conn.private_key
+        authType: 'password', password: password, privateKey: conn.private_key,
+        initialPath: conn.initial_path || null
       };
 
       const sessionId = `ws_${socket.userId}`;
