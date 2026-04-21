@@ -1073,20 +1073,24 @@ server.listen(PORT, async () => {
     logger.error('WARNING: tmux not installed. Sessions will not persist!');
   }
 
-  // Reload .tmux.webssh.conf into any already-running tmux server. tmux
-  // normally only reads the config file when the server starts, so edits
-  // made by MuxTerm releases (like the window-size/aggressive-resize change
-  // that fixes scrollback duplication) wouldn't reach existing sessions.
-  // source-file re-applies the server-global options right away.
+  // Apply the scrollback-duplication-fix options directly to any already-
+  // running tmux server. We used to `source-file` the full config here, but
+  // tmux returns exit=1 when the file contains `unbind-key -T copy-mode*`
+  // commands for tables that don't exist yet, which made execSync throw and
+  // silently skip applying the real options. Setting the two options we care
+  // about explicitly is immune to that issue.
   if (hasTmux) {
-    try {
-      const tmuxConf = require('path').join(__dirname, '..', '.tmux.webssh.conf');
-      require('child_process').execSync(`tmux -L muxterm source-file "${tmuxConf}"`, { stdio: 'ignore' });
-      logger.info('Re-applied tmux config to running tmux -L muxterm server');
-    } catch (e) {
-      // Ignore — means no tmux -L muxterm server is currently running; new
-      // sessions will pick up the config when they're spawned.
+    const exec = require('child_process').execSync;
+    const opts = ['window-size manual', 'aggressive-resize off'];
+    for (const opt of opts) {
+      try {
+        exec(`tmux -L muxterm set-option -g ${opt}`, { stdio: 'ignore' });
+      } catch (e) {
+        // tmux server probably isn't running yet — new sessions will pick
+        // the option up from .tmux.webssh.conf when they're spawned.
+      }
     }
+    logger.info('Applied tmux -g options: window-size=manual, aggressive-resize=off');
   }
 
   // Clean up orphaned ttyd processes (but NOT tmux sessions on startup — they may reconnect)
