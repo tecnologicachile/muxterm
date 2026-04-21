@@ -54,20 +54,21 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
       if (data.terminalId === (localTerminalId || terminalId)) {
         if (!localTerminalId) setLocalTerminalId(data.terminalId);
         setIframeReady(true);
-        // Reload iframe if ttyd showed "no sessions" error (after reboot)
-        setTimeout(() => {
-          if (iframeRef.current) {
-            try {
-              const doc = iframeRef.current.contentDocument;
-              const body = doc?.body?.textContent || '';
-              if (body.includes('no sessions') || body.includes('Reconnect')) {
-                iframeRef.current.src = iframeRef.current.src;
-              }
-            } catch (e) {
-              iframeRef.current.src = iframeRef.current.src;
-            }
-          }
-        }, 500);
+        // Force iframe reload on every terminal-restored.
+        // terminal-restored only fires after a socket reconnect that triggered
+        // restore-terminal, so we can safely assume ttyd's WS on the client
+        // side is now stale: the previous xterm.js buffer still holds whatever
+        // was rendered before the server restarted, and if we leave it alone
+        // ttyd re-sends the current tmux snapshot which xterm.js APPENDS
+        // without clearing, producing duplicated content on each restart.
+        // Reloading the iframe src gives us a fresh xterm.js that attaches to
+        // the (new) ttyd process with a clean buffer.
+        // The conditional-detection approach we had before (poll for
+        // "Reconnect" text at 500ms) missed cases where ttyd hadn't yet shown
+        // the overlay, letting the duplication accumulate.
+        if (iframeRef.current) {
+          iframeRef.current.src = iframeRef.current.src;
+        }
       }
     };
 
