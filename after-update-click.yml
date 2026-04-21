@@ -1,0 +1,102 @@
+- generic [ref=e1]:
+  - generic [ref=e26]:
+    - banner [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - button [ref=e30] [cursor=pointer]:
+            - img [ref=e31]
+          - img [ref=e33]
+          - heading [level=6] [ref=e121]: MuxTerm
+        - generic [ref=e37]:
+          - generic [ref=e40] [cursor=pointer]: Window 1
+          - generic [ref=e123] [cursor=pointer]: +
+        - generic [ref=e42]:
+          - button [ref=e124] [cursor=pointer]:
+            - img [ref=e45]
+            - text: Terminal
+          - button [ref=e125] [cursor=pointer]:
+            - paragraph [ref=e48]: ⚙️
+          - img [ref=e50]
+          - button [ref=e127] [cursor=pointer]:
+            - img [ref=e53]
+            - generic [ref=e55]: "1"
+          - button [ref=e128] [cursor=pointer]:
+            - img [ref=e171]
+            - generic [ref=e59]: v1.1.38
+          - separator [ref=e60]
+          - button [ref=e61] [cursor=pointer]:
+            - img [ref=e62]
+    - generic [ref=e65]:
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - generic [ref=e129] [cursor=pointer]: Terminal 1
+          - generic [ref=e70]:
+            - generic [ref=e71] [cursor=pointer]: ▲
+            - generic [ref=e72] [cursor=pointer]: ▼
+            - generic [ref=e73] [cursor=pointer]: ✕
+            - button [ref=e130] [cursor=pointer]:
+              - img [ref=e76]
+            - button [ref=e131] [cursor=pointer]:
+              - img [ref=e79]
+            - button [ref=e132] [cursor=pointer]:
+              - img [ref=e82]
+            - button [ref=e133] [cursor=pointer]:
+              - paragraph [ref=e85]: □
+            - button [ref=e134] [cursor=pointer]:
+              - img [ref=e87]
+            - button [ref=e89] [cursor=pointer]:
+              - img [ref=e90]
+        - iframe [ref=e95]:
+          - textbox "Terminal input" [ref=f1e51]
+      - separator [ref=e96]
+      - generic [ref=e98]:
+        - generic [ref=e99]:
+          - generic [ref=e135] [cursor=pointer]: miami1:8006
+          - generic [ref=e101]:
+            - generic [ref=e102] [cursor=pointer]: ▲
+            - generic [ref=e103] [cursor=pointer]: ▼
+            - generic [ref=e104] [cursor=pointer]: ✕
+            - button [ref=e136] [cursor=pointer]:
+              - paragraph [ref=e107]: □
+            - button [ref=e137] [cursor=pointer]:
+              - img [ref=e109]
+            - button [ref=e111] [cursor=pointer]:
+              - img [ref=e112]
+        - iframe [ref=e117]:
+          - textbox "Terminal input" [ref=f2e51]
+    - generic [ref=e184]:
+      - progressbar [ref=e185]:
+        - img [ref=e186]
+      - generic [ref=e188]:
+        - paragraph [ref=e189]: Actualizando muxterm a v1.1.40...
+        - paragraph [ref=e190]: Se aplicará sin interrumpir tu trabajo
+      - button [ref=e191] [cursor=pointer]:
+        - paragraph [ref=e192]: ✕
+  - dialog [ref=e195]:
+    - generic [ref=e196]:
+      - generic [ref=e197]:
+        - heading "Updating to v1.1.40" [level=5] [ref=e198]
+        - paragraph [ref=e199]: Please wait while MuxTerm is being updated...
+      - progressbar [ref=e201]
+      - list [ref=e203]:
+        - listitem [ref=e204]:
+          - img [ref=e206]
+          - generic [ref=e209]: Backing up configuration
+        - listitem [ref=e210]:
+          - img [ref=e212]
+          - generic [ref=e215]: Downloading update
+        - listitem [ref=e216]:
+          - img [ref=e218]
+          - generic [ref=e221]: Installing dependencies
+        - listitem [ref=e222]:
+          - img [ref=e224]
+          - generic [ref=e227]: Building frontend
+        - listitem [ref=e228]:
+          - img [ref=e230]
+          - generic [ref=e233]: Restarting service
+        - listitem [ref=e234]:
+          - img [ref=e236]
+          - generic [ref=e239]: Verifying installation
+      - generic [ref=e240]:
+        - button "Ejecutar en background" [ref=e241] [cursor=pointer]: Ejecutar en background
+        - generic [ref=e242]: Podés seguir trabajando, la actualización continúa y verás un aviso cuando termine.

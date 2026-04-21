@@ -1,0 +1,67 @@
+- generic [ref=e26]:
+  - banner [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - button [ref=e30] [cursor=pointer]:
+          - img [ref=e31]
+        - img [ref=e33]
+        - heading "MuxTerm" [level=6] [ref=e35]
+      - generic [ref=e37]:
+        - generic "Click to rename · drag to reorder" [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]: Window 1
+        - generic "New window" [ref=e41] [cursor=pointer]: +
+      - generic [ref=e42]:
+        - button "Terminal" [ref=e43] [cursor=pointer]:
+          - img [ref=e45]
+          - text: Terminal
+        - button "⚙️" [ref=e47] [cursor=pointer]:
+          - paragraph [ref=e48]: ⚙️
+        - generic "Connected" [ref=e49]:
+          - img [ref=e50]
+        - button "Star us on GitHub! 🌟" [ref=e52] [cursor=pointer]:
+          - img [ref=e53]
+          - generic [ref=e55]: "1"
+        - button "MuxTerm is up to date" [ref=e56] [cursor=pointer]:
+          - img [ref=e57]
+          - generic [ref=e59]: v1.1.38
+        - separator [ref=e60]
+        - button [ref=e61] [cursor=pointer]:
+          - img [ref=e62]
+  - generic [ref=e65]:
+    - generic [ref=e67]:
+      - generic [ref=e68]:
+        - generic "Click to rename" [ref=e69] [cursor=pointer]: Terminal 1
+        - generic [ref=e70]:
+          - generic [ref=e71] [cursor=pointer]: ▲
+          - generic [ref=e72] [cursor=pointer]: ▼
+          - generic [ref=e73] [cursor=pointer]: ✕
+          - button "Panel settings" [ref=e75] [cursor=pointer]:
+            - img [ref=e76]
+          - button "Copy terminal content" [ref=e78] [cursor=pointer]:
+            - img [ref=e79]
+          - button "File browser" [ref=e81] [cursor=pointer]:
+            - img [ref=e82]
+          - button "□" [ref=e84] [cursor=pointer]:
+            - paragraph [ref=e85]: □
+          - button "Minimize" [ref=e86] [cursor=pointer]:
+            - img [ref=e87]
+          - button [ref=e89] [cursor=pointer]:
+            - img [ref=e90]
+      - iframe [ref=e95]:
+        - textbox "Terminal input" [ref=f1e51]
+    - separator [ref=e96]
+    - generic [ref=e98]:
+      - generic [ref=e99]:
+        - generic "Click to rename" [ref=e100] [cursor=pointer]: miami1:8006
+        - generic [ref=e101]:
+          - generic [ref=e102] [cursor=pointer]: ▲
+          - generic [ref=e103] [cursor=pointer]: ▼
+          - generic [ref=e104] [cursor=pointer]: ✕
+          - button "□" [ref=e106] [cursor=pointer]:
+            - paragraph [ref=e107]: □
+          - button "Minimize" [ref=e108] [cursor=pointer]:
+            - img [ref=e109]
+          - button [ref=e111] [cursor=pointer]:
+            - img [ref=e112]
+      - iframe [active] [ref=e117]:
+        - textbox "Terminal input" [active] [ref=f2e51]

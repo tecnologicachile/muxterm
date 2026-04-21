@@ -59,6 +59,9 @@ function TerminalView() {
   const [activityMap, setActivityMap] = useState({});
   // Update status: { state: 'idle' | 'in-progress' | 'applied', target?: string }
   const [updateStatus, setUpdateStatus] = useState({ state: 'idle' });
+  // Suppress the non-blocking update toast while the full-screen UpdateProgress
+  // modal (opened from "Update Now") is visible, to avoid showing both at once.
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
   // Client version (bundled at build time) vs server version (live)
   const clientVersion = (() => { try { return require('../../package.json').version; } catch (e) { return null; } })();
   const [serverVersion, setServerVersion] = useState(null);
@@ -345,6 +348,10 @@ function TerminalView() {
     };
     socket.on('auto-update-starting', autoUpdateHandler);
 
+    // Track when the UpdateProgress modal is open so we can suppress the toast.
+    const modalHandler = (e) => setUpdateModalOpen(!!e.detail?.open);
+    window.addEventListener('muxterm:update-modal', modalHandler);
+
     // Server version: track to detect when update has been applied
     const serverInfoHandler = (data) => {
       if (!data?.version) return;
@@ -364,6 +371,7 @@ function TerminalView() {
     return () => {
       socket.off('terminal-activity', handler);
       socket.off('auto-update-starting', autoUpdateHandler);
+      window.removeEventListener('muxterm:update-modal', modalHandler);
       socket.off('server-info', serverInfoHandler);
       clearInterval(tick);
     };
@@ -2702,8 +2710,8 @@ function TerminalView() {
         </DialogContent>
       </Dialog>
 
-      {/* Auto-update non-blocking toast */}
-      {updateStatus.state === 'in-progress' && (
+      {/* Auto-update non-blocking toast (hidden while the UpdateProgress modal is open) */}
+      {updateStatus.state === 'in-progress' && !updateModalOpen && (
         <Box sx={{
           position: 'fixed', top: 70, right: 16, zIndex: 2000,
           backgroundColor: 'rgba(30, 30, 30, 0.95)', backdropFilter: 'blur(8px)',

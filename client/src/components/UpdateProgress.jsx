@@ -42,6 +42,16 @@ function UpdateProgress({ open, onClose, version }) {
     }
   }, [open]);
 
+  // Tell the rest of the app (TerminalView toast) when the modal is open
+  // so the non-blocking "Actualizando muxterm..." toast doesn't show at the
+  // same time as this full-screen update dialog.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('muxterm:update-modal', { detail: { open } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('muxterm:update-modal', { detail: { open: false } }));
+    };
+  }, [open]);
+
   const startUpdate = async () => {
     setStatus('updating');
     setError(null);
