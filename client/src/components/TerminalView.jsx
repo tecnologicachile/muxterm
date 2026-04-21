@@ -2128,15 +2128,39 @@ function TerminalView() {
             Se detectaron <b>{migrationPrompt?.candidates?.length || 0}</b> credenciales SSH guardadas localmente que no existen en tu vault.
             ¿Las subo a Bitwarden?
           </Typography>
-          <Box sx={{ maxHeight: 180, overflow: 'auto', border: '1px solid #333', borderRadius: 1, p: 1 }}>
+          <Box sx={{ maxHeight: 220, overflow: 'auto', border: '1px solid #333', borderRadius: 1, p: 1 }}>
             {(migrationPrompt?.candidates || []).map(conn => (
-              <Box key={conn.id} sx={{ fontSize: '12px', color: '#aaa', py: 0.3 }}>
-                💾 {conn.name || `${conn.username}@${conn.host}`} <Box component="span" sx={{ color: '#666' }}>— {conn.host}:{conn.port}</Box>
+              <Box key={conn.id} sx={{ fontSize: '12px', color: '#aaa', py: 0.3, display: 'flex', alignItems: 'center', gap: 0.5, '&:hover .del-btn': { opacity: 1 } }}>
+                <Box sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  💾 {conn.name || `${conn.username}@${conn.host}`} <Box component="span" sx={{ color: '#666' }}>— {conn.host}:{conn.port}</Box>
+                </Box>
+                <Box
+                  className="del-btn"
+                  component="span"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (migrationPrompt?.uploading) return;
+                    const label = conn.name || `${conn.username || ''}@${conn.host}`;
+                    if (!window.confirm(`Eliminar credencial local "${label}"?\nNo se subirá a Bitwarden y se borra del vault local. No se puede deshacer.`)) return;
+                    socket.emit('delete-ssh-connection', { id: conn.id });
+                    setMigrationPrompt(p => {
+                      if (!p) return null;
+                      const remaining = p.candidates.filter(c => c.id !== conn.id);
+                      if (remaining.length === 0) return null;
+                      return { ...p, candidates: remaining };
+                    });
+                  }}
+                  sx={{
+                    cursor: 'pointer', color: '#888', fontSize: '13px', px: 0.5, opacity: 0, transition: 'opacity 0.1s',
+                    '&:hover': { color: '#f44' }
+                  }}
+                  title="Eliminar credencial local (no subirla a Bitwarden)"
+                >🗑️</Box>
               </Box>
             ))}
           </Box>
           <Typography sx={{ fontSize: '11px', color: '#777', mt: 1 }}>
-            Los passwords se toman del caché local encriptado. Si alguno no existe en caché, el item se creará sin password (lo pedirá al conectar).
+            Los passwords se toman del caché local encriptado. Si alguno no existe en caché, el item se creará sin password (lo pedirá al conectar). Hacé hover en cada ítem para eliminarlo del local sin subirlo.
           </Typography>
         </DialogContent>
         <DialogActions>
