@@ -1965,7 +1965,7 @@ function TerminalView() {
                 <TextField margin="dense" label="Initial path (optional)" fullWidth variant="outlined" size="small"
                   value={sshInitialPath} onChange={(e) => setSshInitialPath(e.target.value)}
                   placeholder="/var/www/myproject"
-                  helperText="Runs `cd <path>` right after login"
+                  helperText="Runs `cd <path>` once the SSH session is ready (~2.5s after connect)"
                 />
               )}
 
@@ -2628,7 +2628,7 @@ function TerminalView() {
                 <TextField margin="dense" label="Initial path (optional)" fullWidth variant="outlined" size="small"
                   value={vaultEditFields.initialPath || ''}
                   placeholder="/var/www/myproject"
-                  helperText="Runs `cd <path>` right after SSH login"
+                  helperText="Runs `cd <path>` once the SSH session is ready (~2.5s after connect)"
                   onChange={(e) => setVaultEditFields(p => ({ ...p, initialPath: e.target.value }))} />
               )}
             </DialogContent>
