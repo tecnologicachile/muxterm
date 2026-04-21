@@ -113,6 +113,12 @@ function SftpViewer({ sftpConfig, panelId, initialPath, onPathChange }) {
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // Prevent silent overwrite: warn when a file with the same name exists.
+    const exists = files.some(f => f.name === file.name && f.type === 'file');
+    if (exists && !window.confirm(`El archivo "${file.name}" ya existe. ¿Sobrescribirlo?`)) {
+      e.target.value = '';
+      return;
+    }
     setLoading(true);
     const formData = new FormData();
     formData.append('file', file);
@@ -204,6 +210,7 @@ function SftpViewer({ sftpConfig, panelId, initialPath, onPathChange }) {
           >
             <span style={styles.fileIcon}>{file.type === 'folder' ? '📁' : '📄'}</span>
             <span style={styles.fileName}>{file.name}</span>
+            <span style={styles.fileDate}>{formatDate(file.date)}</span>
             <span style={styles.fileSize}>{file.type === 'file' ? formatSize(file.size) : ''}</span>
             <div style={styles.fileActions}>
               <button onClick={(e) => { e.stopPropagation(); handleRename(file); }} style={styles.actionBtn}>✏️</button>
@@ -230,6 +237,14 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
+function formatDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
 const styles = {
   container: { width: '100%', height: '100%', backgroundColor: '#1a1a2e', display: 'flex', flexDirection: 'column', color: '#ccc', fontSize: '13px' },
   toolbar: { display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', backgroundColor: '#16213e', borderBottom: '1px solid #333' },
@@ -239,6 +254,7 @@ const styles = {
   fileRow: { display: 'flex', alignItems: 'center', padding: '4px 8px', cursor: 'pointer', borderBottom: '1px solid #1a1a2e', gap: '8px', transition: 'background-color 0.1s' },
   fileIcon: { fontSize: '16px', flexShrink: 0 },
   fileName: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  fileDate: { color: '#666', fontSize: '11px', width: '130px', textAlign: 'right', flexShrink: 0, fontFamily: 'monospace' },
   fileSize: { color: '#666', fontSize: '11px', width: '70px', textAlign: 'right', flexShrink: 0 },
   fileActions: { display: 'flex', gap: '2px', opacity: 0.5 },
   actionBtn: { padding: '2px 4px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '12px' },

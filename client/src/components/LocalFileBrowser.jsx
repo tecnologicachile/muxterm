@@ -187,6 +187,13 @@ function LocalFileBrowser({ open, onClose, terminalId, mode = 'local', sshConnec
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // Prevent silent overwrite: warn the user when a file with the same name
+    // already exists in the current listing.
+    const exists = files.some(f => f.name === file.name && f.type === 'file');
+    if (exists && !window.confirm(`El archivo "${file.name}" ya existe. ¿Sobrescribirlo?`)) {
+      e.target.value = '';
+      return;
+    }
     const fd = new FormData();
     fd.append('file', file);
     fd.append('path', `${currentPath}/${file.name}`);
@@ -210,6 +217,14 @@ function LocalFileBrowser({ open, onClose, terminalId, mode = 'local', sshConnec
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const formatDate = (d) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   };
 
   const pathParts = currentPath ? currentPath.split('/').filter(Boolean) : [];
@@ -290,6 +305,7 @@ function LocalFileBrowser({ open, onClose, terminalId, mode = 'local', sshConnec
                   ? <FolderIcon sx={{ fontSize: 16, color: '#00aaff' }} />
                   : <FileIcon sx={{ fontSize: 16, color: '#888' }} />}
                 <Typography sx={{ flex: 1, fontSize: '12px', color: '#ddd' }}>{file.name}</Typography>
+                <Typography sx={{ fontSize: '10px', color: '#666', minWidth: 120, textAlign: 'right', fontFamily: 'monospace' }}>{formatDate(file.date)}</Typography>
                 <Typography sx={{ fontSize: '10px', color: '#666', minWidth: 60, textAlign: 'right' }}>{formatSize(file.size)}</Typography>
                 <Box className="file-actions" sx={{ display: 'flex', gap: 0.3, opacity: 0, transition: 'opacity 0.1s' }}>
                   {file.type === 'file' && (

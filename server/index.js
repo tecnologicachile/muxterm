@@ -650,6 +650,15 @@ io.on('connection', (socket) => {
       let conn;
       if (existing) {
         conn = existing;
+        // Update initial_path on the dedup-matched row when the incoming data
+        // brings one (typically arriving via a Bitwarden item that already has
+        // Initial_Path set). Fixes cases where the row was created before the
+        // initial-path feature existed and still has NULL in the column.
+        if (data.initialPath && data.initialPath !== existing.initial_path) {
+          database.db.prepare('UPDATE ssh_connections SET initial_path = ? WHERE id = ? AND user_id = ?')
+            .run(data.initialPath, existing.id, socket.userId);
+          conn.initial_path = data.initialPath;
+        }
       } else {
         conn = database.createSshConnection(
           socket.userId, data.name, data.host, data.port,
