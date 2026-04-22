@@ -934,16 +934,18 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Scroll terminal history via tmux copy-mode (async to avoid blocking event loop)
+  // Scroll terminal history via tmux copy-mode.
+  //
+  // When the user scrolls down and reaches the bottom of the scrollback
+  // (tmux's #{scroll_position} == 0 or empty), auto-cancel copy-mode so
+  // new shell output is visible again. Matches the standard convention
+  // "scroll to the bottom returns you to live".
   socket.on('terminal-scroll', (data) => {
     try {
       const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId && terminal.tmuxSessionName) {
         const { exec } = require('child_process');
         const sess = terminal.tmuxSessionName;
-        // `step` picks between page-up/down (big jump, used by a simple click)
-        // and scroll-up/down (one line, used while the user holds the button
-        // for smooth scrolling). Defaults to 'page' for backward-compatibility.
         const step = data.step === 'line' ? 'line' : 'page';
         let cmd = null;
         if (data.direction === 'up') {
@@ -951,7 +953,11 @@ io.on('connection', (socket) => {
           cmd = `tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X ${key}`;
         } else if (data.direction === 'down') {
           const key = step === 'line' ? 'scroll-down' : 'page-down';
-          cmd = `tmux -L muxterm send-keys -t ${sess} -X ${key} 2>/dev/null || true`;
+          cmd = `tmux -L muxterm send-keys -t ${sess} -X ${key} 2>/dev/null; `
+              + `pos=$(tmux -L muxterm display-message -p -t ${sess} '#{scroll_position}' 2>/dev/null); `
+              + `if [ -z "$pos" ] || [ "$pos" = "0" ]; then `
+              +   `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null; `
+              + `fi`;
         } else if (data.direction === 'exit') {
           cmd = `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`;
         }
