@@ -1081,7 +1081,7 @@ server.listen(PORT, async () => {
   // about explicitly is immune to that issue.
   if (hasTmux) {
     const exec = require('child_process').execSync;
-    const opts = ['window-size manual', 'aggressive-resize off'];
+    const opts = ['window-size largest', 'aggressive-resize off'];
     for (const opt of opts) {
       try {
         exec(`tmux -L muxterm set-option -g ${opt}`, { stdio: 'ignore' });
