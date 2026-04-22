@@ -2004,6 +2004,7 @@ function TerminalView() {
                               else setSelectedSshConnection(String(conn.id));
                               if (newTerminalType === 'ssh') {
                                 setSshHost(conn.host); setSshPort(String(conn.port || 22)); setSshUsername(conn.username || '');
+                                setSshInitialPath(conn.initial_path || '');
                               } else if (newTerminalType === 'sftp') {
                                 setSftpHost(conn.host); setSftpPort(String(conn.port || 22)); setSftpUsername(conn.username || '');
                               } else if (newTerminalType === 'rdp') {
