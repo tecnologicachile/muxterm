@@ -1093,7 +1093,17 @@ server.listen(PORT, async () => {
   // about explicitly is immune to that issue.
   if (hasTmux) {
     const exec = require('child_process').execSync;
-    const opts = ['window-size largest', 'aggressive-resize off'];
+    // Kept in sync with .tmux.webssh.conf. Every option we care about for
+    // an update to take effect on ALREADY-RUNNING tmux servers goes here
+    // — the conf is only read when a brand-new session is spawned, so
+    // users who upgrade while having live sessions wouldn't otherwise see
+    // conf-only changes until they start a new one.
+    const opts = [
+      'window-size largest',
+      'aggressive-resize off',
+      'mode-style "bg=black,fg=black"',
+      'message-style "bg=black,fg=black"',
+    ];
     for (const opt of opts) {
       try {
         exec(`tmux -L muxterm set-option -g ${opt}`, { stdio: 'ignore' });
@@ -1102,7 +1112,7 @@ server.listen(PORT, async () => {
         // the option up from .tmux.webssh.conf when they're spawned.
       }
     }
-    logger.info('Applied tmux -g options: window-size=manual, aggressive-resize=off');
+    logger.info('Applied tmux -g options from conf to running server');
   }
 
   // Clean up orphaned ttyd processes (but NOT tmux sessions on startup — they may reconnect)
