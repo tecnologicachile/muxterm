@@ -105,6 +105,7 @@ function TerminalView() {
   const [sftpPort, setSftpPort] = useState('22');
   const [sftpUsername, setSftpUsername] = useState('');
   const [sftpPassword, setSftpPassword] = useState('');
+  const [sftpInitialPath, setSftpInitialPath] = useState('');
   const [localPasswordCached, setLocalPasswordCached] = useState(false);
   const [vaultLoggedIn, setVaultLoggedIn] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
@@ -583,6 +584,7 @@ function TerminalView() {
       setSftpPort(String(conn.port || 22));
       setSftpUsername(item.username || '');
       setSftpPassword(item.password || '');
+      setSftpInitialPath(item.initialPath || '');
     } else if (conn.scheme === 'ssh') {
       setNewTerminalType('ssh');
       setSshHost(conn.host);
@@ -616,6 +618,7 @@ function TerminalView() {
       setSftpPort(String(conn.port || 22));
       setSftpUsername(item.username || '');
       setSftpPassword(item.password || '');
+      setSftpInitialPath(item.initialPath || '');
     }
   };
 
@@ -714,6 +717,7 @@ function TerminalView() {
     setSftpPort('22');
     setSftpUsername('');
     setSftpPassword('');
+    setSftpInitialPath('');
     setLocalPasswordCached(false);
     setNewTerminalDialogOpen(true);
   };
@@ -788,7 +792,8 @@ function TerminalView() {
         id: uuidv4(), terminalId: null,
         name: selectedVaultItem?.name || `${sftpUsername}@${sftpHost}`,
         type: 'sftp',
-        sftpConfig: { host: sftpHost, port: parseInt(sftpPort) || 22, username: sftpUsername, password: sftpPassword }
+        sftpConfig: { host: sftpHost, port: parseInt(sftpPort) || 22, username: sftpUsername, password: sftpPassword },
+        sftpPath: sftpInitialPath || undefined
       };
     } else {
       newPanel = { id: uuidv4(), terminalId: null, name: termName, type: 'local' };
@@ -1969,6 +1974,15 @@ function TerminalView() {
                 />
               )}
 
+              {/* Initial path (SFTP only) */}
+              {newTerminalType === 'sftp' && (
+                <TextField margin="dense" label="Initial path (optional)" fullWidth variant="outlined" size="small"
+                  value={sftpInitialPath} onChange={(e) => setSftpInitialPath(e.target.value)}
+                  placeholder="/var/www/myproject"
+                  helperText="Opens the file browser in this folder instead of the home directory"
+                />
+              )}
+
               {/* Unified credential search */}
               {newTerminalType !== 'local' && (
                 <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #333' }}>
@@ -2007,6 +2021,7 @@ function TerminalView() {
                                 setSshInitialPath(conn.initial_path || '');
                               } else if (newTerminalType === 'sftp') {
                                 setSftpHost(conn.host); setSftpPort(String(conn.port || 22)); setSftpUsername(conn.username || '');
+                                setSftpInitialPath(conn.initial_path || '');
                               } else if (newTerminalType === 'rdp') {
                                 setRdpHost(conn.host); setRdpPort(String(conn.port || 3389)); setRdpUsername(conn.username || '');
                               } else if (newTerminalType === 'vnc') {

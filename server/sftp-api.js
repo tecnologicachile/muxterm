@@ -80,11 +80,33 @@ router.post('/connect-by-id', async (req, res) => {
     const client = await getConnection(sessionId, {
       host: conn.host, port: conn.port || 22, username: conn.username, password
     });
-    // Get home directory
-    let homePath = '.';
-    try { homePath = await client.realPath('.'); } catch (e) { homePath = `/home/${conn.username}`; }
-    const list = await client.list(homePath);
-    res.json({ status: 'ok', sessionId, path: homePath, files: formatFiles(list, homePath) });
+    // Prefer the connection's saved initial_path (typically from the
+    // Bitwarden Initial_Path custom field) when present; otherwise fall
+    // back to the SSH home directory. Mirrors the `cd <path>` that the
+    // terminal side does on SSH open, so opening the file browser from a
+    // terminal that already has an initial_path lands the user in the
+    // same place.
+    let startPath = '.';
+    if (conn.initial_path) {
+      try {
+        const rp = await client.realPath(conn.initial_path);
+        startPath = rp || conn.initial_path;
+      } catch (e) {
+        startPath = conn.initial_path;
+      }
+    } else {
+      try { startPath = await client.realPath('.'); } catch (e) { startPath = `/home/${conn.username}`; }
+    }
+    let list;
+    try {
+      list = await client.list(startPath);
+    } catch (e) {
+      // initial_path might be unreadable/missing on the remote — fall
+      // back to home so the file browser still opens.
+      try { startPath = await client.realPath('.'); } catch (_) { startPath = `/home/${conn.username}`; }
+      list = await client.list(startPath);
+    }
+    res.json({ status: 'ok', sessionId, path: startPath, files: formatFiles(list, startPath) });
   } catch (e) {
     res.status(400).json({ status: 'error', message: e.message });
   }
