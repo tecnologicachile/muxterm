@@ -941,11 +941,17 @@ io.on('connection', (socket) => {
       if (terminal && terminal.userId === socket.userId && terminal.tmuxSessionName) {
         const { exec } = require('child_process');
         const sess = terminal.tmuxSessionName;
+        // `step` picks between page-up/down (big jump, used by a simple click)
+        // and scroll-up/down (one line, used while the user holds the button
+        // for smooth scrolling). Defaults to 'page' for backward-compatibility.
+        const step = data.step === 'line' ? 'line' : 'page';
         let cmd = null;
         if (data.direction === 'up') {
-          cmd = `tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X page-up`;
+          const key = step === 'line' ? 'scroll-up' : 'page-up';
+          cmd = `tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X ${key}`;
         } else if (data.direction === 'down') {
-          cmd = `tmux -L muxterm send-keys -t ${sess} -X page-down 2>/dev/null || true`;
+          const key = step === 'line' ? 'scroll-down' : 'page-down';
+          cmd = `tmux -L muxterm send-keys -t ${sess} -X ${key} 2>/dev/null || true`;
         } else if (data.direction === 'exit') {
           cmd = `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`;
         }

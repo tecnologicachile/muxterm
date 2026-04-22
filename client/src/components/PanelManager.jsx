@@ -32,6 +32,40 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     if (socket) socket.emit('terminal-scroll', { terminalId, direction });
   };
 
+  // Scroll behaviour: everything is line-by-line. A single quick click moves
+  // exactly one line; a sustained press moves many lines at a accelerating
+  // rate (25 → 50 → 100 lines/s) so "hold longer" naturally means "go further".
+  const scrollHoldRef = useRef(null);
+  const HOLD_REPEAT_DELAY_MS = 250;
+  // Ramp: 0–1s held = 40ms/line (25 l/s), 1–2s = 20ms (50 l/s), 2s+ = 10ms (100 l/s)
+  const getLineIntervalMs = (heldMs) => {
+    if (heldMs < 1000) return 40;
+    if (heldMs < 2000) return 20;
+    return 10;
+  };
+  const startHoldScroll = (terminalId, direction) => {
+    if (socket) socket.emit('terminal-scroll', { terminalId, direction, step: 'line' });
+    _lastScrollTs = Date.now();
+    const holdStart = Date.now();
+    const scheduleNext = () => {
+      const delay = getLineIntervalMs(Date.now() - holdStart);
+      const id = setTimeout(() => {
+        if (socket) socket.emit('terminal-scroll', { terminalId, direction, step: 'line' });
+        _lastScrollTs = Date.now();
+        scheduleNext();
+      }, delay);
+      scrollHoldRef.current = { id };
+    };
+    const initial = setTimeout(scheduleNext, HOLD_REPEAT_DELAY_MS);
+    scrollHoldRef.current = { id: initial };
+  };
+  const stopHoldScroll = () => {
+    const state = scrollHoldRef.current;
+    if (!state) return;
+    clearTimeout(state.id);
+    scrollHoldRef.current = null;
+  };
+
   // Drag & drop reorder state
   const [dragPanelId, setDragPanelId] = useState(null);
   const [dragOverPanelId, setDragOverPanelId] = useState(null);
@@ -184,26 +218,6 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         )}
         <Box
           className="panel-header"
-          draggable={panels.length > 1}
-          onDragStart={(e) => {
-            setDragPanelId(panel.id);
-            e.dataTransfer.effectAllowed = 'move';
-            // Lightweight drag ghost — rasterizing an iframe-containing panel
-            // can crash the Chrome renderer (STATUS_BREAKPOINT).
-            try {
-              const dragGhost = document.createElement('div');
-              dragGhost.textContent = panel.name || 'Terminal';
-              dragGhost.style.cssText = 'position:absolute;top:-1000px;left:-1000px;padding:4px 12px;background:#1a1a1a;color:#00ff00;border:1px solid #00ff00;border-radius:4px;font-family:monospace;font-size:12px;white-space:nowrap';
-              document.body.appendChild(dragGhost);
-              e.dataTransfer.setDragImage(dragGhost, 10, 10);
-              setTimeout(() => { try { document.body.removeChild(dragGhost); } catch (_) {} }, 0);
-            } catch (err) {}
-            if (onPanelDragStart) onPanelDragStart(panel.id);
-          }}
-          onDragEnd={() => {
-            setDragPanelId(null); setDragOverPanelId(null);
-            if (onPanelDragEnd) onPanelDragEnd();
-          }}
           sx={{
             display: 'flex',
             alignItems: 'center',
@@ -212,12 +226,36 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             borderBottom: '1px solid #333',
             padding: '2px 8px',
             minHeight: '24px',
-            cursor: dragPanelId ? 'grabbing' : 'default',
-            transition: 'background-color 0.1s'
+            cursor: 'default',
+            transition: 'background-color 0.1s',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            WebkitTouchCallout: 'none',
+            WebkitTapHighlightColor: 'transparent',
           }}
         >
           <Typography
             variant="caption"
+            draggable={panels.length > 1}
+            onDragStart={(e) => {
+              setDragPanelId(panel.id);
+              e.dataTransfer.effectAllowed = 'move';
+              // Lightweight drag ghost — rasterizing an iframe-containing
+              // panel can crash the Chrome renderer (STATUS_BREAKPOINT).
+              try {
+                const dragGhost = document.createElement('div');
+                dragGhost.textContent = panel.name || 'Terminal';
+                dragGhost.style.cssText = 'position:absolute;top:-1000px;left:-1000px;padding:4px 12px;background:#1a1a1a;color:#00ff00;border:1px solid #00ff00;border-radius:4px;font-family:monospace;font-size:12px;white-space:nowrap';
+                document.body.appendChild(dragGhost);
+                e.dataTransfer.setDragImage(dragGhost, 10, 10);
+                setTimeout(() => { try { document.body.removeChild(dragGhost); } catch (_) {} }, 0);
+              } catch (err) {}
+              if (onPanelDragStart) onPanelDragStart(panel.id);
+            }}
+            onDragEnd={() => {
+              setDragPanelId(null); setDragOverPanelId(null);
+              if (onPanelDragEnd) onPanelDragEnd();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               if (onRenamePanel) onRenamePanel(panel.id);
@@ -226,10 +264,11 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               color: isActive ? '#00ff00' : '#888',
               fontSize: '11px',
               fontWeight: isActive ? 'bold' : 'normal',
-              cursor: 'pointer',
+              cursor: panels.length > 1 ? 'grab' : 'pointer',
+              '&:active': { cursor: panels.length > 1 ? 'grabbing' : 'pointer' },
               '&:hover': { textDecoration: 'underline' }
             }}
-            title="Click to rename"
+            title={panels.length > 1 ? 'Click to rename · Drag to reorder' : 'Click to rename'}
           >
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
@@ -238,10 +277,21 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             {panel.terminalId && (
               <>
                 <Box
-                  onClick={(e) => {
+                  data-no-drag
+                  draggable={false}
+                  onMouseDown={(e) => {
                     e.stopPropagation();
-                    emitScroll(panel.terminalId, 'up');
+                    startHoldScroll(panel.terminalId, 'up');
                   }}
+                  onMouseUp={stopHoldScroll}
+                  onMouseLeave={stopHoldScroll}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    startHoldScroll(panel.terminalId, 'up');
+                  }}
+                  onTouchEnd={stopHoldScroll}
+                  onTouchCancel={stopHoldScroll}
+                  title="Scroll up (hold to keep scrolling)"
                   sx={{
                     width: '22px', height: '18px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -251,10 +301,21 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                   }}
                 >▲</Box>
                 <Box
-                  onClick={(e) => {
+                  data-no-drag
+                  draggable={false}
+                  onMouseDown={(e) => {
                     e.stopPropagation();
-                    emitScroll(panel.terminalId, 'down');
+                    startHoldScroll(panel.terminalId, 'down');
                   }}
+                  onMouseUp={stopHoldScroll}
+                  onMouseLeave={stopHoldScroll}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    startHoldScroll(panel.terminalId, 'down');
+                  }}
+                  onTouchEnd={stopHoldScroll}
+                  onTouchCancel={stopHoldScroll}
+                  title="Scroll down (hold to keep scrolling)"
                   sx={{
                     width: '22px', height: '18px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
