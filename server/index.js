@@ -1103,6 +1103,7 @@ server.listen(PORT, async () => {
       'aggressive-resize off',
       'mode-style "bg=black,fg=black"',
       'message-style "bg=black,fg=black"',
+      'alternate-screen on',
     ];
     for (const opt of opts) {
       try {
