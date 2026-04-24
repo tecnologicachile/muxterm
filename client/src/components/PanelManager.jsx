@@ -151,6 +151,38 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     return () => timers.forEach(clearTimeout);
   }, [maximizedPanel]);
 
+  // Virtual keyboard (VKB) handler for mobile.
+  // When the Android on-screen keyboard appears, `window.visualViewport`
+  // shrinks. With `interactive-widget=resizes-content` the CSS layout
+  // already adjusts, but the ttyd iframe inside the active panel doesn't
+  // know it has a new size until it receives a `resize` event. Without
+  // it, xterm.js keeps the old dimensions and the typing cursor ends up
+  // hidden behind the keyboard. Fire the event on both keyboard-show and
+  // keyboard-hide so the iframe fits correctly in both states.
+  useEffect(() => {
+    if (!window.visualViewport) return;
+    let lastVvHeight = window.visualViewport.height;
+    const onVKBResize = () => {
+      const newHeight = window.visualViewport.height;
+      const changed = Math.abs(newHeight - lastVvHeight) > 50;
+      lastVvHeight = newHeight;
+      if (!changed) return;
+      // Dispatch resize into the active panel's iframe so ttyd/xterm.js
+      // calls fit() and scrolls the prompt into the visible area.
+      const activePanelEl = document.querySelector(`[data-panel-id="${activePanel}"]`);
+      const iframe = activePanelEl?.querySelector('iframe');
+      if (iframe?.contentWindow) {
+        [0, 100, 300].forEach(delay =>
+          setTimeout(() => {
+            try { iframe.contentWindow.dispatchEvent(new Event('resize')); } catch (_) {}
+          }, delay)
+        );
+      }
+    };
+    window.visualViewport.addEventListener('resize', onVKBResize);
+    return () => window.visualViewport.removeEventListener('resize', onVKBResize);
+  }, [activePanel]);
+
   // Handle activity changes from terminals
   const handleActivityChange = (panelId, isActive) => {
     setActivityStates(prev => ({
