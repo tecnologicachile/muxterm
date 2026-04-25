@@ -565,6 +565,18 @@ setInterval(() => {
   } catch (e) {}
 }, 800);
 
+// ─────────────────────────────────────────────────────────────────────
+// EXPERIMENTAL: tmux control mode bridge.
+// Active only on /test/native — does not affect existing terminals.
+// Lives behind the same Socket.IO instance to share auth + session.
+const { attachToSocketIO: attachControlModeBridge } = require('./tmux-control/ws-bridge');
+const tmuxConfPath = path.join(__dirname, '..', '.tmux.webssh.conf');
+attachControlModeBridge(io, {
+  socket: 'muxterm',
+  confPath: fs.existsSync(tmuxConfPath) ? tmuxConfPath : null,
+});
+// ─────────────────────────────────────────────────────────────────────
+
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
 
