@@ -940,13 +940,17 @@ main() {
         # so there is no risk of breaking the service on older installs.
         if [ -f "$SERVICE_FILE" ] && ! grep -q "^CPUWeight=" "$SERVICE_FILE"; then
             print_color "Upgrading service file: adding CPUWeight=400 IOWeight=400..." "$YELLOW"
+            # Two sed passes — avoids \n portability issues across sed implementations.
             if command -v sudo &>/dev/null && \
-               sudo -n sed -i '/^KillMode=/a CPUWeight=400\nIOWeight=400' "$SERVICE_FILE" 2>/dev/null; then
+               sudo -n sed -i '/^KillMode=/a CPUWeight=400' "$SERVICE_FILE" 2>/dev/null && \
+               sudo -n sed -i '/^CPUWeight=/a IOWeight=400' "$SERVICE_FILE" 2>/dev/null; then
                 sudo -n systemctl daemon-reload 2>/dev/null || true
                 print_color "✓ Service file upgraded (CPU/IO priority added)" "$GREEN"
             else
                 print_color "⚠ Could not auto-add CPUWeight/IOWeight. Run manually:" "$YELLOW"
-                print_color "    sudo sed -i '/^KillMode=/a CPUWeight=400\\nIOWeight=400' $SERVICE_FILE && sudo systemctl daemon-reload" "$YELLOW"
+                print_color "    sudo sed -i '/^KillMode=process/a CPUWeight=400' $SERVICE_FILE" "$YELLOW"
+                print_color "    sudo sed -i '/^CPUWeight=400/a IOWeight=400' $SERVICE_FILE" "$YELLOW"
+                print_color "    sudo systemctl daemon-reload" "$YELLOW"
             fi
         fi
 
