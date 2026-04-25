@@ -56,6 +56,10 @@ run-*.js
 *.jpg
 *.jpeg
 *.gif
+# but PWA icons must ship with the repo
+!client/public/icon-192.png
+!client/public/icon-512.png
+!client/public/apple-touch-icon.png
 
 # Old directories
 webssh/

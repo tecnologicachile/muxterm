@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background: dark with subtle radial -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#0f1f0f"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Terminal frame -->
+  <rect x="76" y="124" width="360" height="264" rx="20"
+        fill="none" stroke="#00ff00" stroke-width="14"/>
+  <!-- Top bar dots -->
+  <circle cx="116" cy="160" r="8" fill="#00ff00" opacity="0.6"/>
+  <circle cx="146" cy="160" r="8" fill="#00ff00" opacity="0.6"/>
+  <circle cx="176" cy="160" r="8" fill="#00ff00" opacity="0.6"/>
+  <line x1="76" y1="186" x2="436" y2="186" stroke="#00ff00" stroke-width="4" opacity="0.4"/>
+  <!-- Prompt > -->
+  <path d="M120 240 L160 270 L120 300"
+        fill="none" stroke="#00ff00" stroke-width="14"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Cursor block -->
+  <rect x="180" y="260" width="32" height="20" fill="#00ff00"/>
+</svg>
