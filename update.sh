@@ -933,23 +933,32 @@ main() {
             fi
         fi
 
-        # Auto-upgrade: add CPUWeight and IOWeight if missing.
-        # These give MuxTerm higher scheduling priority under heavy load
-        # (e.g. npm builds or test suites consuming 100% CPU/IO).
-        # Uses cgroups v2 — silently ignored on systems that don't support it,
-        # so there is no risk of breaking the service on older installs.
-        if [ -f "$SERVICE_FILE" ] && ! grep -q "^CPUWeight=" "$SERVICE_FILE"; then
-            print_color "Upgrading service file: adding CPUWeight=400 IOWeight=400..." "$YELLOW"
-            # Two sed passes — avoids \n portability issues across sed implementations.
+        # Auto-upgrade: install the CPU/IO priority drop-in if missing.
+        # systemd drop-ins live in /etc/systemd/system/muxterm.service.d/ and
+        # are merged on top of the main unit at daemon-reload, so we never
+        # have to sed-edit the unit itself. CPUWeight/IOWeight use cgroups v2
+        # — silently ignored on systems that don't support it, no risk.
+        # Skipped if priority is already present anywhere (a drop-in OR the
+        # legacy in-unit form left by v1.1.54/55).
+        local DROPIN_DIR="/etc/systemd/system/$SERVICE_NAME.service.d"
+        local DROPIN_FILE="$DROPIN_DIR/10-cpu-priority.conf"
+        local already_set=0
+        [ -f "$DROPIN_FILE" ] && already_set=1
+        [ -f "$SERVICE_FILE" ] && grep -q "^CPUWeight=" "$SERVICE_FILE" && already_set=1
+        if [ "$already_set" -eq 0 ]; then
+            print_color "Installing CPU/IO priority drop-in..." "$YELLOW"
+            local DROPIN_CONTENT="[Service]
+CPUWeight=400
+IOWeight=400"
             if command -v sudo &>/dev/null && \
-               sudo -n sed -i '/^KillMode=/a CPUWeight=400' "$SERVICE_FILE" 2>/dev/null && \
-               sudo -n sed -i '/^CPUWeight=/a IOWeight=400' "$SERVICE_FILE" 2>/dev/null; then
+               sudo -n mkdir -p "$DROPIN_DIR" 2>/dev/null && \
+               echo "$DROPIN_CONTENT" | sudo -n tee "$DROPIN_FILE" >/dev/null 2>&1; then
                 sudo -n systemctl daemon-reload 2>/dev/null || true
-                print_color "✓ Service file upgraded (CPU/IO priority added)" "$GREEN"
+                print_color "✓ Drop-in installed: $DROPIN_FILE" "$GREEN"
             else
-                print_color "⚠ Could not auto-add CPUWeight/IOWeight. Run manually:" "$YELLOW"
-                print_color "    sudo sed -i '/^KillMode=process/a CPUWeight=400' $SERVICE_FILE" "$YELLOW"
-                print_color "    sudo sed -i '/^CPUWeight=400/a IOWeight=400' $SERVICE_FILE" "$YELLOW"
+                print_color "⚠ Could not install CPU/IO priority drop-in (sudo required). Run once:" "$YELLOW"
+                print_color "    sudo mkdir -p $DROPIN_DIR && \\" "$YELLOW"
+                print_color "    printf '[Service]\\nCPUWeight=400\\nIOWeight=400\\n' | sudo tee $DROPIN_FILE && \\" "$YELLOW"
                 print_color "    sudo systemctl daemon-reload" "$YELLOW"
             fi
         fi

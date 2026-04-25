@@ -673,20 +673,25 @@ KillMode=process
 StandardOutput=append:$INSTALL_DIR/logs/muxterm.log
 StandardError=append:$INSTALL_DIR/logs/muxterm-error.log
 
-# Resource priority: give MuxTerm more CPU and I/O weight so it stays
-# responsive when the host is under heavy load (e.g. npm builds, tests).
-# CPUWeight/IOWeight use cgroups v2 (default on Ubuntu 22+, Debian 11+).
-# On older systems without cgroups v2 these directives are silently ignored
-# — the service starts normally, just without the extra protection.
-CPUWeight=400
-IOWeight=400
-
 # Security
 NoNewPrivileges=true
 # PrivateTmp=true # Disabled to allow tmux session persistence
 
 [Install]
 WantedBy=multi-user.target
+EOF
+
+    # Resource priority drop-in. Kept in a separate file under
+    # muxterm.service.d/ rather than editing the unit file with sed.
+    # systemd merges drop-ins on top of the unit on daemon-reload, so future
+    # updates can rewrite this file freely without touching the main unit.
+    # CPUWeight/IOWeight use cgroups v2 (default on Ubuntu 22+, Debian 11+);
+    # on older systems they're silently ignored, no risk.
+    $USE_SUDO mkdir -p /etc/systemd/system/muxterm.service.d
+    $USE_SUDO tee /etc/systemd/system/muxterm.service.d/10-cpu-priority.conf > /dev/null << 'EOF'
+[Service]
+CPUWeight=400
+IOWeight=400
 EOF
 
     $USE_SUDO systemctl daemon-reload
