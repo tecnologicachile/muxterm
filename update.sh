@@ -950,11 +950,23 @@ main() {
             local DROPIN_CONTENT="[Service]
 CPUWeight=400
 IOWeight=400"
-            if command -v sudo &>/dev/null && \
-               sudo -n mkdir -p "$DROPIN_DIR" 2>/dev/null && \
-               echo "$DROPIN_CONTENT" | sudo -n tee "$DROPIN_FILE" >/dev/null 2>&1; then
-                sudo -n systemctl daemon-reload 2>/dev/null || true
-                print_color "✓ Drop-in installed: $DROPIN_FILE" "$GREEN"
+            # If we're root, no sudo needed (some minimal LXC/container images
+            # don't even have sudo installed). If we're not root, try sudo -n
+            # and fall back to a copy-paste instruction.
+            local SUDO_CMD=""
+            if [ "$(id -u)" = "0" ]; then
+                SUDO_CMD=""
+            elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+                SUDO_CMD="sudo -n"
+            fi
+            if [ -n "$SUDO_CMD" ] || [ "$(id -u)" = "0" ]; then
+                if $SUDO_CMD mkdir -p "$DROPIN_DIR" 2>/dev/null && \
+                   echo "$DROPIN_CONTENT" | $SUDO_CMD tee "$DROPIN_FILE" >/dev/null 2>&1; then
+                    $SUDO_CMD systemctl daemon-reload 2>/dev/null || true
+                    print_color "✓ Drop-in installed: $DROPIN_FILE" "$GREEN"
+                else
+                    print_color "⚠ Failed to write drop-in despite having privileges" "$YELLOW"
+                fi
             else
                 print_color "⚠ Could not install CPU/IO priority drop-in (sudo required). Run once:" "$YELLOW"
                 print_color "    sudo mkdir -p $DROPIN_DIR && \\" "$YELLOW"
