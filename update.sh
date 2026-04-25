@@ -933,6 +933,23 @@ main() {
             fi
         fi
 
+        # Auto-upgrade: add CPUWeight and IOWeight if missing.
+        # These give MuxTerm higher scheduling priority under heavy load
+        # (e.g. npm builds or test suites consuming 100% CPU/IO).
+        # Uses cgroups v2 — silently ignored on systems that don't support it,
+        # so there is no risk of breaking the service on older installs.
+        if [ -f "$SERVICE_FILE" ] && ! grep -q "^CPUWeight=" "$SERVICE_FILE"; then
+            print_color "Upgrading service file: adding CPUWeight=400 IOWeight=400..." "$YELLOW"
+            if command -v sudo &>/dev/null && \
+               sudo -n sed -i '/^KillMode=/a CPUWeight=400\nIOWeight=400' "$SERVICE_FILE" 2>/dev/null; then
+                sudo -n systemctl daemon-reload 2>/dev/null || true
+                print_color "✓ Service file upgraded (CPU/IO priority added)" "$GREEN"
+            else
+                print_color "⚠ Could not auto-add CPUWeight/IOWeight. Run manually:" "$YELLOW"
+                print_color "    sudo sed -i '/^KillMode=/a CPUWeight=400\\nIOWeight=400' $SERVICE_FILE && sudo systemctl daemon-reload" "$YELLOW"
+            fi
+        fi
+
         print_color "\nRestarting MuxTerm service..." "$YELLOW"
 
         # Restart using SIGKILL — works without sudo AND regardless of Restart= setting
