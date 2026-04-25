@@ -1099,7 +1099,7 @@ server.listen(PORT, async () => {
     // users who upgrade while having live sessions wouldn't otherwise see
     // conf-only changes until they start a new one.
     const opts = [
-      'window-size largest',
+      'window-size latest',
       'aggressive-resize off',
       'mode-style "bg=black,fg=black"',
       'message-style "bg=black,fg=black"',
