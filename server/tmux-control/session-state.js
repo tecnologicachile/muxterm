@@ -12,6 +12,8 @@
 
 'use strict';
 
+const { parseLayout } = require('./layout');
+
 class SessionState {
   constructor() {
     /** sessionId (e.g. "$0") → { id, name } */
@@ -93,12 +95,10 @@ class SessionState {
         const w = this.windows.get(event.windowId);
         if (w) {
           w.layout = event.visibleLayout || event.layout;
-          // Layout strings list panes — extract pane ids and seed the Set
-          // so we know which panes the window currently has. tmux layout
-          // format is "<checksum>,<dimensions>,<x>,<y>{,<id>|[<children>]}"
-          // — ids are appended only at the leaf split level. For our
-          // purposes we just record the raw layout; the pane list is
-          // populated from %output events as they arrive.
+          // Eagerly parse the layout string to a tree so clients (which
+          // can't import server modules) get structure, not a raw string.
+          try { w.layoutTree = parseLayout(w.layout); }
+          catch (_) { /* malformed mid-update — keep prior tree */ }
         }
         this._emit({ kind: 'layout-change', windowId: event.windowId, layout: w ? w.layout : null });
         break;
@@ -147,6 +147,7 @@ class SessionState {
         name: w.name,
         sessionId: w.sessionId,
         layout: w.layout,
+        layoutTree: w.layoutTree || null,
         paneIds: Array.from(w.panes),
       })),
       panes: Array.from(this.panes.values()),

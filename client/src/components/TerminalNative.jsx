@@ -82,9 +82,59 @@ function TerminalNative({ socket, sessionName, onExit, className }) {
       socket.emit('cm:resize', { sessionName, cols, rows });
     });
 
+    // Mobile touch scroll: xterm.js captures touch events on the canvas
+    // even though its touch-selection support is incomplete, so swipes
+    // started on text "stick" instead of scrolling the buffer. Take over
+    // the touch handling on the container: detect a vertical drag and
+    // call term.scrollLines() ourselves. A short tap (no movement) still
+    // bubbles down so xterm can focus normally.
+    const containerEl = containerRef.current;
+    let touchActive = null;       // { y0, lastY, scrolling }
+    const SCROLL_THRESHOLD_PX = 6;
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 1) { touchActive = null; return; }
+      touchActive = { y0: e.touches[0].clientY, lastY: e.touches[0].clientY, scrolling: false };
+    };
+    const onTouchMove = (e) => {
+      if (!touchActive || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      if (!touchActive.scrolling) {
+        if (Math.abs(y - touchActive.y0) > SCROLL_THRESHOLD_PX) {
+          touchActive.scrolling = true;
+        } else {
+          return;
+        }
+      }
+      // Convert pixel delta into line delta. Approximate cell height —
+      // xterm exposes _core._renderService._renderer._dimensions but
+      // it's private API. The rough constant works well enough.
+      const cellH = (term._core && term._core._renderService
+        && term._core._renderService.dimensions
+        && term._core._renderService.dimensions.css
+        && term._core._renderService.dimensions.css.cell
+        && term._core._renderService.dimensions.css.cell.height) || 18;
+      const dy = y - touchActive.lastY;
+      const lines = Math.round(-dy / cellH);
+      if (lines !== 0) {
+        term.scrollLines(lines);
+        touchActive.lastY = y;
+      }
+      e.preventDefault();
+    };
+    const onTouchEnd = () => { touchActive = null; };
+
+    containerEl.addEventListener('touchstart', onTouchStart, { passive: true });
+    containerEl.addEventListener('touchmove', onTouchMove, { passive: false });
+    containerEl.addEventListener('touchend', onTouchEnd, { passive: true });
+    containerEl.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
     return () => {
       inputDisposable.dispose();
       resizeDisposable.dispose();
+      containerEl.removeEventListener('touchstart', onTouchStart);
+      containerEl.removeEventListener('touchmove', onTouchMove);
+      containerEl.removeEventListener('touchend', onTouchEnd);
+      containerEl.removeEventListener('touchcancel', onTouchEnd);
       term.dispose();
     };
   }, [socket, sessionName]);
@@ -109,10 +159,15 @@ function TerminalNative({ socket, sessionName, onExit, className }) {
 
     const onOutput = ({ sessionName: sn, paneId, data }) => {
       if (sn !== sessionName) return;
+      // Adopt the first pane we see as the active one. The server only
+      // emits 'cm:structure' on structural changes (window-add etc), so
+      // a freshly-attached session that just streams output never sets
+      // activePaneId from a structure snapshot.
+      if (!activePaneRef.current) activePaneRef.current = paneId;
       // Multi-pane support comes later — for now, route everything to
       // the active pane. When we add splits in the UI, each pane will
       // have its own xterm instance.
-      if (paneId !== activePaneRef.current && activePaneRef.current) return;
+      if (paneId !== activePaneRef.current) return;
       const term = xtermRef.current;
       if (term) term.write(data);
     };
