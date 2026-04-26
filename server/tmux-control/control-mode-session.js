@@ -85,6 +85,17 @@ class ControlModeSession extends EventEmitter {
       this.emit('exit', { exitCode, signal });
     });
 
+    // Tmux only emits %layout-change when the layout actually changes —
+    // a freshly attached session that's been stable won't fire one, so
+    // the client never learns the structure. Force a synthetic refresh:
+    // after a short delay, ask tmux to redraw the client. The redraw
+    // path emits layout-change for every visible window.
+    setTimeout(() => {
+      if (this._tmux && !this._stopped) {
+        try { this._tmux.write('refresh-client -S\n'); } catch (_) {}
+      }
+    }, 250);
+
     return this;
   }
 

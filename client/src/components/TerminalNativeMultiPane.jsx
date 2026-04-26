@@ -144,14 +144,27 @@ function TerminalNativeMultiPane({ socket, sessionName, onExit }) {
 
   // Server protocol: cm:structure / cm:attached carries snapshot. The
   // layout tree is already parsed server-side in session-state.js, so
-  // we just consume snapshot.windows[i].layoutTree directly.
+  // we just consume snapshot.windows[i].layoutTree directly. If tmux
+  // didn't emit a layout-change yet (common on a freshly-attached
+  // stable session), we synthesize a single-pane fallback so the user
+  // can see and use the terminal while we wait for richer structure.
   const applySnapshot = (snapshot) => {
     let activeWindowId = snapshot.activeWindowId;
     if (!activeWindowId && snapshot.windows.length > 0) {
       activeWindowId = snapshot.windows[0].id;
     }
     const w = snapshot.windows.find(x => x.id === activeWindowId);
-    if (w && w.layoutTree) setLayout(w.layoutTree);
+    if (w && w.layoutTree) {
+      setLayout(w.layoutTree);
+    } else if (snapshot.panes && snapshot.panes.length > 0) {
+      // No layout yet but we know about at least one pane. Fall back
+      // to a single-pane synthetic tree.
+      const firstPane = snapshot.panes[0];
+      setLayout({ type: 'pane', id: firstPane.id, cols: 80, rows: 24, x: 0, y: 0 });
+    } else if (snapshot.activePaneId) {
+      // We don't even have a pane registered yet, but we know its id.
+      setLayout({ type: 'pane', id: snapshot.activePaneId, cols: 80, rows: 24, x: 0, y: 0 });
+    }
     if (snapshot.activePaneId) setActivePaneId(snapshot.activePaneId);
   };
 
@@ -199,8 +212,16 @@ function TerminalNativeMultiPane({ socket, sessionName, onExit }) {
     const onOutput = ({ sessionName: sn, paneId, data }) => {
       if (sn !== sessionName) return;
       const api = panesRef.current.get(paneId);
-      if (api) api.write(data);
-      else recentOutputBufferedRef.current.push({ paneId, data });
+      if (api) {
+        api.write(data);
+      } else {
+        recentOutputBufferedRef.current.push({ paneId, data });
+        // If we still have no layout, force a single-pane fallback
+        // around the pane that's actually emitting data. This unblocks
+        // the "Connecting…" placeholder when tmux hasn't emitted a
+        // layout-change yet.
+        setLayout(prev => prev || ({ type: 'pane', id: paneId, cols: 80, rows: 24, x: 0, y: 0 }));
+      }
     };
     const onStructure = ({ sessionName: sn, snapshot }) => {
       if (sn !== sessionName) return;
