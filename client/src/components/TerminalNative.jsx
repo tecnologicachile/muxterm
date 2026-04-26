@@ -49,6 +49,12 @@ function TerminalNative({ socket, sessionName, onExit, className }) {
       scrollback: 50000,
       theme: DEFAULT_THEME,
       allowProposedApi: true,
+      // Treat incoming '\n' as '\r\n'. tmux (and many shells) emit lone
+      // line-feeds when redrawing — strict VT100 leaves the cursor in
+      // the same column, producing a cascading-to-the-right effect on
+      // simple commands like ls/pwd/date. ttyd's bundled xterm sets
+      // this; we have to mirror it here.
+      convertEol: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -129,6 +135,21 @@ function TerminalNative({ socket, sessionName, onExit, className }) {
       if (scrollback) term.write(scrollback);
       attachedRef.current = true;
       setStatus('connected');
+      // Re-sync size with the server NOW that the container has had
+      // a chance to lay out (the very first fit() at mount time can
+      // run while CSS dimensions are still settling, leaving tmux at
+      // a bogus 77×18 for the lifetime of the session). Fitting again
+      // and emitting a fresh resize fixes top/htop/vim wrap glitches.
+      setTimeout(() => {
+        try {
+          const fit = fitRef.current;
+          if (fit) fit.fit();
+          // term.cols/rows are now whatever the post-layout fit gave us;
+          // emit even if unchanged because tmux on the other end may have
+          // been started at our stale handshake size.
+          socket.emit('nt:resize', { sessionName, cols: term.cols, rows: term.rows });
+        } catch (_) {}
+      }, 250);
     };
 
     const onData = ({ sessionName: sn, bytes }) => {
