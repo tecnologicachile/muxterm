@@ -85,18 +85,49 @@ class ControlModeSession extends EventEmitter {
       this.emit('exit', { exitCode, signal });
     });
 
-    // Tmux only emits %layout-change when the layout actually changes —
-    // a freshly attached session that's been stable won't fire one, so
-    // the client never learns the structure. Force a synthetic refresh:
-    // after a short delay, ask tmux to redraw the client. The redraw
-    // path emits layout-change for every visible window.
-    setTimeout(() => {
-      if (this._tmux && !this._stopped) {
-        try { this._tmux.write('refresh-client -S\n'); } catch (_) {}
-      }
-    }, 250);
+    // Tmux only emits %window-add and %layout-change when something
+    // actually changes — reattaching to an existing session never fires
+    // them, so the client has no idea what windows/panes already exist.
+    // Bootstrap the state by querying tmux out-of-band (regular CLI on
+    // the same socket), then synthesize the structural events ourselves.
+    setTimeout(() => this._bootstrapStructure(), 250);
 
     return this;
+  }
+
+  _bootstrapStructure() {
+    if (this._stopped) return;
+    const { execSync } = require('node:child_process');
+    const s = String(this.sessionName).replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const sock = String(this.socket).replace(/[^a-zA-Z0-9_\-]/g, '_');
+    try {
+      // List windows of this session: id<tab>layout per line.
+      const out = execSync(
+        `tmux -L ${sock} list-windows -t ${s} -F '#{window_id}\t#{window_layout}'`,
+        { timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] }
+      ).toString();
+      for (const line of out.split('\n')) {
+        const [id, layout] = line.split('\t');
+        if (!id || !layout) continue;
+        // Synthesize the events the parser would produce.
+        this._onEvent({ type: 'window-add', windowId: id });
+        this._onEvent({ type: 'layout-change', windowId: id, layout, visibleLayout: layout, flags: null });
+      }
+      // Active pane.
+      try {
+        const ap = execSync(
+          `tmux -L ${sock} display-message -p -t ${s} '#{pane_id}'`,
+          { timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'] }
+        ).toString().trim();
+        if (ap) {
+          this.state.activePaneId = ap;
+          this.emit('structure', this.state.snapshot());
+        }
+      } catch (_) {}
+    } catch (e) {
+      // tmux command failed — just emit a refresh as fallback.
+      try { this._tmux && this._tmux.write('refresh-client -S\n'); } catch (_) {}
+    }
   }
 
   _onEvent(event) {
