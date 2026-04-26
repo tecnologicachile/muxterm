@@ -146,20 +146,12 @@ function TerminalNativeMultiPane({ socket, sessionName, onExit }) {
   // layout tree is already parsed server-side in session-state.js, so
   // we just consume snapshot.windows[i].layoutTree directly.
   const applySnapshot = (snapshot) => {
-      activeWindowId: snapshot.activeWindowId,
-      activePaneId: snapshot.activePaneId,
-      windowsCount: snapshot.windows.length,
-      windows: snapshot.windows.map(w => ({ id: w.id, layout: w.layout, hasTree: !!w.layoutTree, paneIds: w.paneIds })),
-    }));
     let activeWindowId = snapshot.activeWindowId;
     if (!activeWindowId && snapshot.windows.length > 0) {
       activeWindowId = snapshot.windows[0].id;
     }
     const w = snapshot.windows.find(x => x.id === activeWindowId);
-    if (w && w.layoutTree) {
-      setLayout(w.layoutTree);
-    } else {
-    }
+    if (w && w.layoutTree) setLayout(w.layoutTree);
     if (snapshot.activePaneId) setActivePaneId(snapshot.activePaneId);
   };
 

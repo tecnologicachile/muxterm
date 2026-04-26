@@ -65,8 +65,7 @@ function TestNative() {
         </Box>
       )}
 
-      <Box sx={{ color: '#0ff', fontSize: '11px', mb: 1 }}>
-      <Box data-test-mode={mode} data-test-active={active ? 'yes' : 'no'} sx={{ flex: 1, minHeight: 0, border: '1px solid #333' }}>
+      <Box sx={{ flex: 1, minHeight: 0, border: '1px solid #333' }}>
         {active && socket && mode === 'single' && (
           <TerminalNative
             socket={socket}
