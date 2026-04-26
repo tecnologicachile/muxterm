@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import TerminalView from './components/TerminalView';
+import TestNative from './components/TestNative';
 import { AuthProvider, useAuth } from './utils/AuthContext';
 import { SocketProvider } from './utils/SocketContext';
 import { startDiagLogger } from './utils/diagLogger';
@@ -36,6 +37,11 @@ function AppContent() {
       {/* Legacy routes redirect to workspace */}
       <Route path="/sessions" element={<Navigate to={user ? "/workspace" : "/login"} />} />
       <Route path="/terminal/:sessionId" element={<Navigate to={user ? "/workspace" : "/login"} />} />
+      {/* EXPERIMENTAL: native xterm.js (Option A) test page */}
+      <Route
+        path="/test/native"
+        element={user ? <TestNative /> : <Navigate to="/login" />}
+      />
       <Route
         path="/"
         element={<Navigate to={user ? "/workspace" : "/login"} />}

@@ -565,6 +565,21 @@ setInterval(() => {
   } catch (e) {}
 }, 800);
 
+// ─── Native-terminal bridge (Option A) ──────────────────────────────
+// xterm.js direct in the React client + node-pty here, replacing ttyd
+// for terminals that benefit from native scroll. Coexists with ttyd
+// (used for SSH-direct, RDP, VNC, SFTP). Reachable on 'nt:*' socket
+// events from the client.
+const { attachToSocketIO: attachNativeTerminalBridge } = require('./native-terminal/ws-bridge');
+{
+  const tmuxConfPath = path.join(__dirname, '..', '.tmux.webssh.conf');
+  attachNativeTerminalBridge(io, {
+    socket: 'muxterm',
+    confPath: fs.existsSync(tmuxConfPath) ? tmuxConfPath : null,
+  });
+}
+// ─────────────────────────────────────────────────────────────────────
+
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
 
