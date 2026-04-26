@@ -19,6 +19,12 @@
  *     'nt:data'     { sessionName, bytes }
  *     'nt:exit'     { sessionName, exitCode }
  *     'nt:error'    { sessionName, message }
+ *
+ * Multi-user safety: the wire-level `sessionName` is opaque from the
+ * client (any string the client picks, typically the panel UUID). The
+ * server transparently namespaces it to `mxt-<userId>-<sessionName>`
+ * before touching tmux or the internal maps. Clients can never reach
+ * another user's tmux session even if they guess the panel UUID.
  */
 
 'use strict';
@@ -67,9 +73,25 @@ class NativeTerminalManager {
     }
   }
 
+  /**
+   * Translate the client's opaque sessionName into the per-user tmux
+   * name. Returns null if the input is invalid.
+   */
+  _resolve(socket, sessionName) {
+    const userId = socket && socket.userId;
+    if (!userId) return null;
+    if (typeof sessionName !== 'string') return null;
+    // Allow alphanumerics, dash, underscore. Anything weirder is rejected
+    // so the namespacing can't be escaped by a crafted payload.
+    if (!/^[A-Za-z0-9_-]+$/.test(sessionName)) return null;
+    if (sessionName.length > 128) return null;
+    return `mxt-${userId}-${sessionName}`;
+  }
+
   async attach(socket, { sessionName, cols, rows }) {
-    if (!sessionName) {
-      socket.emit('nt:error', { sessionName, message: 'sessionName required' });
+    const resolved = this._resolve(socket, sessionName);
+    if (!resolved) {
+      socket.emit('nt:error', { sessionName, message: 'invalid or unauthenticated session' });
       return;
     }
 
@@ -77,47 +99,60 @@ class NativeTerminalManager {
     //    the live attach to avoid duplicates: capture-pane reads what
     //    tmux already has; the live attach is what comes next.
     const scrollback = await preload({
-      sessionName,
+      sessionName: resolved,
       socket: this.socket,
     });
 
     // 2. Spawn or reuse the AttachSession.
-    this._getOrCreate(sessionName, cols || 80, rows || 24);
-    this._subs.get(sessionName).add(socket);
+    this._getOrCreate(resolved, cols || 80, rows || 24);
+    this._subs.get(resolved).add(socket);
 
     // 3. Send the scrollback to this client only. Live data follows.
+    //    The wire-level sessionName stays opaque (we echo what the
+    //    client sent, not the internal name).
     socket.emit('nt:attached', { sessionName, scrollback });
   }
 
   detach(socket, sessionName) {
-    const subs = this._subs.get(sessionName);
+    // Accept either the raw client name (resolve again) or the already-
+    // resolved name (used by detachAll, which iterates the map keys).
+    const resolved = sessionName.startsWith('mxt-')
+      ? sessionName
+      : this._resolve(socket, sessionName);
+    if (!resolved) return;
+    const subs = this._subs.get(resolved);
     if (subs) subs.delete(socket);
     // Don't kill the AttachSession — others might still be using it,
-    // and even if not, tmux session keeps running anyway. The
+    // and even if not, tmux session keeps living anyway. The
     // AttachSession will get garbage collected when tmux client exits.
     if (subs && subs.size === 0) {
-      const s = this._sessions.get(sessionName);
+      const s = this._sessions.get(resolved);
       if (s) {
         s.stop();
-        this._sessions.delete(sessionName);
+        this._sessions.delete(resolved);
       }
-      this._subs.delete(sessionName);
+      this._subs.delete(resolved);
     }
   }
 
   detachAll(socket) {
-    for (const sessionName of Array.from(this._subs.keys())) {
-      this.detach(socket, sessionName);
+    for (const resolved of Array.from(this._subs.keys())) {
+      const subs = this._subs.get(resolved);
+      if (subs && subs.has(socket)) this.detach(socket, resolved);
     }
   }
 
-  input(sessionName, data) {
-    const s = this._sessions.get(sessionName);
+  input(socket, sessionName, data) {
+    const resolved = this._resolve(socket, sessionName);
+    if (!resolved) return;
+    const s = this._sessions.get(resolved);
     if (s) s.write(data);
   }
 
-  resize(sessionName, cols, rows) {
-    const s = this._sessions.get(sessionName);
+  resize(socket, sessionName, cols, rows) {
+    const resolved = this._resolve(socket, sessionName);
+    if (!resolved) return;
+    const s = this._sessions.get(resolved);
     if (s) s.resize(cols, rows);
   }
 }
@@ -136,10 +171,10 @@ function attachToSocketIO(io, opts = {}) {
       });
     });
     socket.on('nt:input', ({ sessionName, data }) => {
-      if (sessionName != null && data != null) manager.input(sessionName, data);
+      if (sessionName != null && data != null) manager.input(socket, sessionName, data);
     });
     socket.on('nt:resize', ({ sessionName, cols, rows }) => {
-      if (sessionName != null) manager.resize(sessionName, cols, rows);
+      if (sessionName != null) manager.resize(socket, sessionName, cols, rows);
     });
     socket.on('nt:detach', ({ sessionName }) => {
       if (sessionName != null) manager.detach(socket, sessionName);

@@ -1231,15 +1231,28 @@ function TerminalView() {
           <SpecialKeysToolbar
             panelType={(() => { const ap = panels.find(p => p.id === activePanel); return ap ? ap.type || 'local' : 'local'; })()}
             onKeyPress={(seq) => {
-              if (socket && activePanel) {
-                const panel = panels.find(p => p.id === activePanel);
-                if (panel && panel.terminalId) {
-                  if (seq === 'scroll-up' || seq === 'scroll-down') {
-                    socket.emit('terminal-scroll', { terminalId: panel.terminalId, direction: seq === 'scroll-up' ? 'up' : 'down' });
-                  } else {
-                    socket.emit('send-keys', { terminalId: panel.terminalId, keys: seq });
-                  }
+              if (!socket || !activePanel) return;
+              const panel = panels.find(p => p.id === activePanel);
+              if (!panel) return;
+              // Native (local/tmux) panels: route through the new
+              // node-pty bridge. They have no `terminalId` from the
+              // legacy ttyd flow — we use `panel.id` as the bridge's
+              // opaque sessionName (server scopes it per-user).
+              const isNative = (!panel.type || panel.type === 'local') && !panel.sshConnectionId;
+              if (isNative) {
+                if (seq === 'scroll-up' || seq === 'scroll-down') {
+                  // xterm.js handles wheel/swipe natively; the on-screen
+                  // scroll arrows from ttyd-era are gone for native panels.
+                  return;
                 }
+                socket.emit('nt:input', { sessionName: panel.id, data: seq });
+                return;
+              }
+              if (!panel.terminalId) return;
+              if (seq === 'scroll-up' || seq === 'scroll-down') {
+                socket.emit('terminal-scroll', { terminalId: panel.terminalId, direction: seq === 'scroll-up' ? 'up' : 'down' });
+              } else {
+                socket.emit('send-keys', { terminalId: panel.terminalId, keys: seq });
               }
             }}
             onGuacKey={(keysym, mods) => {

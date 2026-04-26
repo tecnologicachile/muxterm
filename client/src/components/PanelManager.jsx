@@ -13,8 +13,16 @@ import {
 } from '@mui/icons-material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
+import TerminalNative from './TerminalNative';
 import RdpViewer from './RdpViewer';
 import SftpViewer from './SftpViewer';
+
+// Local/tmux panels render through TerminalNative (xterm.js + node-pty
+// directly). SSH-direct, RDP, VNC and SFTP keep using their existing
+// components — they have their own server-side machinery (ttyd-with-ssh,
+// guacd, sftp browser) that the native bridge doesn't replace.
+const isNativePanel = (panel) =>
+  panel && (!panel.type || panel.type === 'local') && !panel.sshConnectionId;
 import LocalFileBrowser from './LocalFileBrowser';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
@@ -203,7 +211,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
 
   const renderTerminal = (panel) => {
     const isActive = panel.id === activePanel;
-    logger.debug(`[PanelManager] Rendering terminal for panel ${panel.id}, terminalId: ${panel.terminalId}, active: ${isActive}`);
+    const isNative = isNativePanel(panel);
+    logger.debug(`[PanelManager] Rendering terminal for panel ${panel.id}, terminalId: ${panel.terminalId}, active: ${isActive}, native: ${isNative}`);
     
     return (
       <Box
@@ -305,8 +314,10 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-            {/* Scroll buttons */}
-            {panel.terminalId && (
+            {/* Scroll buttons — hidden for native panels: xterm.js
+                handles wheel and touch scroll natively, the buttons
+                were a ttyd-iframe workaround. */}
+            {panel.terminalId && !isNative && (
               <>
                 <Box
                   data-no-drag
@@ -504,6 +515,13 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               panelId={panel.id}
               onActivityChange={handleActivityChange}
               displayMode={panel.displayMode || 'fit'}
+            />
+          ) : isNative ? (
+            <TerminalNative
+              key={`native-${panel.id}`}
+              socket={socket}
+              sessionName={panel.id}
+              onExit={() => onPanelClose(panel.id)}
             />
           ) : (
             <Terminal
