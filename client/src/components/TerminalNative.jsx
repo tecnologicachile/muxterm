@@ -21,6 +21,8 @@ import { Box } from '@mui/material';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
+import { WebglAddon } from 'xterm-addon-webgl';
+import { CanvasAddon } from 'xterm-addon-canvas';
 import 'xterm/css/xterm.css';
 
 const DEFAULT_THEME = {
@@ -60,10 +62,26 @@ function TerminalNative({ socket, sessionName, onExit, className }) {
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
+    // Default xterm.js renderer is the DOM renderer — extremely slow,
+    // chars take ~1.5s to paint and the cursor lags behind. Try WebGL
+    // first (best perf), fall back to Canvas, fall back to DOM only if
+    // both fail. WebGL needs to be loaded AFTER term.open() because it
+    // needs the canvas to be in the DOM.
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => { try { webgl.dispose(); } catch (_) {} });
+      term.loadAddon(webgl);
+    } catch (_) {
+      try { term.loadAddon(new CanvasAddon()); } catch (__) {}
+    }
     try { fit.fit(); } catch (_) {}
 
     xtermRef.current = term;
     fitRef.current = fit;
+    // Expose for Playwright/E2E tests: read the buffer via the canonical
+    // xterm.js API instead of the DOM (the WebGL renderer doesn't keep
+    // .xterm-rows in sync). Production code never references this.
+    if (typeof window !== 'undefined') window.__nativeTerm = term;
 
     // Forward keystrokes to the PTY.
     const dInput = term.onData((data) => {
@@ -135,19 +153,19 @@ function TerminalNative({ socket, sessionName, onExit, className }) {
       if (scrollback) term.write(scrollback);
       attachedRef.current = true;
       setStatus('connected');
-      // Re-sync size with the server NOW that the container has had
-      // a chance to lay out (the very first fit() at mount time can
-      // run while CSS dimensions are still settling, leaving tmux at
-      // a bogus 77×18 for the lifetime of the session). Fitting again
-      // and emitting a fresh resize fixes top/htop/vim wrap glitches.
+      // Re-fit AFTER the container has had time to lay out. Only emit
+      // a resize if cols/rows actually changed — every SIGWINCH at the
+      // server triggers tmux to redraw the viewport, which would echo
+      // a fresh prompt and end up looking like duplicate output.
       setTimeout(() => {
         try {
           const fit = fitRef.current;
-          if (fit) fit.fit();
-          // term.cols/rows are now whatever the post-layout fit gave us;
-          // emit even if unchanged because tmux on the other end may have
-          // been started at our stale handshake size.
-          socket.emit('nt:resize', { sessionName, cols: term.cols, rows: term.rows });
+          if (!fit) return;
+          const before = { cols: term.cols, rows: term.rows };
+          fit.fit();
+          if (term.cols !== before.cols || term.rows !== before.rows) {
+            socket.emit('nt:resize', { sessionName, cols: term.cols, rows: term.rows });
+          }
         } catch (_) {}
       }, 250);
     };

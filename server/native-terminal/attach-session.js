@@ -102,7 +102,13 @@ class AttachSession extends EventEmitter {
     if (this._stopped) return;
     this._stopped = true;
     if (this._pty) {
-      try { this._pty.kill(); } catch (_) {}
+      // SIGTERM first so the tmux client gets a chance to flush, then
+      // SIGKILL for the rare case it ignored TERM (zombies left over
+      // would keep showing in `tmux list-clients` and pin the window
+      // to their old size).
+      try { this._pty.kill('SIGTERM'); } catch (_) {}
+      const pty = this._pty;
+      setTimeout(() => { try { pty.kill('SIGKILL'); } catch (_) {} }, 200);
       this._pty = null;
     }
   }

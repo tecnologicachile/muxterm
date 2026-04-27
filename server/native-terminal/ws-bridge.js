@@ -42,7 +42,14 @@ class NativeTerminalManager {
 
   _getOrCreate(sessionName, cols, rows) {
     let s = this._sessions.get(sessionName);
-    if (s && s.isAlive()) return s;
+    if (s && s.isAlive()) {
+      // Existing tmux client — bring it up to the new browser's size
+      // immediately. Without this, a fresh subscriber inherits whatever
+      // size the previous (possibly mobile) client had pinned, even if
+      // its own viewport is much larger.
+      try { s.resize(cols, rows); } catch (_) {}
+      return s;
+    }
 
     s = new AttachSession({
       sessionName,
