@@ -73,6 +73,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // Terminal capture modal (for mobile copy/paste)
   const [captureContent, setCaptureContent] = useState(null);
   const [captureLoading, setCaptureLoading] = useState(false);
+  const capturePreRef = useRef(null);
 
   const captureTerminal = (terminalId) => {
     if (!socket || !terminalId) return;
@@ -83,6 +84,19 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         socket.off('terminal-captured', handler);
         setCaptureContent(data.content || '(empty)');
         setCaptureLoading(false);
+        // Auto-scroll popup to the section the user was looking at in copy-mode.
+        // scrollPosition is tmux lines scrolled up from the bottom.
+        // +2 compensates for the prompt line + minor tmux offset.
+        if (data.scrollPosition > 0) {
+          const capturedLines = (data.content || '').split('\n').length;
+          const targetIdx = Math.max(0, capturedLines - data.scrollPosition + 2);
+          setTimeout(() => {
+            if (capturePreRef.current) {
+              const lineH = 12 * 1.4; // fontSize * lineHeight
+              capturePreRef.current.scrollTop = targetIdx * lineH;
+            }
+          }, 150);
+        }
       }
     };
     socket.on('terminal-captured', handler);
@@ -785,15 +799,28 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         <DialogTitle sx={{ color: '#ccc', fontSize: '14px', borderBottom: '1px solid #333', py: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Terminal Content</span>
           <Button size="small" sx={{ fontSize: '11px', textTransform: 'none', color: '#00ff00' }}
-            onClick={() => {
+            onClick={async () => {
               if (!captureContent) return;
-              const ta = document.createElement('textarea');
-              ta.value = captureContent;
-              ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
-              document.body.appendChild(ta);
-              ta.focus(); ta.select();
-              document.execCommand('copy');
-              document.body.removeChild(ta);
+              // Modern clipboard API works on mobile + HTTPS; fall back to
+              // execCommand for ancient browsers. execCommand is deprecated
+              // and silently blocked on mobile, which was why the button
+              // appeared to do nothing on a phone.
+              try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  await navigator.clipboard.writeText(captureContent);
+                  if (navigator.vibrate) navigator.vibrate(20);
+                  return;
+                }
+              } catch (_) {}
+              try {
+                const ta = document.createElement('textarea');
+                ta.value = captureContent;
+                ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+                document.body.appendChild(ta);
+                ta.focus(); ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+              } catch (_) {}
             }}>
             Copy all
           </Button>
@@ -803,12 +830,16 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             <Box sx={{ p: 3, textAlign: 'center', color: '#888' }}>Capturing...</Box>
           ) : (
             <pre
+              ref={capturePreRef}
               style={{
                 margin: 0, padding: '12px', color: '#ccc', fontSize: '12px',
                 fontFamily: '"Fira Code", monospace', backgroundColor: '#000',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'auto',
-                userSelect: 'text', WebkitUserSelect: 'text', maxHeight: '60vh',
-                lineHeight: '1.4'
+                userSelect: 'text', WebkitUserSelect: 'text',
+                MozUserSelect: 'text', msUserSelect: 'text',
+                WebkitTouchCallout: 'default',
+                touchAction: 'auto',
+                maxHeight: '60vh', lineHeight: '1.4', cursor: 'text'
               }}
             >{captureContent}</pre>
           )}

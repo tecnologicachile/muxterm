@@ -224,6 +224,112 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
                       const container = iframeRef.current?.closest('[data-panel-id]');
                       if (container) container.click();
                     });
+
+                    // Touch → wheel bridge for mobile scroll. We use BOTH a
+                    // synthetic WheelEvent AND socket terminal-scroll events
+                    // simultaneously. For main-screen panes (Claude Code) the
+                    // WheelEvent is consumed by tmux copy-mode and the socket
+                    // events are harmless duplicates. For alternate-screen
+                    // panes (OpenCode, vim) the WheelEvent may be ignored, but
+                    // the socket events trigger SGR mouse escapes in the server.
+                    let __lastY = null;
+                    let __pressTimer = null;
+                    let __movedSinceStart = false;
+                    let __pendingDeltas = 0;
+                    let __flushTimer = null;
+                    const __flushScroll = () => {
+                      __flushTimer = null;
+                      if (__pendingDeltas === 0) return;
+                      const dir = __pendingDeltas > 0 ? 'up' : 'down';
+                      const steps = Math.min(Math.abs(__pendingDeltas), 8);
+                      __pendingDeltas = 0;
+                      const tid = terminalId;
+                      if (socket && tid) {
+                        for (let s = 0; s < steps; s++)
+                          socket.emit('terminal-scroll', { terminalId: tid, direction: dir, step: 'line' });
+                      }
+                    };
+                    const __triggerLongPressCopy = () => {
+                      try {
+                        const panelEl = iframeRef.current && iframeRef.current.closest('[data-panel-id]');
+                        if (!panelEl) return;
+                        const copyBtn = panelEl.querySelector('button[title*="Copy terminal"]');
+                        if (copyBtn) {
+                          copyBtn.click();
+                          if (navigator.vibrate) navigator.vibrate(40);
+                        }
+                      } catch (_) {}
+                    };
+                    doc.addEventListener('touchstart', (e) => {
+                      if (e.touches.length !== 1) { __lastY = null; return; }
+                      __lastY = e.touches[0].clientY;
+                      __movedSinceStart = false;
+                      if (__pressTimer) clearTimeout(__pressTimer);
+                      __pressTimer = setTimeout(() => {
+                        __pressTimer = null;
+                        if (!__movedSinceStart) __triggerLongPressCopy();
+                      }, 800);
+                    }, { passive: true });
+                    doc.addEventListener('touchmove', (e) => {
+                      if (e.touches.length !== 1 || __lastY === null) return;
+                      const y = e.touches[0].clientY;
+                      const dy = y - __lastY;
+                      __lastY = y;
+                      if (Math.abs(dy) > 2) {
+                        __movedSinceStart = true;
+                        if (__pressTimer) { clearTimeout(__pressTimer); __pressTimer = null; }
+                      }
+                      if (Math.abs(dy) < 2) return;
+                      // WheelEvent (fast path for main screen)
+                      const target = doc.querySelector('.xterm-viewport') || doc.querySelector('.xterm') || doc.body;
+                      try {
+                        target.dispatchEvent(new WheelEvent('wheel', {
+                          deltaY: -dy, bubbles: true, cancelable: true
+                        }));
+                      } catch (_) {}
+                      // Socket scroll (backup for alternate screen)
+                      __pendingDeltas += dy;
+                      if (!__flushTimer) __flushTimer = setTimeout(__flushScroll, 40);
+                      e.preventDefault();
+                    }, { passive: false });
+                    doc.addEventListener('touchend', () => {
+                      __lastY = null;
+                      if (__pressTimer) { clearTimeout(__pressTimer); __pressTimer = null; }
+                    }, { passive: true });
+                    doc.addEventListener('touchcancel', () => {
+                      __lastY = null;
+                      if (__pressTimer) { clearTimeout(__pressTimer); __pressTimer = null; }
+                    }, { passive: true });
+
+                    // OSC 52 handler — wire tmux's "send selection" escape
+                    // (]52;c;<base64>) directly to the OS clipboard.
+                    // ttyd's bundled xterm.js does not register OSC 52 by
+                    // default, so we register one as soon as the iframe's
+                    // `window.term` becomes available. With this hooked,
+                    // every drag-without-Shift selection ends up in the
+                    // user's clipboard automatically.
+                    const __wireOsc52 = (attempt) => {
+                      try {
+                        const w = iframeRef.current && iframeRef.current.contentWindow;
+                        const term = w && w.term;
+                        if (term && term.parser && term.parser.registerOscHandler) {
+                          term.parser.registerOscHandler(52, (data) => {
+                            try {
+                              const m = String(data).match(/^[a-z01-7]*;(.*)$/i);
+                              if (!m) return false;
+                              const txt = atob(m[1]);
+                              if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(txt).catch(() => {});
+                              }
+                            } catch (_) {}
+                            return true;
+                          });
+                          return;
+                        }
+                      } catch (_) {}
+                      if (attempt < 20) setTimeout(() => __wireOsc52(attempt + 1), 250);
+                    };
+                    __wireOsc52(0);
                   }
                 } catch(e) {}
               }}

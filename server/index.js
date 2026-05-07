@@ -944,11 +944,29 @@ io.on('connection', (socket) => {
     try {
       const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId && terminal.tmuxSessionName) {
-        const { exec } = require('child_process');
+        const { exec, execSync: _es } = require('child_process');
         const sess = terminal.tmuxSessionName;
         const step = data.step === 'line' ? 'line' : 'page';
+
+        // Check if pane is in alternate screen (opencode, vim, htop...).
+        // tmux can't enter copy-mode there — emit SGR mouse wheel escapes.
+        let inAlternate = false;
+        try {
+          inAlternate = _es(
+            `tmux -L muxterm display-message -p -t ${sess} '#{alternate_on}'`,
+            { encoding: 'utf8', timeout: 1000 }
+          ).trim() === '1';
+        } catch (_) {}
+
         let cmd = null;
-        if (data.direction === 'up') {
+        if (data.direction === 'exit') {
+          cmd = `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`;
+        } else if (inAlternate) {
+          const escCode = data.direction === 'up' ? '64' : '65';
+          const repeat = step === 'page' ? 5 : 1;
+          const seq = String.fromCharCode(27) + `[<${escCode};10;10M`;
+          cmd = `for _ in $(seq 1 ${repeat}); do printf '%b' '${seq}' | tmux -L muxterm load-buffer - && tmux -L muxterm paste-buffer -d -t ${sess}; done`;
+        } else if (data.direction === 'up') {
           const key = step === 'line' ? 'scroll-up' : 'page-up';
           cmd = `tmux -L muxterm copy-mode -t ${sess} 2>/dev/null; tmux -L muxterm send-keys -t ${sess} -X ${key}`;
         } else if (data.direction === 'down') {
@@ -958,8 +976,6 @@ io.on('connection', (socket) => {
               + `if [ -z "$pos" ] || [ "$pos" = "0" ]; then `
               +   `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null; `
               + `fi`;
-        } else if (data.direction === 'exit') {
-          cmd = `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`;
         }
         if (cmd) exec(cmd, { timeout: 2000 }, () => {});
       }
@@ -968,17 +984,34 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Capture terminal screen content via tmux capture-pane
+  // Capture terminal screen content via tmux capture-pane.
+  // Captures the tail of the scrollback (last 5000 lines) and the current
+  // scroll position so the client can auto-scroll the popup.
   socket.on('capture-terminal', async (data) => {
     try {
       const terminal = ttydManager.getTerminal(data.terminalId);
       if (terminal && terminal.userId === socket.userId && terminal.tmuxSessionName) {
         const { execSync } = require('child_process');
+        const sess = terminal.tmuxSessionName;
         const content = execSync(
-          `tmux -L muxterm capture-pane -t ${terminal.tmuxSessionName} -p`,
+          `tmux -L muxterm capture-pane -t ${sess} -p -J -S -5000`,
           { encoding: 'utf8' }
         );
-        socket.emit('terminal-captured', { terminalId: data.terminalId, content });
+        let scrollPos = 0, paneH = 0;
+        try {
+          scrollPos = parseInt(execSync(
+            `tmux -L muxterm display-message -p -t ${sess} '#{scroll_position}'`,
+            { encoding: 'utf8', timeout: 1000 }
+          ).trim(), 10) || 0;
+          paneH = parseInt(execSync(
+            `tmux -L muxterm display-message -p -t ${sess} '#{pane_height}'`,
+            { encoding: 'utf8', timeout: 1000 }
+          ).trim(), 10) || 0;
+        } catch (_) {}
+        socket.emit('terminal-captured', {
+          terminalId: data.terminalId, content,
+          scrollPosition: scrollPos, paneHeight: paneH
+        });
       }
     } catch (error) {
       socket.emit('terminal-captured', { terminalId: data.terminalId, content: '', error: error.message });
