@@ -163,3 +163,32 @@ Se aplicó el fix en producción (build `index-5ec9f998.js`). El usuario probó 
 ### Conclusión parcial
 
 El problema NO está en cómo ocultar los PanelManagers. Está en que **xterm.js + ttyd dentro de un iframe no tolera ningún tipo de ocultamiento o reposicionamiento** sin perder su estado de renderizado. La opción más viable ahora es la idea #3 del reporte original: **mover la conexión WebSocket/ttyd a un store global** y tratar al componente Terminal como una "vista" intercambiable de una conexión persistente.
+
+## Propuesta de Refactorización (Desacoplar conexión WebSocket de la vista)
+
+Dado que las soluciones CSS fallaron debido a las limitaciones del canvas de `xterm.js` dentro del iframe, la refactorización arquitectónica para mantener viva la conexión WebSocket (ttyd) independientemente del componente React debería seguir estos lineamientos:
+
+### 1. Estado Global para Conexiones
+Crear un estado global (usando Zustand o Context) para manejar las conexiones activas:
+- **`useTerminalStore`**: Un store que guarde un diccionario o mapa de sesiones activas. 
+- La estructura podría ser: `terminalId -> { wsConnection, ptyStream, terminalState }`.
+
+### 2. Ciclo de vida del WebSocket fuera del Iframe
+Actualmente, el iframe se conecta directamente a ttyd. Para desacoplar esto:
+- **En el cliente (Frontend)**: El socket debe inicializarse a nivel global, no dentro del `Terminal.jsx` ni del iframe. Cuando se crea un nuevo panel de terminal, el `TerminalStore` abre la conexión WebSocket hacia ttyd y la mantiene viva.
+- Cuando el componente visual (`Terminal.jsx`) se desmonta (al cambiar de window), la conexión global **no se cierra**. 
+
+### 3. Comunicación Estado <-> Xterm.js
+Al separar la conexión, ya no se puede usar el iframe directamente para que xterm.js consuma la url de ttyd. Hay dos vías:
+- **Descartar el Iframe**: Montar `xterm.js` directamente como un componente React (por ejemplo, usando `xterm-for-react`). El store global recibe la data de pty y la envía al componente visible. Si el componente se desmonta, el store sigue guardando en memoria el buffer reciente. Al volver a montar, se pasa el historial de pantalla y se reanuda el feed.
+- **Mantener el Iframe (Proxy / PostMessage)**: Si mantener el iframe es estrictamente necesario, el iframe no debe iniciar el WebSocket hacia ttyd. En su lugar, la app principal (React) mantiene el WebSocket y envía la data por `postMessage` al iframe. Al desmontar y volver a montar el iframe, la app padre reconecta el flujo enviándole un `postMessage` inicial con el estado actual.
+
+### 4. Flujo de reconexión al cambiar de Window
+1. El usuario cambia a `window 2`. Los paneles de `window 1` se desmontan normalmente.
+2. Los componentes React desaparecen del DOM (sin trucos de opacidad).
+3. Las conexiones ttyd en `useTerminalStore` continúan abiertas.
+4. El usuario regresa a `window 1`. Se montan los componentes `Terminal.jsx`.
+5. Estos componentes piden al store su estado pasándole su `terminalId`. 
+6. El store les entrega el historial guardado de la terminal y empieza a rutearles los nuevos mensajes del WebSocket. El terminal simplemente dibuja este historial sin el flicker de "Connecting".
+
+Esta refactorización soluciona el problema de raíz ya que no intentamos engañar al DOM, sino separar la lógica de negocio (la sesión del terminal) de la capa de visualización.

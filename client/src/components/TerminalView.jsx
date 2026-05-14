@@ -1198,6 +1198,8 @@ function TerminalView() {
                 right: 0,
                 bottom: 0,
                 visibility: isActive ? 'visible' : 'hidden',
+                opacity: isActive ? 1 : 0,
+                pointerEvents: isActive ? 'auto' : 'none',
                 zIndex: isActive ? 1 : 0
               }}
             >

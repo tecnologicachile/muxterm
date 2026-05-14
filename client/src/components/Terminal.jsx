@@ -149,7 +149,13 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
   useEffect(() => {
     if (!iframeRef.current) return;
     const dispatchResize = () => {
-      try { iframeRef.current?.contentWindow?.dispatchEvent(new Event('resize')); } catch (e) {}
+      try {
+        const w = iframeRef.current?.contentWindow;
+        if (w) {
+          w.dispatchEvent(new Event('resize'));
+          if (w.term && typeof w.term.fit === 'function') w.term.fit();
+        }
+      } catch (e) {}
     };
     let debounceTimer = null;
     const schedule = () => {
