@@ -123,3 +123,43 @@ Se aplicó el fix en producción (build `index-5f9c0c64.js`). El usuario probó 
 ### Posible próximo paso
 
 Forzar un refresh del iframe al volver a estar visible (`iframe.src = iframe.src`), o disparar un evento específico en el iframe para que xterm.js recalcule su viewport. Esto mantendría la conexión viva (el iframe no se desmonta) pero forzaría un re-render.
+
+## Solución implementada (Nuevo intento con `opacity`)
+
+Para resolver el problema en el que `visibility: hidden` seguía causando distorsiones en los `iframe` y `xterm.js`, se decidió cambiar la estrategia a usar `opacity: 0` junto con `pointer-events: none`.
+
+En el componente `TerminalView.jsx`, se modificaron los estilos del contenedor de las ventanas inactivas para que el navegador siga considerando el elemento y sus hijos como "visibles" en el motor de renderizado (manteniendo así su estado gráfico de Canvas/WebGL de xterm.js intacto), pero siendo transparentes e in-clickeables para el usuario:
+
+```jsx
+<Box
+  key={`win-container-${win.id}`}
+  sx={{
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: isActive ? 1 : 0,
+    pointerEvents: isActive ? 'auto' : 'none',
+    zIndex: isActive ? 1 : 0
+  }}
+>
+  <PanelManager ... />
+</Box>
+```
+
+Esta solución mejora el comportamiento anterior ya que, para el navegador y `xterm.js`, el terminal sigue renderizándose con las dimensiones originales, previniendo que sus contextos gráficos se descarten o distorsionen al volver a activar la pestaña. Además, la aplicación ya ha sido recompilada y lista para validar.
+
+## Retroalimentación sobre la solución `opacity`
+
+Se aplicó el fix en producción (build `index-5ec9f998.js`). El usuario probó con múltiples windows y terminales. Resultado:
+
+- **Sigue habiendo distorsión, pero diferente.** Los caracteres aparecen **estirados horizontalmente** (espaciado anormal entre letras, texto casi ilegible) en el terminal izquierdo. El terminal derecho se ve normal. Esto es distinto a la distorsión de `visibility: hidden` (que causaba terminales aplastados).
+
+- La causa probable: al alternar entre windows, el canvas de xterm.js pasa de `opacity: 0` a `opacity: 1`. Durante el tiempo que está en `opacity: 0`, el navegador **sí** mantiene el elemento en el pipeline de renderizado, pero el iframe puede estar recibiendo eventos de resize o el canvas puede estar perdiendo su resolución interna. Al volver a `opacity: 1`, el canvas mantiene el tamaño del DOM pero su resolución interna (devicePixelRatio) puede no coincidir.
+
+- **Ninguno de los 4 enfoques ha funcionado**: `display: none`, `position: absolute off-screen`, `visibility: hidden`, `opacity: 0`. Todos causan algún tipo de corrupción visual en los terminales al alternar entre windows.
+
+### Conclusión parcial
+
+El problema NO está en cómo ocultar los PanelManagers. Está en que **xterm.js + ttyd dentro de un iframe no tolera ningún tipo de ocultamiento o reposicionamiento** sin perder su estado de renderizado. La opción más viable ahora es la idea #3 del reporte original: **mover la conexión WebSocket/ttyd a un store global** y tratar al componente Terminal como una "vista" intercambiable de una conexión persistente.
