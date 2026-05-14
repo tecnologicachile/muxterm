@@ -386,6 +386,12 @@ function TerminalView() {
     if (!currentValid) setActivePanel(visiblePanels[0].id);
   }, [activeWindowId, panels, activePanel]);
 
+  // Force resize when switching windows so hidden PanelManagers recalculate
+  useEffect(() => {
+    const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
+    return () => clearTimeout(t);
+  }, [activeWindowId]);
+
   // Keyboard shortcut Ctrl+B to toggle sidebar
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1188,7 +1194,7 @@ function TerminalView() {
             if (winPanels.length === 0) return null;
             const isActive = win.id === activeWindowId;
             return (
-              <Box key={`pm-${win.id}`} sx={{ position: 'absolute', left: isActive ? 0 : -9999, right: isActive ? 0 : 'auto', top: 0, bottom: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <Box key={`pm-${win.id}`} sx={{ display: isActive ? 'flex' : 'none', flex: 1, overflow: 'hidden', minHeight: 0, flexDirection: 'column' }}>
                 <PanelManager
                   key={`pmgr-${win.id}`}
                   windowId={win.id}
