@@ -386,12 +386,6 @@ function TerminalView() {
     if (!currentValid) setActivePanel(visiblePanels[0].id);
   }, [activeWindowId, panels, activePanel]);
 
-  // Force resize when switching windows so hidden PanelManagers recalculate
-  useEffect(() => {
-    const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
-    return () => clearTimeout(t);
-  }, [activeWindowId]);
-
   // Keyboard shortcut Ctrl+B to toggle sidebar
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1185,23 +1179,16 @@ function TerminalView() {
       <Box sx={{
         flex: 1,
         overflow: 'hidden',
-        minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column'
+        minHeight: 0
       }}>
-         {panels.length > 0 ? windows.map(win => {
-            const winPanels = panels.filter(p => (p.windowId || 'w1') === win.id);
-            if (winPanels.length === 0) return null;
-            const isActive = win.id === activeWindowId;
-            return (
-              <Box key={`pm-${win.id}`} sx={{ display: isActive ? 'flex' : 'none', flex: 1, overflow: 'hidden', minHeight: 0, flexDirection: 'column' }}>
-                <PanelManager
-                  key={`pmgr-${win.id}`}
-                  windowId={win.id}
-                  onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
-                  onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
-                  panels={winPanels}
-                  activePanel={activePanel}
+         {panels.length > 0 ? (
+           <PanelManager
+             key="panel-manager"
+             windowId={activeWindowId}
+             onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
+             onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
+             panels={panels.filter(p => (p.windowId || 'w1') === activeWindowId)}
+             activePanel={activePanel}
                   onPanelSelect={setActivePanel}
                   onPanelClose={handleClosePanel}
                   onRenamePanel={handleRenamePanel}
@@ -1228,9 +1215,7 @@ function TerminalView() {
                     ));
                   }}
                 />
-              </Box>
-            );
-          }) : null}
+         ) : null}
       </Box>
 
       {/* Mobile bottom bars - fixed */}
