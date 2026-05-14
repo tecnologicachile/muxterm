@@ -960,7 +960,11 @@ io.on('connection', (socket) => {
 
         let cmd = null;
         if (data.direction === 'exit') {
-          cmd = `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`;
+          if (inAlternate) {
+            cmd = `tmux -L muxterm send-keys -t ${sess} End`;
+          } else {
+            cmd = `tmux -L muxterm send-keys -t ${sess} -X cancel 2>/dev/null || true`;
+          }
         } else if (inAlternate) {
           const escCode = data.direction === 'up' ? '64' : '65';
           const repeat = step === 'page' ? 5 : 1;

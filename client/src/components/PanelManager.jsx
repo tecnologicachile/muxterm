@@ -84,16 +84,22 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         socket.off('terminal-captured', handler);
         setCaptureContent(data.content || '(empty)');
         setCaptureLoading(false);
-        // Auto-scroll popup to the section the user was looking at in copy-mode.
+        // Auto-scroll popup to the section the user was looking at.
         // scrollPosition is tmux lines scrolled up from the bottom.
-        // +2 compensates for the prompt line + minor tmux offset.
         if (data.scrollPosition > 0) {
           const capturedLines = (data.content || '').split('\n').length;
           const targetIdx = Math.max(0, capturedLines - data.scrollPosition + 2);
           setTimeout(() => {
             if (capturePreRef.current) {
-              const lineH = 12 * 1.4; // fontSize * lineHeight
+              const lineH = 12 * 1.4;
               capturePreRef.current.scrollTop = targetIdx * lineH;
+            }
+          }, 150);
+        } else {
+          // Not scrolled — position at the bottom (live prompt)
+          setTimeout(() => {
+            if (capturePreRef.current) {
+              capturePreRef.current.scrollTop = capturePreRef.current.scrollHeight;
             }
           }, 150);
         }

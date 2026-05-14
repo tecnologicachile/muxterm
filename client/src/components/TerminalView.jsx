@@ -1179,43 +1179,52 @@ function TerminalView() {
       <Box sx={{
         flex: 1,
         overflow: 'hidden',
-        minHeight: 0
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column'
       }}>
-        {panels.length > 0 ? (
-          <PanelManager
-            key="panel-manager"
-            windowId={activeWindowId}
-            onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
-            onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
-            panels={panels.filter(p => (p.windowId || 'w1') === activeWindowId)}
-            activePanel={activePanel}
-            onPanelSelect={setActivePanel}
-            onPanelClose={handleClosePanel}
-            onRenamePanel={handleRenamePanel}
-            onPanelSettings={handlePanelSettings}
-            onMinimizePanel={handleMinimizePanel}
-            onReorderPanels={(fromId, toId) => {
-              setPanels(prev => {
-                const arr = [...prev];
-                const fromIdx = arr.findIndex(p => p.id === fromId);
-                const toIdx = arr.findIndex(p => p.id === toId);
-                if (fromIdx < 0 || toIdx < 0) return prev;
-                [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
-                return arr;
-              });
-            }}
-            onSftpPathChange={(panelId, newPath) => {
-              setPanels(prev => prev.map(p =>
-                p.id === panelId ? { ...p, sftpPath: newPath } : p
-              ));
-            }}
-            onTerminalCreated={(panelId, newTerminalId) => {
-              setPanels(prev => prev.map(p =>
-                p.id === panelId ? { ...p, terminalId: newTerminalId } : p
-              ));
-            }}
-          />
-        ) : null}
+         {panels.length > 0 ? windows.map(win => {
+            const winPanels = panels.filter(p => (p.windowId || 'w1') === win.id);
+            if (winPanels.length === 0) return null;
+            const isActive = win.id === activeWindowId;
+            return (
+              <Box key={`pm-${win.id}`} sx={{ display: isActive ? 'flex' : 'none', flex: 1, overflow: 'hidden', minHeight: 0, flexDirection: 'column' }}>
+                <PanelManager
+                  key={`pmgr-${win.id}`}
+                  windowId={win.id}
+                  onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
+                  onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
+                  panels={winPanels}
+                  activePanel={activePanel}
+                  onPanelSelect={setActivePanel}
+                  onPanelClose={handleClosePanel}
+                  onRenamePanel={handleRenamePanel}
+                  onPanelSettings={handlePanelSettings}
+                  onMinimizePanel={handleMinimizePanel}
+                  onReorderPanels={(fromId, toId) => {
+                    setPanels(prev => {
+                      const arr = [...prev];
+                      const fromIdx = arr.findIndex(p => p.id === fromId);
+                      const toIdx = arr.findIndex(p => p.id === toId);
+                      if (fromIdx < 0 || toIdx < 0) return prev;
+                      [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                      return arr;
+                    });
+                  }}
+                  onSftpPathChange={(panelId, newPath) => {
+                    setPanels(prev => prev.map(p =>
+                      p.id === panelId ? { ...p, sftpPath: newPath } : p
+                    ));
+                  }}
+                  onTerminalCreated={(panelId, newTerminalId) => {
+                    setPanels(prev => prev.map(p =>
+                      p.id === panelId ? { ...p, terminalId: newTerminalId } : p
+                    ));
+                  }}
+                />
+              </Box>
+            );
+          }) : null}
       </Box>
 
       {/* Mobile bottom bars - fixed */}
@@ -1604,8 +1613,36 @@ function TerminalView() {
                   '&::-webkit-scrollbar': { width: '3px' },
                   '&::-webkit-scrollbar-thumb': { backgroundColor: '#444', borderRadius: '3px' }
                 }}>
-                  {/* Activos */}
-                  {filteredActive.map(panel => (
+                  {/* Actives — grouped by window */}
+                  {(() => {
+                    // Group panels by window
+                    const grouped = {};
+                    for (const p of filteredActive) {
+                      const wid = p.windowId || 'w1';
+                      if (!grouped[wid]) grouped[wid] = [];
+                      grouped[wid].push(p);
+                    }
+                    // Sort windows by their natural order
+                    const winOrder = windows.map(w => w.id);
+                    const sortedWids = Object.keys(grouped).sort((a, b) => {
+                      const ai = winOrder.indexOf(a), bi = winOrder.indexOf(b);
+                      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                    });
+                    const showHeaders = sortedWids.length > 1 && !sidebarFilter;
+                    return sortedWids.map(wid => {
+                      const wPanels = grouped[wid];
+                      const winObj = windows.find(w => w.id === wid);
+                      const winLabel = winObj ? winObj.name : 'Window';
+                      return (
+                        <React.Fragment key={`grp-${wid}`}>
+                          {showHeaders && (
+                            <Box sx={{ px: '10px', pt: '6px', pb: '2px' }}>
+                              <Typography variant="caption" sx={{ color: '#555', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                {winLabel}
+                              </Typography>
+                            </Box>
+                          )}
+                          {wPanels.map(panel => (
                     <Box
                       key={`sidebar-active-${panel.id}`}
                       draggable
@@ -1666,7 +1703,7 @@ function TerminalView() {
                       <Typography variant="caption" sx={{ fontSize: '9px', color: panel.id === activePanel ? '#00aa00' : '#666', minWidth: '28px', textTransform: 'uppercase', fontFamily: 'monospace' }}>
                         {(panel.type || 'local').replace('local', 'term')}
                       </Typography>
-                      {windows.length > 1 && (
+                      {!showHeaders && windows.length > 1 && (
                         <Box title={panel.windowFullName} sx={{
                           fontSize: '8px', color: panel.id === activePanel ? '#00aa00' : '#888',
                           backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.1)' : 'rgba(255,255,255,0.05)',
@@ -1701,7 +1738,11 @@ function TerminalView() {
                         </IconButton>
                       )}
                     </Box>
-                  ))}
+                          ))}
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
 
                   {/* Separador y minimizados */}
                   {filteredMinimized.length > 0 && (
