@@ -1179,43 +1179,64 @@ function TerminalView() {
       <Box sx={{
         flex: 1,
         overflow: 'hidden',
-        minHeight: 0
+        minHeight: 0,
+        position: 'relative'
       }}>
-         {panels.length > 0 ? (
-           <PanelManager
-             key="panel-manager"
-             windowId={activeWindowId}
-             onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
-             onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
-             panels={panels.filter(p => (p.windowId || 'w1') === activeWindowId)}
-             activePanel={activePanel}
-                  onPanelSelect={setActivePanel}
-                  onPanelClose={handleClosePanel}
-                  onRenamePanel={handleRenamePanel}
-                  onPanelSettings={handlePanelSettings}
-                  onMinimizePanel={handleMinimizePanel}
-                  onReorderPanels={(fromId, toId) => {
-                    setPanels(prev => {
-                      const arr = [...prev];
-                      const fromIdx = arr.findIndex(p => p.id === fromId);
-                      const toIdx = arr.findIndex(p => p.id === toId);
-                      if (fromIdx < 0 || toIdx < 0) return prev;
-                      [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
-                      return arr;
-                    });
-                  }}
-                  onSftpPathChange={(panelId, newPath) => {
-                    setPanels(prev => prev.map(p =>
-                      p.id === panelId ? { ...p, sftpPath: newPath } : p
-                    ));
-                  }}
-                  onTerminalCreated={(panelId, newTerminalId) => {
-                    setPanels(prev => prev.map(p =>
-                      p.id === panelId ? { ...p, terminalId: newTerminalId } : p
-                    ));
-                  }}
-                />
-         ) : null}
+        {windows.map(win => {
+          const winPanels = panels.filter(p => (p.windowId || 'w1') === win.id);
+          if (winPanels.length === 0) return null;
+          
+          const isActive = win.id === activeWindowId;
+          
+          return (
+            <Box
+              key={`win-container-${win.id}`}
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                visibility: isActive ? 'visible' : 'hidden',
+                zIndex: isActive ? 1 : 0
+              }}
+            >
+              <PanelManager
+                key={`panel-manager-${win.id}`}
+                windowId={win.id}
+                onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
+                onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
+                panels={winPanels}
+                activePanel={activePanel}
+                onPanelSelect={setActivePanel}
+                onPanelClose={handleClosePanel}
+                onRenamePanel={handleRenamePanel}
+                onPanelSettings={handlePanelSettings}
+                onMinimizePanel={handleMinimizePanel}
+                onReorderPanels={(fromId, toId) => {
+                  setPanels(prev => {
+                    const arr = [...prev];
+                    const fromIdx = arr.findIndex(p => p.id === fromId);
+                    const toIdx = arr.findIndex(p => p.id === toId);
+                    if (fromIdx < 0 || toIdx < 0) return prev;
+                    [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                    return arr;
+                  });
+                }}
+                onSftpPathChange={(panelId, newPath) => {
+                  setPanels(prev => prev.map(p =>
+                    p.id === panelId ? { ...p, sftpPath: newPath } : p
+                  ));
+                }}
+                onTerminalCreated={(panelId, newTerminalId) => {
+                  setPanels(prev => prev.map(p =>
+                    p.id === panelId ? { ...p, terminalId: newTerminalId } : p
+                  ));
+                }}
+              />
+            </Box>
+          );
+        })}
       </Box>
 
       {/* Mobile bottom bars - fixed */}

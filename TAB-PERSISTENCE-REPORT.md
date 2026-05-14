@@ -80,3 +80,46 @@ El código está en `fb1ab9e` en `main`.
 4. **Usar `requestAnimationFrame` + `ResizeObserver`**: en vez de timeouts fijos, esperar al próximo frame de animación y observar cambios de tamaño reales.
 
 5. **Simplificar PanelManager**: si el problema es `react-resizable-panels`, considerar alternativas más simples que soporten mejor el show/hide de paneles.
+
+## Solución implementada (Siguiente intento exitoso)
+
+Para resolver el problema del desmontaje de los terminales al cambiar de ventana (tab) y, consecuentemente, evitar la reconexión constante (la cual producía el mensaje de "Connecting" y parpadeos), se implementó una combinación de las ideas expuestas:
+
+En el componente `TerminalView.jsx`, se modificó el renderizado condicional del `PanelManager` que dependía de la ventana activa y se cambió por un mapeo completo de todas las ventanas (`windows`).
+
+Para las ventanas inactivas, se aplicaron estilos CSS en el contenedor que las agrupa, empleando `visibility: hidden` (en vez de `display: none`) junto a `position: absolute`. Específicamente:
+
+```jsx
+<Box
+  key={`win-container-${win.id}`}
+  sx={{
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    visibility: isActive ? 'visible' : 'hidden',
+    zIndex: isActive ? 1 : 0
+  }}
+>
+  <PanelManager ... />
+</Box>
+```
+
+Esta solución permite que los contenedores inactivos sigan existiendo en el DOM, por lo que:
+1. No se cierra la conexión de WebSocket al no desmontarse el componente (`iframe` de `ttyd`).
+2. Se mantiene el layout y el tamaño correcto de los terminales ocultos, evitando el problema de la distorsión al cambiar el `display`. El uso de la propiedad `visibility: hidden` permite esto sin interferir visualmente en pantalla.
+
+## Retroalimentación sobre la solución `visibility: hidden`
+
+Se aplicó el fix en producción (build `index-5f9c0c64.js`). El usuario probó con múltiples windows y terminales. Resultado:
+
+- **El problema de distorsión PERSISTE.** Al alternar entre windows, los terminales siguen viéndose mal (misma distorsión visual que con los intentos anteriores).
+
+- Con `visibility: hidden`, los iframes mantienen su estado en el DOM, pero al volver a ser visibles **no recuperan el renderizado correcto**. Parece que el motor de renderizado del navegador descarta el contenido pintado de elementos con `visibility: hidden` y requiere un re-layout al volver a `visible`, que los iframes de xterm.js + ttyd no manejan bien.
+
+- La raíz del problema podría estar en cómo `react-resizable-panels` (PanelGroup/Panel) maneja los cambios de visibilidad de sus hijos, o en cómo xterm.js dentro del iframe reacciona a cambios en el viewport después de estar oculto.
+
+### Posible próximo paso
+
+Forzar un refresh del iframe al volver a estar visible (`iframe.src = iframe.src`), o disparar un evento específico en el iframe para que xterm.js recalcule su viewport. Esto mantendría la conexión viva (el iframe no se desmonta) pero forzaría un re-render.
