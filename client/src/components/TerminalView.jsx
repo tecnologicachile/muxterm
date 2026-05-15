@@ -1179,66 +1179,43 @@ function TerminalView() {
       <Box sx={{
         flex: 1,
         overflow: 'hidden',
-        minHeight: 0,
-        position: 'relative'
+        minHeight: 0
       }}>
-        {windows.map(win => {
-          const winPanels = panels.filter(p => (p.windowId || 'w1') === win.id);
-          if (winPanels.length === 0) return null;
-          
-          const isActive = win.id === activeWindowId;
-          
-          return (
-            <Box
-              key={`win-container-${win.id}`}
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                visibility: isActive ? 'visible' : 'hidden',
-                opacity: isActive ? 1 : 0,
-                pointerEvents: isActive ? 'auto' : 'none',
-                zIndex: isActive ? 1 : 0
-              }}
-            >
-              <PanelManager
-                key={`panel-manager-${win.id}`}
-                windowId={win.id}
-                onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
-                onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
-                panels={winPanels}
-                activePanel={activePanel}
-                onPanelSelect={setActivePanel}
-                onPanelClose={handleClosePanel}
-                onRenamePanel={handleRenamePanel}
-                onPanelSettings={handlePanelSettings}
-                onMinimizePanel={handleMinimizePanel}
-                onReorderPanels={(fromId, toId) => {
-                  setPanels(prev => {
-                    const arr = [...prev];
-                    const fromIdx = arr.findIndex(p => p.id === fromId);
-                    const toIdx = arr.findIndex(p => p.id === toId);
-                    if (fromIdx < 0 || toIdx < 0) return prev;
-                    [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
-                    return arr;
-                  });
-                }}
-                onSftpPathChange={(panelId, newPath) => {
-                  setPanels(prev => prev.map(p =>
-                    p.id === panelId ? { ...p, sftpPath: newPath } : p
-                  ));
-                }}
-                onTerminalCreated={(panelId, newTerminalId) => {
-                  setPanels(prev => prev.map(p =>
-                    p.id === panelId ? { ...p, terminalId: newTerminalId } : p
-                  ));
-                }}
-              />
-            </Box>
-          );
-        })}
+         {panels.length > 0 ? (
+           <PanelManager
+             key="panel-manager"
+             windowId={activeWindowId}
+             onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
+             onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
+             panels={panels.filter(p => (p.windowId || 'w1') === activeWindowId)}
+             activePanel={activePanel}
+                  onPanelSelect={setActivePanel}
+                  onPanelClose={handleClosePanel}
+                  onRenamePanel={handleRenamePanel}
+                  onPanelSettings={handlePanelSettings}
+                  onMinimizePanel={handleMinimizePanel}
+                  onReorderPanels={(fromId, toId) => {
+                    setPanels(prev => {
+                      const arr = [...prev];
+                      const fromIdx = arr.findIndex(p => p.id === fromId);
+                      const toIdx = arr.findIndex(p => p.id === toId);
+                      if (fromIdx < 0 || toIdx < 0) return prev;
+                      [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                      return arr;
+                    });
+                  }}
+                  onSftpPathChange={(panelId, newPath) => {
+                    setPanels(prev => prev.map(p =>
+                      p.id === panelId ? { ...p, sftpPath: newPath } : p
+                    ));
+                  }}
+                  onTerminalCreated={(panelId, newTerminalId) => {
+                    setPanels(prev => prev.map(p =>
+                      p.id === panelId ? { ...p, terminalId: newTerminalId } : p
+                    ));
+                  }}
+                />
+         ) : null}
       </Box>
 
       {/* Mobile bottom bars - fixed */}
@@ -1761,39 +1738,33 @@ function TerminalView() {
                   {/* Separador y minimizados */}
                   {/* Minimizados — grouped by window */}
                   {filteredMinimized.length > 0 && (() => {
-                    const grouped = {};
+                    const grp = {};
                     for (const p of filteredMinimized) {
                       const wid = p.windowId || 'w1';
-                      if (!grouped[wid]) grouped[wid] = [];
-                      grouped[wid].push(p);
+                      if (!grp[wid]) grp[wid] = [];
+                      grp[wid].push(p);
                     }
-                    const winOrder = windows.map(w => w.id);
-                    const sortedWids = Object.keys(grouped).sort((a, b) => {
-                      const ai = winOrder.indexOf(a), bi = winOrder.indexOf(b);
-                      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-                    });
-                    const showHeaders = sortedWids.length > 1 && !sidebarFilter;
-                    return (
-                    <>
+                    const wOrder = windows.map(w => w.id);
+                    const wids = Object.keys(grp).sort((a, b) => (wOrder.indexOf(a) - wOrder.indexOf(b)));
+                    return (<>
                       <Box sx={{ padding: '8px 12px 4px', borderTop: '1px solid #222', mt: '4px' }}>
                         <Typography variant="caption" sx={{ color: '#555', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '1px' }}>
                           Minimized
                         </Typography>
                       </Box>
-                      {sortedWids.map(wid => {
-                        const wPanels = grouped[wid];
+                      {wids.map(wid => {
+                        const wPanels = grp[wid];
                         const winObj = windows.find(w => w.id === wid);
                         const winLabel = winObj ? winObj.name : 'Window';
-                        return (
-                          <React.Fragment key={`min-grp-${wid}`}>
-                            {showHeaders && (
-                              <Box sx={{ px: '14px', pt: '2px', pb: '1px' }}>
-                                <Typography variant="caption" sx={{ color: '#555', fontSize: '8px', textTransform: 'uppercase' }}>
-                                  {winLabel}
-                                </Typography>
-                              </Box>
-                            )}
-                            {wPanels.map(panel => (
+                        return (<React.Fragment key={`min-grp-${wid}`}>
+                          {wids.length > 1 && !sidebarFilter && (
+                            <Box sx={{ px: '14px', pt: '2px', pb: '1px' }}>
+                              <Typography variant="caption" sx={{ color: '#555', fontSize: '8px', textTransform: 'uppercase' }}>
+                                {winLabel}
+                              </Typography>
+                            </Box>
+                          )}
+                          {wPanels.map(panel => (
                         <Box
                           key={`sidebar-min-${panel.id}`}
                           draggable
@@ -1876,11 +1847,9 @@ function TerminalView() {
                         </Box>
                       ))}
                           ))}
-                        </React.Fragment>
-                      );
-                    });
-                    </>
-                    );
+                        </React.Fragment>);
+                      })}
+                    </>);
                   })()}
 
                   {/* Sin resultados */}
