@@ -1730,125 +1730,28 @@ function TerminalView() {
                       )}
                     </Box>
                           ))}
+                          {/* Minimized panels within this window */}
+                          {filteredMinimized.filter(p => (p.windowId || 'w1') === wid).map(panel => (
+                            <Box
+                              key={`sidebar-min-${panel.id}`}
+                              onClick={() => { handleRestorePanel(panel); setSidebarOpen(false); setSidebarFilter(''); }}
+                              sx={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '5px 12px 5px 24px', cursor: 'pointer',
+                                borderLeft: '2px solid transparent', opacity: 0.45,
+                                '&:hover': { backgroundColor: 'rgba(255,255,255,0.06)', opacity: 0.75 }
+                              }}
+                            >
+                              <DotIcon sx={{ fontSize: 6, color: '#555' }} />
+                              <Typography variant="caption" sx={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {panel.displayName}
+                              </Typography>
+                              <RestoreIcon sx={{ fontSize: 10, color: '#555', ml: 'auto' }} />
+                            </Box>
+                          ))}
                         </React.Fragment>
                       );
                     });
-                  })()}
-
-                  {/* Separador y minimizados */}
-                  {/* Minimizados — grouped by window */}
-                  {filteredMinimized.length > 0 && (() => {
-                    const grp = {};
-                    for (const p of filteredMinimized) {
-                      const wid = p.windowId || 'w1';
-                      if (!grp[wid]) grp[wid] = [];
-                      grp[wid].push(p);
-                    }
-                    const wOrder = windows.map(w => w.id);
-                    const wids = Object.keys(grp).sort((a, b) => (wOrder.indexOf(a) - wOrder.indexOf(b)));
-                    return (<>
-                      <Box sx={{ padding: '8px 12px 4px', borderTop: '1px solid #222', mt: '4px' }}>
-                        <Typography variant="caption" sx={{ color: '#555', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                          Minimized
-                        </Typography>
-                      </Box>
-                      {wids.map(wid => {
-                        const wPanels = grp[wid];
-                        const winObj = windows.find(w => w.id === wid);
-                        const winLabel = winObj ? winObj.name : 'Window';
-                        return (<React.Fragment key={`min-grp-${wid}`}>
-                          {wids.length > 1 && !sidebarFilter && (
-                            <Box sx={{ px: '14px', pt: '2px', pb: '1px' }}>
-                              <Typography variant="caption" sx={{ color: '#555', fontSize: '8px', textTransform: 'uppercase' }}>
-                                {winLabel}
-                              </Typography>
-                            </Box>
-                          )}
-                          {wPanels.map(panel => (
-                        <Box
-                          key={`sidebar-min-${panel.id}`}
-                          draggable
-                          onDragStart={(e) => {
-                            setDragMinId(panel.id);
-                            setDraggingPanelForWindow(panel.id);
-                            e.dataTransfer.effectAllowed = 'move';
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            e.dataTransfer.dropEffect = 'move';
-                            if (dragMinId && panel.id !== dragMinId) setDragOverMinId(panel.id);
-                          }}
-                          onDragLeave={() => { if (dragOverMinId === panel.id) setDragOverMinId(null); }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            if (dragMinId && dragMinId !== panel.id) {
-                              setMinimizedPanels(prev => {
-                                const arr = [...prev];
-                                const fromIdx = arr.findIndex(p => p.id === dragMinId);
-                                const toIdx = arr.findIndex(p => p.id === panel.id);
-                                if (fromIdx < 0 || toIdx < 0) return prev;
-                                [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
-                                return arr;
-                              });
-                            }
-                            setDragMinId(null);
-                            setDragOverMinId(null);
-                            setDraggingPanelForWindow(null);
-                          }}
-                          onDragEnd={() => { setDragMinId(null); setDragOverMinId(null); setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
-                          onClick={() => {
-                            handleRestorePanel(panel);
-                            setSidebarOpen(false);
-                            setSidebarFilter('');
-                          }}
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '7px 12px',
-                            cursor: dragMinId ? 'grabbing' : 'pointer',
-                            borderLeft: '2px solid transparent',
-                            borderTop: dragOverMinId === panel.id ? '2px solid #00ff00' : '2px solid transparent',
-                            backgroundColor: dragOverMinId === panel.id ? 'rgba(0, 255, 0, 0.1)' : 'transparent',
-                            opacity: dragMinId === panel.id ? 0.3 : 0.5,
-                            transition: 'background-color 0.1s ease, opacity 0.1s ease',
-                            '&:hover': {
-                              backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                              opacity: 1
-                            }
-                          }}
-                        >
-                          <DotIcon sx={{ fontSize: 8, color: '#444' }} />
-                          <Typography variant="caption" sx={{ fontSize: '9px', color: '#555', minWidth: '28px', textTransform: 'uppercase', fontFamily: 'monospace' }}>
-                            {(panel.type || 'local').replace('local', 'term')}
-                          </Typography>
-                          {windows.length > 1 && (
-                            <Box title={panel.windowFullName} sx={{
-                              fontSize: '8px', color: '#888',
-                              backgroundColor: 'rgba(255,255,255,0.05)',
-                              padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace', flexShrink: 0
-                            }}>{panel.windowShort}</Box>
-                          )}
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              flex: 1,
-                              fontSize: '12px',
-                              color: '#777',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis'
-                            }}
-                            title={panel.displayName}
-                          >
-                            {panel.displayName}
-                          </Typography>
-                          <RestoreIcon sx={{ fontSize: 12, color: '#555' }} />
-                        </Box>
-                      ))}
-                        </React.Fragment>);
-                      })}
-                    </>);
                   })()}
 
                   {/* Sin resultados */}
