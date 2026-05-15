@@ -1846,7 +1846,6 @@ function TerminalView() {
                           <RestoreIcon sx={{ fontSize: 12, color: '#555' }} />
                         </Box>
                       ))}
-                          ))}
                         </React.Fragment>);
                       })}
                     </>);
