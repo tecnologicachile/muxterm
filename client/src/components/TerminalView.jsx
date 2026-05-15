@@ -1759,14 +1759,41 @@ function TerminalView() {
                   })()}
 
                   {/* Separador y minimizados */}
-                  {filteredMinimized.length > 0 && (
+                  {/* Minimizados — grouped by window */}
+                  {filteredMinimized.length > 0 && (() => {
+                    const grouped = {};
+                    for (const p of filteredMinimized) {
+                      const wid = p.windowId || 'w1';
+                      if (!grouped[wid]) grouped[wid] = [];
+                      grouped[wid].push(p);
+                    }
+                    const winOrder = windows.map(w => w.id);
+                    const sortedWids = Object.keys(grouped).sort((a, b) => {
+                      const ai = winOrder.indexOf(a), bi = winOrder.indexOf(b);
+                      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                    });
+                    const showHeaders = sortedWids.length > 1 && !sidebarFilter;
+                    return (
                     <>
                       <Box sx={{ padding: '8px 12px 4px', borderTop: '1px solid #222', mt: '4px' }}>
                         <Typography variant="caption" sx={{ color: '#555', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '1px' }}>
                           Minimized
                         </Typography>
                       </Box>
-                      {filteredMinimized.map(panel => (
+                      {sortedWids.map(wid => {
+                        const wPanels = grouped[wid];
+                        const winObj = windows.find(w => w.id === wid);
+                        const winLabel = winObj ? winObj.name : 'Window';
+                        return (
+                          <React.Fragment key={`min-grp-${wid}`}>
+                            {showHeaders && (
+                              <Box sx={{ px: '14px', pt: '2px', pb: '1px' }}>
+                                <Typography variant="caption" sx={{ color: '#555', fontSize: '8px', textTransform: 'uppercase' }}>
+                                  {winLabel}
+                                </Typography>
+                              </Box>
+                            )}
+                            {wPanels.map(panel => (
                         <Box
                           key={`sidebar-min-${panel.id}`}
                           draggable
@@ -1848,8 +1875,13 @@ function TerminalView() {
                           <RestoreIcon sx={{ fontSize: 12, color: '#555' }} />
                         </Box>
                       ))}
+                          ))}
+                        </React.Fragment>
+                      );
+                    });
                     </>
-                  )}
+                    );
+                  })()}
 
                   {/* Sin resultados */}
                   {filtered.length === 0 && sidebarFilter && (
