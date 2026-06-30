@@ -3,13 +3,15 @@ import React, { useState, useEffect, useRef } from 'react';
 // Module-level throttle (persists across all renders/instances)
 let _lastScrollTs = 0;
 const SCROLL_MIN_INTERVAL = 300;
-import { Box, Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
+import { Box, Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, CircularProgress } from '@mui/material';
 import {
   Close as CloseIcon,
   Minimize as MinimizeIcon,
   Folder as FolderIcon,
   ContentCopy as CopyIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Mic as MicIcon,
+  Stop as StopIcon
 } from '@mui/icons-material';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import Terminal from './Terminal';
@@ -25,6 +27,103 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
 
   // Track activity state for each panel
   const [activityStates, setActivityStates] = useState({});
+
+  // ---- Voice → transcription → review → inject ----
+  const getToken = () => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } };
+  const [recordingPanelId, setRecordingPanelId] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordStreamRef = useRef(null);
+  // Review dialog after transcription
+  const [voiceDialog, setVoiceDialog] = useState({ open: false, terminalId: null, text: '', loading: false, error: '' });
+
+  const pickMimeType = () => {
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+      for (const c of candidates) { if (MediaRecorder.isTypeSupported(c)) return c; }
+    }
+    return '';
+  };
+
+  const stopStream = () => {
+    if (recordStreamRef.current) {
+      recordStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+      recordStreamRef.current = null;
+    }
+  };
+
+  const startVoiceRecording = async (panel) => {
+    if (!panel || !panel.terminalId) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setVoiceDialog({ open: true, terminalId: panel.terminalId, text: '', loading: false, error: 'Microphone not available (needs HTTPS).' });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStreamRef.current = stream;
+      const mimeType = pickMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        stopStream();
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        transcribeAndReview(panel.terminalId, blob);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecordingPanelId(panel.id);
+    } catch (e) {
+      stopStream();
+      setVoiceDialog({ open: true, terminalId: panel.terminalId, text: '', loading: false, error: 'Microphone permission denied.' });
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    setRecordingPanelId(null);
+    if (recorder && recorder.state !== 'inactive') {
+      try { recorder.stop(); } catch (e) { stopStream(); }
+    } else {
+      stopStream();
+    }
+  };
+
+  const transcribeAndReview = async (terminalId, blob) => {
+    // Open the dialog immediately in a loading state while Whisper runs.
+    setVoiceDialog({ open: true, terminalId, text: '', loading: true, error: '' });
+    try {
+      const form = new FormData();
+      const ext = (blob.type || '').includes('mp4') ? 'mp4' : (blob.type || '').includes('ogg') ? 'ogg' : 'webm';
+      form.append('audio', blob, `audio.${ext}`);
+      const r = await fetch('/api/voice/transcribe', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: form
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data.status !== 'ok') {
+        setVoiceDialog({ open: true, terminalId, text: '', loading: false, error: data.message || 'Transcription failed.' });
+        return;
+      }
+      setVoiceDialog({ open: true, terminalId, text: data.text || '', loading: false, error: '' });
+    } catch (e) {
+      setVoiceDialog({ open: true, terminalId, text: '', loading: false, error: 'Network error during transcription.' });
+    }
+  };
+
+  const sendVoiceText = async () => {
+    const { terminalId, text } = voiceDialog;
+    if (!terminalId || !text.trim()) return;
+    try {
+      await fetch('/api/voice/inject', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ terminalId, text: text.trim() })
+      });
+    } catch (e) {}
+    setVoiceDialog({ open: false, terminalId: null, text: '', loading: false, error: '' });
+  };
   const emitScroll = (terminalId, direction) => {
     const now = Date.now();
     if (now - _lastScrollTs < SCROLL_MIN_INTERVAL) return;
@@ -406,6 +505,27 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               }}
             />
             
+            {/* Voice → transcribe → inject as a Claude prompt */}
+            {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) && (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (recordingPanelId === panel.id) stopVoiceRecording();
+                  else startVoiceRecording(panel);
+                }}
+                sx={{
+                  padding: '2px',
+                  color: recordingPanelId === panel.id ? '#ff3b3b' : '#666',
+                  backgroundColor: recordingPanelId === panel.id ? 'rgba(255,59,59,0.12)' : 'transparent',
+                  '&:hover': { color: recordingPanelId === panel.id ? '#ff6b6b' : '#00ff00' }
+                }}
+                title={recordingPanelId === panel.id ? 'Stop recording' : 'Record voice message'}
+              >
+                {recordingPanelId === panel.id ? <StopIcon sx={{ fontSize: 14 }} /> : <MicIcon sx={{ fontSize: 14 }} />}
+              </IconButton>
+            )}
+
             {/* Panel settings */}
             {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) && (
               <IconButton
@@ -852,6 +972,53 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid #333' }}>
           <Button onClick={() => setCaptureContent(null)} sx={{ color: '#888' }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Voice transcription review — edit before sending into the terminal */}
+      <Dialog
+        open={voiceDialog.open}
+        onClose={() => setVoiceDialog({ open: false, terminalId: null, text: '', loading: false, error: '' })}
+        maxWidth="sm" fullWidth
+        PaperProps={{ sx: { backgroundColor: '#1a1a1a' } }}
+      >
+        <DialogTitle sx={{ color: '#ccc', fontSize: '14px', borderBottom: '1px solid #333', py: 1 }}>
+          🎤 Review voice message
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {voiceDialog.loading ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: '#888', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+              <CircularProgress size={24} sx={{ color: '#00ff00' }} />
+              <span>Transcribing…</span>
+            </Box>
+          ) : voiceDialog.error ? (
+            <Typography sx={{ color: '#ff6b6b', fontSize: '13px', py: 1 }}>{voiceDialog.error}</Typography>
+          ) : (
+            <>
+              <Typography sx={{ color: '#888', fontSize: '11px', mb: 1 }}>
+                Edit if needed, then send. It will be typed into the terminal and submitted (Enter).
+              </Typography>
+              <TextField
+                autoFocus multiline minRows={3} maxRows={10} fullWidth
+                value={voiceDialog.text}
+                onChange={(e) => setVoiceDialog(v => ({ ...v, text: e.target.value }))}
+                placeholder="Transcribed text…"
+                InputProps={{ sx: { color: '#eee', fontFamily: '"Fira Code", monospace', fontSize: '13px' } }}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid #333' }}>
+          <Button onClick={() => setVoiceDialog({ open: false, terminalId: null, text: '', loading: false, error: '' })} sx={{ color: '#888' }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={sendVoiceText}
+            variant="contained" color="success"
+            disabled={voiceDialog.loading || !voiceDialog.text.trim()}
+          >
+            Send to terminal
+          </Button>
         </DialogActions>
       </Dialog>
     </>

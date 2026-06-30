@@ -111,6 +111,9 @@ function TerminalView() {
   const [vaultLoading, setVaultLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
+  const [openaiKeySet, setOpenaiKeySet] = useState(false);
+  const [openaiKeyInput, setOpenaiKeyInput] = useState('');
+  const [openaiKeySaving, setOpenaiKeySaving] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
   const [diagLogs, setDiagLogs] = useState([]);
   const [diagLoading, setDiagLoading] = useState(false);
@@ -676,7 +679,7 @@ function TerminalView() {
       // Load system settings (auto-update toggle)
       fetch('/api/system-settings', { headers: { 'Authorization': `Bearer ${getToken()}` } })
         .then(r => r.json())
-        .then(d => { if (d.status === 'ok' && d.settings) setAutoUpdateEnabled(!!d.settings.autoUpdateEnabled); })
+        .then(d => { if (d.status === 'ok' && d.settings) { setAutoUpdateEnabled(!!d.settings.autoUpdateEnabled); setOpenaiKeySet(!!d.settings.openaiApiKeySet); } })
         .catch(() => {});
     }
   }, [settingsOpen, isAdmin]);
@@ -1737,7 +1740,7 @@ function TerminalView() {
                               onClick={() => { handleRestorePanel(panel); setSidebarOpen(false); setSidebarFilter(''); }}
                               sx={{
                                 display: 'flex', alignItems: 'center', gap: '8px',
-                                padding: '5px 12px 5px 24px', cursor: 'pointer',
+                                padding: '5px 12px', cursor: 'pointer',
                                 borderLeft: '2px solid transparent', opacity: 0.45,
                                 '&:hover': { backgroundColor: 'rgba(255,255,255,0.06)', opacity: 0.75 }
                               }}
@@ -2200,6 +2203,58 @@ function TerminalView() {
                     } catch (e) {}
                   }}
                 >{autoUpdateEnabled ? 'ON' : 'OFF'}</Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* OpenAI API key for voice transcription */}
+          {isAdmin && (
+            <Box sx={{ mb: 2, p: 1.5, border: '1px solid #333', borderRadius: 1 }}>
+              <Typography sx={{ fontSize: '13px', color: '#ccc' }}>🎤 Voice transcription (OpenAI)</Typography>
+              <Typography sx={{ fontSize: '11px', color: '#666', mb: 1 }}>
+                API key used to transcribe voice messages (Whisper) before sending them into a terminal.
+                {openaiKeySet ? ' A key is currently configured.' : ' No key configured yet.'}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextField
+                  type="password" size="small" fullWidth
+                  placeholder={openaiKeySet ? '•••••••••• (leave blank to keep)' : 'sk-...'}
+                  value={openaiKeyInput}
+                  onChange={(e) => setOpenaiKeyInput(e.target.value)}
+                  InputProps={{ sx: { color: '#eee', fontSize: '12px' } }}
+                />
+                <Button size="small" variant="contained" color="success" disabled={openaiKeySaving || !openaiKeyInput.trim()}
+                  onClick={async () => {
+                    setOpenaiKeySaving(true);
+                    try {
+                      const r = await fetch('/api/system-settings', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ openaiApiKey: openaiKeyInput.trim() })
+                      });
+                      const d = await r.json();
+                      if (d.status === 'ok') { setOpenaiKeySet(!!d.settings?.openaiApiKeySet); setOpenaiKeyInput(''); }
+                    } catch (e) {}
+                    setOpenaiKeySaving(false);
+                  }}
+                >Save</Button>
+                {openaiKeySet && (
+                  <Button size="small" variant="outlined" color="error" disabled={openaiKeySaving}
+                    onClick={async () => {
+                      setOpenaiKeySaving(true);
+                      try {
+                        const r = await fetch('/api/system-settings', {
+                          method: 'POST',
+                          headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ openaiApiKey: '' })
+                        });
+                        const d = await r.json();
+                        if (d.status === 'ok') { setOpenaiKeySet(!!d.settings?.openaiApiKeySet); setOpenaiKeyInput(''); }
+                      } catch (e) {}
+                      setOpenaiKeySaving(false);
+                    }}
+                  >Clear</Button>
+                )}
               </Box>
             </Box>
           )}

@@ -6,7 +6,9 @@ const SETTINGS_PATH = path.join(__dirname, '..', 'data', 'system-settings.json')
 const DEFAULTS = {
   autoUpdateEnabled: true,
   lastAutoUpdateCheck: null,
-  lastAutoUpdateTriggered: null
+  lastAutoUpdateTriggered: null,
+  // OpenAI API key used for voice transcription (Whisper). Never returned raw to the client.
+  openaiApiKey: ''
 };
 
 function read() {
@@ -33,4 +35,10 @@ function write(settings) {
   }
 }
 
-module.exports = { read, write, DEFAULTS };
+// Server-only accessor for the OpenAI key (callers must never expose this to the client).
+function getOpenAiKey() {
+  const key = (read().openaiApiKey || '').trim();
+  return key || (process.env.OPENAI_API_KEY || '').trim();
+}
+
+module.exports = { read, write, DEFAULTS, getOpenAiKey };

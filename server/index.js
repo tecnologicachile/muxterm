@@ -158,6 +158,13 @@ app.use('/api/vault', authenticateToken, (req, res, next) => {
   next();
 }, vaultwardenApi);
 
+// Voice transcription + injection API (records → Whisper → tmux send-keys)
+const voiceApi = require('./voice-api');
+app.use('/api/voice', authenticateToken, (req, res, next) => {
+  req.userId = req.user.id;
+  next();
+}, voiceApi);
+
 // Guacd health check — test if guacd is accepting connections
 app.get('/api/guacd-health', (req, res) => {
   const net = require('net');
@@ -188,17 +195,24 @@ app.get('/api/update-check', async (req, res) => {
 
 // System settings endpoints
 app.get('/api/system-settings', authenticateToken, (req, res) => {
-  res.json({ status: 'ok', settings: systemSettings.read() });
+  // Never expose the raw OpenAI key — only whether one is configured.
+  const settings = { ...systemSettings.read() };
+  settings.openaiApiKeySet = !!(settings.openaiApiKey || process.env.OPENAI_API_KEY);
+  delete settings.openaiApiKey;
+  res.json({ status: 'ok', settings });
 });
 app.post('/api/system-settings', authenticateToken, (req, res) => {
   try {
     // Admin-only: only admins can change system settings
     const user = database.findUserById(req.user.id);
     if (!user || !user.is_admin) return res.status(403).json({ status: 'error', message: 'Admin only' });
-    const allowed = ['autoUpdateEnabled'];
+    const allowed = ['autoUpdateEnabled', 'openaiApiKey'];
     const changes = {};
     for (const k of allowed) if (k in req.body) changes[k] = req.body[k];
-    const merged = systemSettings.write(changes);
+    const merged = { ...systemSettings.write(changes) };
+    // Never echo the raw OpenAI key back to the client.
+    merged.openaiApiKeySet = !!(merged.openaiApiKey || process.env.OPENAI_API_KEY);
+    delete merged.openaiApiKey;
     res.json({ status: 'ok', settings: merged });
   } catch (e) {
     res.status(500).json({ status: 'error', message: e.message });
