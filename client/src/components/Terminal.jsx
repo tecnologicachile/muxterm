@@ -5,7 +5,7 @@ import logger from '../utils/logger';
 
 function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, onActivityChange, sshConnectionId }) {
   const iframeRef = useRef(null);
-  const { socket, isReconnected } = useSocket();
+  const { socket, isReconnected, becameVisible } = useSocket();
   const [localTerminalId, setLocalTerminalId] = useState(terminalId);
   const [iframeReady, setIframeReady] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
@@ -142,6 +142,18 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
       socket.emit('restore-terminal', { terminalId: localTerminalId, sshConnectionId });
     }
   }, [isReconnected, localTerminalId, socket]);
+
+  // Returning to a backgrounded tab (mobile): even when socket.io still thinks
+  // it's connected, the ttyd iframe can be frozen — which is why it used to need
+  // a keypress to wake. Re-emit restore-terminal so the server replies
+  // terminal-restored and the iframe reloads with a fresh, live xterm buffer.
+  useEffect(() => {
+    if (becameVisible && localTerminalId && socket && socket.connected) {
+      socket.emit('restore-terminal', { terminalId: localTerminalId, sshConnectionId });
+    }
+    // If the socket is not connected yet, the forced reconnect in SocketContext
+    // fires 'reconnect' → isReconnected above handles the restore once it's back.
+  }, [becameVisible]);
 
   // Watch container size changes + periodic re-measure on activation/mount.
   // Fixes distorted rendering when xterm.js gets out of sync with actual container size
