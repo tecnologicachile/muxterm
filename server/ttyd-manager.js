@@ -136,6 +136,10 @@ class TtydProcessManager {
       '-t', 'fontFamily=Fira Code, monospace',
       '-t', `theme=${themeJson}`,
       '-t', 'scrollback=0',
+      // Disable ttyd's "leave site?" confirmation: muxterm persists every
+      // terminal in tmux, so leaving the page never loses anything — the
+      // native beforeunload prompt is a misleading false alarm here.
+      '-t', 'disableLeaveAlert=true',
       'tmux', ...tmuxAttachArgs
     ];
 
