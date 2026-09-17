@@ -32,8 +32,14 @@ function terminalIdFromTmuxSession(name) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
 }
 
+// The tmux call blocks the event loop for ~13ms, and every open window polls
+// it. One short-lived cache keeps the cost flat no matter how many clients ask.
+let paneCache = { at: 0, panes: [] };
+const PANE_CACHE_MS = 5000;
+
 /** Panes currently running Claude Code, keyed by terminalId. */
 function listClaudePanes() {
+  if (Date.now() - paneCache.at < PANE_CACHE_MS) return paneCache.panes;
   try {
     const out = execSync(
       "tmux -L muxterm list-panes -a -F '#{session_name}\t#{pane_current_command}\t#{pane_current_path}'",
@@ -47,8 +53,10 @@ function listClaudePanes() {
       const terminalId = terminalIdFromTmuxSession(session);
       if (terminalId) found.push({ terminalId, cwd, tmuxSession: session });
     }
+    paneCache = { at: Date.now(), panes: found };
     return found;
   } catch (e) {
+    paneCache = { at: Date.now(), panes: [] };
     return [];
   }
 }
