@@ -10,6 +10,7 @@ const fs = require('fs');
 
 const authRoutes = require('./auth');
 const ttydManager = require('./ttyd-manager');
+const claudeSessions = require('./claude-sessions');
 const jwt = require('jsonwebtoken');
 const database = require('../db/database');
 const tmuxManager = require('../utils/tmuxManager');
@@ -164,6 +165,11 @@ app.use('/api/voice', authenticateToken, (req, res, next) => {
   req.userId = req.user.id;
   next();
 }, voiceApi);
+
+// Claude Code chat view: which terminals are currently running Claude Code
+app.get('/api/claude/panels', authenticateToken, (req, res) => {
+  res.json({ status: 'ok', panels: claudeSessions.listClaudePanes() });
+});
 
 // Guacd health check — test if guacd is accepting connections
 app.get('/api/guacd-health', (req, res) => {
@@ -1060,7 +1066,38 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ---- Claude Code chat view: tail this terminal's session transcript ----
+  const claudeListeners = new Map();   // terminalId -> listener
+
+  socket.on('claude-watch', (data) => {
+    try {
+      const terminalId = data && data.terminalId;
+      if (!terminalId || claudeListeners.has(terminalId)) return;
+      const terminal = ttydManager.getTerminal(terminalId);
+      if (!terminal || terminal.userId !== socket.userId) {
+        socket.emit('claude-events', { terminalId, events: [], error: 'Not your terminal' });
+        return;
+      }
+      const listener = (payload) => socket.emit('claude-events', payload);
+      claudeListeners.set(terminalId, listener);
+      claudeSessions.watch(terminalId, listener);
+    } catch (e) {
+      logger.error('claude-watch error: ' + e.message);
+    }
+  });
+
+  socket.on('claude-unwatch', (data) => {
+    const terminalId = data && data.terminalId;
+    const listener = terminalId && claudeListeners.get(terminalId);
+    if (listener) {
+      claudeSessions.unwatch(terminalId, listener);
+      claudeListeners.delete(terminalId);
+    }
+  });
+
   socket.on('disconnect', () => {
+    for (const [terminalId, listener] of claudeListeners) claudeSessions.unwatch(terminalId, listener);
+    claudeListeners.clear();
     logger.info(`User ${socket.username} disconnected`);
   });
 });
