@@ -163,6 +163,10 @@ function Result({ result }) {
   }
 }
 
+// Tools that stop and wait for a human answer in the TUI. The chat view cannot
+// drive their arrow-key pickers, so it says so instead of looking stuck.
+const WAITING_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']);
+
 const TOOL_ICON = {
   Bash: TerminalIcon, Edit: EditIcon, Write: EditIcon, Read: FileIcon,
   WebFetch: WebIcon, WebSearch: SearchIcon, Grep: SearchIcon, Glob: SearchIcon
@@ -200,7 +204,7 @@ function ToolCard({ ev }) {
 
 /* ---------- main view ---------- */
 
-export default function ClaudeChatView({ terminalId, isActive }) {
+export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }) {
   const { socket } = useSocket();
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
@@ -257,7 +261,7 @@ export default function ClaudeChatView({ terminalId, isActive }) {
 
   const sendPrompt = async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || sending || waiting) return;
     setSending(true);
     setSendError('');
     try {
@@ -285,6 +289,15 @@ export default function ClaudeChatView({ terminalId, isActive }) {
     if (!el) return;
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   };
+
+  // Claude is blocked if the newest blocking tool call has no result yet.
+  let waiting = null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.kind !== 'tool') continue;
+    if (WAITING_TOOLS.has(e.name) && !e.result) waiting = e;
+    break;
+  }
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0a0a' }}>
@@ -317,15 +330,56 @@ export default function ClaudeChatView({ terminalId, isActive }) {
         })}
       </Box>
 
+      {waiting && (
+        <Box sx={{
+          flexShrink: 0, borderTop: '1px solid #4a3c00', backgroundColor: 'rgba(255,167,38,0.10)',
+          px: 1.5, py: 1
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Box sx={{ color: '#ffa726', fontSize: '12px', fontWeight: 700, flex: 1 }}>
+              Claude está esperando tu respuesta en el terminal
+            </Box>
+            <Box
+              component="button"
+              onClick={() => onNeedsTerminal && onNeedsTerminal()}
+              sx={{
+                cursor: 'pointer', border: '1px solid #ffa726', background: 'transparent',
+                color: '#ffa726', borderRadius: 1, fontSize: '11px', padding: '3px 10px',
+                '&:hover': { backgroundColor: 'rgba(255,167,38,0.15)' }
+              }}
+            >Ir al terminal</Box>
+          </Box>
+          {waiting.input && waiting.input.question && (
+            <Box sx={{ color: '#ddd', fontSize: '12px', mb: 0.5 }}>{waiting.input.question}</Box>
+          )}
+          {waiting.input && waiting.input.options && waiting.input.options.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {waiting.input.options.map((opt, i) => (
+                <Box key={i} sx={{
+                  fontSize: '11px', color: '#bbb', border: '1px solid #333',
+                  borderRadius: 1, px: 0.75, py: 0.25
+                }}>{opt}</Box>
+              ))}
+            </Box>
+          )}
+          {waiting.name === 'ExitPlanMode' && (
+            <Box sx={{ color: '#bbb', fontSize: '11.5px' }}>Claude pide aprobar un plan.</Box>
+          )}
+          <Box sx={{ color: '#8a7a55', fontSize: '10px', mt: 0.5 }}>
+            Se responde con las flechas en el terminal; esta vista no puede hacerlo.
+          </Box>
+        </Box>
+      )}
+
       {/* Composer — the prompt goes into the same tmux session, as if typed */}
       <Box sx={{ flexShrink: 0, borderTop: '1px solid #222', p: 1, backgroundColor: '#111' }}>
         {sendError && <Box sx={{ color: '#ff8080', fontSize: '11px', mb: 0.5 }}>{sendError}</Box>}
         <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
           <TextField
             multiline maxRows={6} fullWidth size="small"
-            placeholder="Escribe un prompt… (Enter envía, Shift+Enter nueva línea)"
+            placeholder={waiting ? 'Responde primero en el terminal…' : 'Escribe un prompt… (Enter envía, Shift+Enter nueva línea)'}
             value={draft}
-            disabled={sending}
+            disabled={sending || !!waiting}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
@@ -334,7 +388,7 @@ export default function ClaudeChatView({ terminalId, isActive }) {
           />
           <IconButton
             onClick={sendPrompt}
-            disabled={sending || !draft.trim()}
+            disabled={sending || !!waiting || !draft.trim()}
             sx={{ color: draft.trim() ? '#00ff00' : '#555' }}
             title="Enviar a Claude"
           >

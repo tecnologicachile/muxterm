@@ -47,7 +47,17 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // The choice lives on the panel (persisted with the layout), and only takes
   // effect while Claude is actually running there — if it exits, the panel
   // falls back to the terminal instead of stranding you in a stale transcript.
-  const isChatOn = (panel) => !!panel.chatView && claudeTerminals.has(panel.terminalId);
+  // Transient: set when Claude blocks on a TUI picker and you jump to the
+  // terminal to answer. It hides the conversation without touching the stored
+  // preference, so you come back to it with the same button.
+  const [forcedTerminal, setForcedTerminal] = useState(() => new Set());
+
+  const isChatOn = (panel) =>
+    !!panel.chatView && claudeTerminals.has(panel.terminalId) && !forcedTerminal.has(panel.id);
+
+  const goToTerminal = (panelId) => {
+    setForcedTerminal(prev => new Set(prev).add(panelId));
+  };
 
   useEffect(() => {
     let alive = true;
@@ -66,6 +76,12 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   }, []);
 
   const toggleChat = (panel) => {
+    if (forcedTerminal.has(panel.id)) {
+      // Pushed here to answer a picker — bring the conversation back.
+      setForcedTerminal(prev => { const n = new Set(prev); n.delete(panel.id); return n; });
+      if (!panel.chatView && onPanelChatView) onPanelChatView(panel.id, true);
+      return;
+    }
     if (onPanelChatView) onPanelChatView(panel.id, !panel.chatView);
   };
 
@@ -715,7 +731,11 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             </Box>
             {isChatOn(panel) && (
               <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-                <ClaudeChatView terminalId={panel.terminalId} isActive={isActive} />
+                <ClaudeChatView
+                  terminalId={panel.terminalId}
+                  isActive={isActive}
+                  onNeedsTerminal={() => goToTerminal(panel.id)}
+                />
               </Box>
             )}
             </Box>

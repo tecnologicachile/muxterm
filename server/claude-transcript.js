@@ -139,6 +139,18 @@ function clipInput(name, input) {
   }
   // Write/Edit bodies are shown via the result diff, not the raw input.
   if (name === 'Write' && typeof input.content === 'string') pick._bytes = input.content.length;
+
+  // These block on a human answering in the TUI, so surface enough for the chat
+  // view to show what is being asked while it sends you to the terminal.
+  if (name === 'AskUserQuestion' && Array.isArray(input.questions) && input.questions[0]) {
+    const q = input.questions[0];
+    pick.question = clip(q.question || '', 400).text;
+    pick.header = q.header || '';
+    pick.options = (q.options || []).slice(0, 6).map(opt => clip(opt.label || '', 120).text);
+  }
+  if (name === 'ExitPlanMode' && typeof input.plan === 'string') {
+    pick.plan = clip(input.plan, 1200).text;
+  }
   return pick;
 }
 
