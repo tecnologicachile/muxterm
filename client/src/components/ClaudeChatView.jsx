@@ -24,9 +24,9 @@ import { useSocket } from '../utils/SocketContext';
 /* ---------- tiny markdown renderer (builds React nodes, never raw HTML) ---------- */
 
 function inline(text, keyBase) {
-  // `code`, **bold**, *italic* — everything else stays literal text.
+  // Code first so emphasis inside a span of code is left alone.
   const out = [];
-  const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*)/g;
+  const re = /(`[^`]+`|\[[^\]]+\]\([^)\s]+\)|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*\n]+\*)/g;
   let last = 0, m, i = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
@@ -34,8 +34,16 @@ function inline(text, keyBase) {
     const k = `${keyBase}-i${i++}`;
     if (t.startsWith('`')) {
       out.push(<code key={k} style={{ background: '#222', padding: '1px 4px', borderRadius: 3, fontFamily: '"Fira Code", monospace', fontSize: '0.92em', color: '#7ddc7d' }}>{t.slice(1, -1)}</code>);
+    } else if (t.startsWith('[')) {
+      const cut = t.indexOf('](');
+      const label = t.slice(1, cut), href = t.slice(cut + 2, -1);
+      out.push(<a key={k} href={href} target="_blank" rel="noreferrer" style={{ color: '#4da6ff' }}>{label}</a>);
+    } else if (t.startsWith('***')) {
+      out.push(<strong key={k}><em>{t.slice(3, -3)}</em></strong>);
     } else if (t.startsWith('**')) {
       out.push(<strong key={k}>{t.slice(2, -2)}</strong>);
+    } else if (t.startsWith('~~')) {
+      out.push(<span key={k} style={{ textDecoration: 'line-through', opacity: 0.7 }}>{t.slice(2, -2)}</span>);
     } else {
       out.push(<em key={k}>{t.slice(1, -1)}</em>);
     }
@@ -45,12 +53,18 @@ function inline(text, keyBase) {
   return out;
 }
 
+const isTableRow = (l) => /^\s*\|.*\|\s*$/.test(l);
+const isTableSep = (l) => /^\s*\|[\s:|-]+\|\s*$/.test(l);
+const splitRow = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+
 function MiniMarkdown({ text }) {
   const nodes = [];
   const lines = String(text || '').split('\n');
   let i = 0, key = 0;
+
   while (i < lines.length) {
     const line = lines[i];
+
     if (line.startsWith('```')) {                       // fenced code
       const lang = line.slice(3).trim();
       const body = [];
@@ -69,21 +83,81 @@ function MiniMarkdown({ text }) {
       );
       continue;
     }
-    const h = /^(#{1,4})\s+(.*)$/.exec(line);
-    if (h) {
-      nodes.push(<Typography key={`k${key++}`} sx={{ fontWeight: 700, fontSize: `${15 - h[1].length}px`, mt: 1, mb: 0.5, color: '#eee' }}>{inline(h[2], `h${key}`)}</Typography>);
+
+    // Table: a row of pipes followed by the |---|---| separator.
+    if (isTableRow(line) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+      const head = splitRow(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && isTableRow(lines[i])) rows.push(splitRow(lines[i++]));
+      nodes.push(
+        <Box key={`k${key++}`} sx={{ overflowX: 'auto', my: 0.75 }}>
+          <Box component="table" sx={{ borderCollapse: 'collapse', fontSize: '12px', width: '100%' }}>
+            <thead>
+              <tr>{head.map((c, ci) => (
+                <Box component="th" key={ci} sx={{
+                  border: '1px solid #2e2e2e', px: 1, py: 0.5, textAlign: 'left',
+                  color: '#eee', backgroundColor: '#161616', fontWeight: 700, whiteSpace: 'nowrap'
+                }}>{inline(c, `th${key}-${ci}`)}</Box>
+              ))}</tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={ri}>{r.map((c, ci) => (
+                  <Box component="td" key={ci} sx={{
+                    border: '1px solid #2e2e2e', px: 1, py: 0.5, color: '#ccc', verticalAlign: 'top'
+                  }}>{inline(c, `td${key}-${ri}-${ci}`)}</Box>
+                ))}</tr>
+              ))}
+            </tbody>
+          </Box>
+        </Box>
+      );
+      continue;
+    }
+
+    // Blockquote — how drafts and previews are usually shown.
+    if (/^\s*>\s?/.test(line)) {
+      const body = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        body.push(lines[i].replace(/^\s*>\s?/, ''));
+        i++;
+      }
+      nodes.push(
+        <Box key={`k${key++}`} sx={{
+          borderLeft: '3px solid #555', pl: 1.25, my: 0.75, py: 0.5,
+          backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '0 3px 3px 0'
+        }}>
+          <MiniMarkdown text={body.join('\n')} />
+        </Box>
+      );
+      continue;
+    }
+
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {    // horizontal rule
+      nodes.push(<Box key={`k${key++}`} sx={{ borderTop: '1px solid #2e2e2e', my: 1 }} />);
       i++; continue;
     }
-    const li = /^\s*([-*]|\d+\.)\s+(.*)$/.exec(line);
+
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (h) {
+      const size = Math.max(11, 16 - h[1].length);
+      nodes.push(<Typography key={`k${key++}`} sx={{ fontWeight: 700, fontSize: `${size}px`, mt: 1, mb: 0.5, color: '#eee' }}>{inline(h[2], `h${key}`)}</Typography>);
+      i++; continue;
+    }
+
+    const li = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
     if (li) {
+      const depth = Math.min(3, Math.floor(li[1].replace(/\t/g, '  ').length / 2));
       nodes.push(
-        <Box key={`k${key++}`} sx={{ display: 'flex', gap: 1, pl: 1 }}>
-          <Box sx={{ color: '#666' }}>{/^\d/.test(li[1]) ? li[1] : '•'}</Box>
-          <Box sx={{ flex: 1 }}>{inline(li[2], `l${key}`)}</Box>
+        <Box key={`k${key++}`} sx={{ display: 'flex', gap: 1, pl: 1 + depth * 1.5 }}>
+          <Box sx={{ color: '#666', flexShrink: 0 }}>{/^\d/.test(li[2]) ? li[2] : '•'}</Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>{inline(li[3], `l${key}`)}</Box>
         </Box>
       );
       i++; continue;
     }
+
     if (!line.trim()) { nodes.push(<Box key={`k${key++}`} sx={{ height: 6 }} />); i++; continue; }
     nodes.push(<Box key={`k${key++}`} sx={{ whiteSpace: 'pre-wrap' }}>{inline(line, `p${key}`)}</Box>);
     i++;
