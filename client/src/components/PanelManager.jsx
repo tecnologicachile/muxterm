@@ -24,7 +24,7 @@ import ClaudeChatView from './ClaudeChatView';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, windowId, onPanelDragStart, onPanelDragEnd }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, onPanelChatView, windowId, onPanelDragStart, onPanelDragEnd }) {
   const saveKey = (suffix) => windowId ? `muxterm-${windowId}-${suffix}` : undefined;
   const { socket } = useSocket();
 
@@ -43,7 +43,11 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // ---- Claude Code chat view ----
   // Which terminals currently run Claude Code (so only those get the toggle).
   const [claudeTerminals, setClaudeTerminals] = useState(() => new Set());
-  const [chatPanels, setChatPanels] = useState(() => new Set());
+
+  // The choice lives on the panel (persisted with the layout), and only takes
+  // effect while Claude is actually running there — if it exits, the panel
+  // falls back to the terminal instead of stranding you in a stale transcript.
+  const isChatOn = (panel) => !!panel.chatView && claudeTerminals.has(panel.terminalId);
 
   useEffect(() => {
     let alive = true;
@@ -61,12 +65,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     return () => { alive = false; clearInterval(t); };
   }, []);
 
-  const toggleChat = (panelId) => {
-    setChatPanels(prev => {
-      const n = new Set(prev);
-      n.has(panelId) ? n.delete(panelId) : n.add(panelId);
-      return n;
-    });
+  const toggleChat = (panel) => {
+    if (onPanelChatView) onPanelChatView(panel.id, !panel.chatView);
   };
 
   const pickMimeType = () => {
@@ -541,15 +541,15 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             {panel.terminalId && claudeTerminals.has(panel.terminalId) && (
               <IconButton
                 size="small"
-                onClick={(e) => { e.stopPropagation(); toggleChat(panel.id); }}
+                onClick={(e) => { e.stopPropagation(); toggleChat(panel); }}
                 sx={{
                   padding: '2px',
-                  color: chatPanels.has(panel.id) ? '#00ff00' : '#666',
+                  color: isChatOn(panel) ? '#00ff00' : '#666',
                   '&:hover': { color: '#00ff00' }
                 }}
-                title={chatPanels.has(panel.id) ? 'Ver terminal' : 'Ver conversación de Claude'}
+                title={isChatOn(panel) ? 'Ver terminal' : 'Ver conversación de Claude'}
               >
-                {chatPanels.has(panel.id) ? <TerminalIcon sx={{ fontSize: 14 }} /> : <ChatIcon sx={{ fontSize: 14 }} />}
+                {isChatOn(panel) ? <TerminalIcon sx={{ fontSize: 14 }} /> : <ChatIcon sx={{ fontSize: 14 }} />}
               </IconButton>
             )}
 
@@ -697,7 +697,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             <Box sx={{ position: 'relative', height: '100%', width: '100%' }}>
             {/* The terminal stays mounted under the chat view, so toggling
                 never reloads ttyd nor drops the session. */}
-            <Box sx={{ height: '100%', width: '100%', visibility: chatPanels.has(panel.id) ? 'hidden' : 'visible' }}>
+            <Box sx={{ height: '100%', width: '100%', visibility: isChatOn(panel) ? 'hidden' : 'visible' }}>
             <Terminal
               key={`terminal-${panel.id}-${panel._restoreKey || 0}`}
               terminalId={panel.terminalId}
@@ -713,7 +713,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               onActivityChange={handleActivityChange}
             />
             </Box>
-            {chatPanels.has(panel.id) && (
+            {isChatOn(panel) && (
               <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                 <ClaudeChatView terminalId={panel.terminalId} isActive={isActive} />
               </Box>

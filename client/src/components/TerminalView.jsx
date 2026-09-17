@@ -1207,6 +1207,13 @@ function TerminalView() {
                       return arr;
                     });
                   }}
+                  onPanelChatView={(panelId, enabled) => {
+                    // Stored on the panel so it rides along to the workspace
+                    // layout and survives reloads and restarts.
+                    setPanels(prev => prev.map(p =>
+                      p.id === panelId ? { ...p, chatView: enabled } : p
+                    ));
+                  }}
                   onSftpPathChange={(panelId, newPath) => {
                     setPanels(prev => prev.map(p =>
                       p.id === panelId ? { ...p, sftpPath: newPath } : p
