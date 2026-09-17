@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, TextField, CircularProgress } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   ChevronRight as ChevronRightIcon,
@@ -8,7 +8,8 @@ import {
   Description as FileIcon,
   Language as WebIcon,
   Search as SearchIcon,
-  Build as ToolIcon
+  Build as ToolIcon,
+  Send as SendIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
 
@@ -204,6 +205,9 @@ export default function ClaudeChatView({ terminalId, isActive }) {
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
   const [title, setTitle] = useState('');
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
   const scrollRef = useRef(null);
   const stickRef = useRef(true);
 
@@ -251,6 +255,31 @@ export default function ClaudeChatView({ terminalId, isActive }) {
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [events]);
 
+  const sendPrompt = async () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setSendError('');
+    try {
+      const token = (() => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } })();
+      const r = await fetch('/api/claude/send', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ terminalId, text })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.status !== 'ok') {
+        setSendError(d.message || 'No se pudo enviar');
+      } else {
+        setDraft('');   // it shows up in the conversation once Claude logs it
+        stickRef.current = true;
+      }
+    } catch (e) {
+      setSendError('Error de red al enviar');
+    }
+    setSending(false);
+  };
+
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -286,6 +315,37 @@ export default function ClaudeChatView({ terminalId, isActive }) {
           }
           return null;
         })}
+      </Box>
+
+      {/* Composer — the prompt goes into the same tmux session, as if typed */}
+      <Box sx={{ flexShrink: 0, borderTop: '1px solid #222', p: 1, backgroundColor: '#111' }}>
+        {sendError && <Box sx={{ color: '#ff8080', fontSize: '11px', mb: 0.5 }}>{sendError}</Box>}
+        <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
+          <TextField
+            multiline maxRows={6} fullWidth size="small"
+            placeholder="Escribe un prompt… (Enter envía, Shift+Enter nueva línea)"
+            value={draft}
+            disabled={sending}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
+            }}
+            InputProps={{ sx: { color: '#ddd', fontSize: '13px', backgroundColor: '#0d0d0d' } }}
+          />
+          <IconButton
+            onClick={sendPrompt}
+            disabled={sending || !draft.trim()}
+            sx={{ color: draft.trim() ? '#00ff00' : '#555' }}
+            title="Enviar a Claude"
+          >
+            {sending ? <CircularProgress size={18} sx={{ color: '#00ff00' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
+          </IconButton>
+        </Box>
+        {draft.includes('\n') && (
+          <Box sx={{ color: '#777', fontSize: '10px', mt: 0.5 }}>
+            Los saltos de línea se envían como espacios (la TUI de Claude enviaría el prompt en el primero).
+          </Box>
+        )}
       </Box>
     </Box>
   );

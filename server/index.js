@@ -171,6 +171,18 @@ app.get('/api/claude/panels', authenticateToken, (req, res) => {
   res.json({ status: 'ok', panels: claudeSessions.listClaudePanes() });
 });
 
+// Chat view composer: type a prompt straight into the Claude session
+app.post('/api/claude/send', authenticateToken, (req, res) => {
+  try {
+    const { terminalId, text } = req.body || {};
+    const r = require('./terminal-input').injectText({ terminalId, text, userId: req.user.id });
+    res.status(r.status).json(r.body);
+  } catch (e) {
+    logger.error('claude/send error: ' + e.message);
+    res.status(500).json({ status: 'error', message: 'Internal error' });
+  }
+});
+
 // Guacd health check — test if guacd is accepting connections
 app.get('/api/guacd-health', (req, res) => {
   const net = require('net');

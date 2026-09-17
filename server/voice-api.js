@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const ttydManager = require('./ttyd-manager');
+const { injectText } = require('./terminal-input');
 const systemSettings = require('./system-settings');
 const logger = require('./utils/logger');
 
@@ -71,33 +71,15 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
 
 /**
  * POST /api/voice/inject
- * body { terminalId, text }. Sends the (user-reviewed) text into the terminal's
- * tmux session as if typed, then Enter. Reuses ttydManager.sendKeys.
+ * body { terminalId, text }. Sends the (user-reviewed) transcription into the
+ * terminal. Kept for the voice flow; the shared implementation now also backs
+ * the chat view composer.
  */
-router.post('/inject', express.json(), async (req, res) => {
+router.post('/inject', express.json(), (req, res) => {
   try {
     const { terminalId, text } = req.body || {};
-    if (!terminalId || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ status: 'error', message: 'terminalId and non-empty text are required' });
-    }
-
-    // Ownership: the terminal must be live in this server and belong to the caller.
-    const terminal = ttydManager.terminals.get(terminalId);
-    if (!terminal) {
-      return res.status(404).json({ status: 'error', message: 'Terminal not active' });
-    }
-    if (terminal.userId && req.userId && terminal.userId !== req.userId) {
-      return res.status(403).json({ status: 'error', message: 'Not your terminal' });
-    }
-
-    // Send the literal text, then Enter as a separate call (Claude Code's TUI can
-    // drop the Enter if it arrives glued to the text — see docs/claude-msg.md).
-    ttydManager.sendKeys(terminalId, text);
-    setTimeout(() => {
-      try { ttydManager.sendKeys(terminalId, '\r'); } catch (e) {}
-    }, 200);
-
-    return res.json({ status: 'ok' });
+    const r = injectText({ terminalId, text, userId: req.userId });
+    return res.status(r.status).json(r.body);
   } catch (e) {
     logger.error(`voice/inject error: ${e.message}`);
     return res.status(500).json({ status: 'error', message: 'Internal error during injection' });
