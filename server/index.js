@@ -1073,8 +1073,15 @@ io.on('connection', (socket) => {
     try {
       const terminalId = data && data.terminalId;
       if (!terminalId || claudeListeners.has(terminalId)) return;
+      // After a server restart the in-memory map is empty until the terminal is
+      // restored, so fall back to the DB rather than refusing the watch.
       const terminal = ttydManager.getTerminal(terminalId);
-      if (!terminal || terminal.userId !== socket.userId) {
+      let owned = !!(terminal && terminal.userId === socket.userId);
+      if (!terminal) {
+        const row = database.findTerminalById(terminalId);
+        owned = !!(row && row.user_id === socket.userId);
+      }
+      if (!owned) {
         socket.emit('claude-events', { terminalId, events: [], error: 'Not your terminal' });
         return;
       }

@@ -21,7 +21,9 @@ const NOISE_TYPES = new Set([
 ]);
 
 const MAX_TEXT = 4000;      // per rendered block
-const TAIL_BYTES = 512 * 1024;
+// Big tool outputs (WebFetch/Read) make lines huge, so a small window shows
+// very few turns. 2 MB lands on a useful number of them.
+const TAIL_BYTES = 2 * 1024 * 1024;
 
 function clip(s, max = MAX_TEXT) {
   if (typeof s !== 'string') return { text: '', truncated: false };
