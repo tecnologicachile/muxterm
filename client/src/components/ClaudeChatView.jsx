@@ -320,10 +320,17 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
       if (payload.backlog) setEvents([]);
       merge(payload.events || []);
     };
+    // The server drops the watch when the socket disconnects (a suspended
+    // phone does that constantly), and socket.io reuses the same object on
+    // reconnect, so nothing here would re-run. Re-subscribe on every connect
+    // or the view goes quiet without saying so.
+    const subscribe = () => socket.emit('claude-watch', { terminalId });
     socket.on('claude-events', onEvents);
-    socket.emit('claude-watch', { terminalId });
+    socket.on('connect', subscribe);
+    subscribe();
     return () => {
       socket.off('claude-events', onEvents);
+      socket.off('connect', subscribe);
       socket.emit('claude-unwatch', { terminalId });
     };
   }, [socket, terminalId, merge]);
