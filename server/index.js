@@ -47,7 +47,9 @@ try {
   const certsDir = path.join(__dirname, '..', 'certs');
   if (fs.existsSync(certsDir)) {
     const files = fs.readdirSync(certsDir);
-    const certFile = files.find(f => f.endsWith('.pem') && !f.includes('-key'));
+    // rootCA.pem also ends in .pem and carries no -key, so without excluding it
+    // the CA could be served as the site certificate depending on readdir order.
+    const certFile = files.find(f => f.endsWith('.pem') && !f.includes('-key') && !f.startsWith('rootCA'));
     const keyFile = files.find(f => f.endsWith('-key.pem'));
     if (certFile && keyFile) {
       server = https.createServer({
