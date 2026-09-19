@@ -121,7 +121,7 @@ export function stopSpeaking() {
  *
  * Half a minute rather than a second: Chrome does not surface media controls —
  * and therefore does not route headset buttons — for clips it considers too
- * short to be real media, nor for ones it considers silent.
+ * short to be real media.
  *
  * A tab that is actively playing media does not get frozen with the screen off,
  * which is what keeps the socket alive and lets the next reply be spoken. It is
@@ -138,13 +138,10 @@ export function silentLoopUri(seconds = 30) {
   dv.setUint32(24, rate, true); dv.setUint32(28, rate, true);
   dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
   put(36, 'data'); dv.setUint32(40, n, true);
-  // Not silence: Chrome analyses the signal and does not hand hardware media
-  // keys to a page it considers muted, however visible its notification is.
-  // A 45 Hz tone registers as audible while earbuds, which barely reproduce
-  // that low, make it close to imperceptible.
-  for (let i = 0; i < n; i++) {
-    bytes[44 + i] = 128 + Math.round(Math.sin(2 * Math.PI * 45 * i / rate) * 127 * 0.5);
-  }
+  // Near-silence, deliberately not digital zero: some engines discard a wholly
+  // silent track. Making it audibly loud was tried to win hardware media keys
+  // and did not, so there is no reason to make anyone listen to it.
+  for (let i = 0; i < n; i++) bytes[44 + i] = 128 + (i % 2);
   // A blob rather than a data URI: base64 would inflate half a minute of audio
   // to something the browser has to parse on every start.
   return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));

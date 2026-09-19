@@ -529,7 +529,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     try {
       internalRef.current = true;
       a.loop = true;
-      a.volume = 0.12;
+      a.volume = 0.05;
       if (a.src !== silentUri) a.src = silentUri;
       const p = a.play();
       if (p && p.then) p.then(() => setHandsFree(true)).catch(() => setHandsFree(false));
