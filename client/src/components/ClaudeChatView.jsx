@@ -408,7 +408,7 @@ const authToken = () => { try { return localStorage.getItem('token') || ''; } ca
 
 /* ---------- main view ---------- */
 
-export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, recording, onVoiceToggle }) {
+export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, recording, onVoiceToggle, onHandsFree }) {
   const { socket } = useSocket();
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
@@ -635,6 +635,19 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
 
   useEffect(() => { enqueueSpeechRef.current = enqueueSpeech; }, [enqueueSpeech]);
 
+  // Hold the microphone open while hands-free is on, and let it go when off.
+  const [micHeld, setMicHeld] = useState(false);
+  useEffect(() => {
+    if (!onHandsFree) return;
+    let alive = true;
+    Promise.resolve(onHandsFree(!!autoSpeak)).then(ok => {
+      if (alive) setMicHeld(!!autoSpeak && ok !== false);
+    });
+    return () => { alive = false; };
+  }, [autoSpeak, onHandsFree]);
+
+  useEffect(() => () => { if (onHandsFree) onHandsFree(false); }, [onHandsFree]);
+
   useEffect(() => {
     if (autoSpeak) keepAlive();
     else { const a = audioRef.current; if (a) { try { a.pause(); } catch (e) {} } }
@@ -764,7 +777,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
                 }}
               >
                 {handsFree
-                  ? `manos libres: activo${mediaKeys ? ' · botón ok' : ''}`
+                  ? `manos libres: activo${micHeld ? ' · mic' : ' · SIN MIC'}${mediaKeys ? ' · botón ok' : ''}`
                   : 'manos libres inactivo — tócame'}
               </Box>
             )}
