@@ -529,7 +529,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     try {
       internalRef.current = true;
       a.loop = true;
-      a.volume = 0.05;
+      a.volume = 0.12;
       if (a.src !== silentUri) a.src = silentUri;
       const p = a.play();
       if (p && p.then) p.then(() => setHandsFree(true)).catch(() => setHandsFree(false));
@@ -713,8 +713,8 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       }, 1600);
     };
 
-    // Deliberately not handling play/pause: taking them over stops Android
-    // pausing the audio, and that pause is the signal we can actually detect.
+    // Left unset on purpose: registering them suppresses the pause that the
+    // listener below relies on to notice the button.
     // Headsets that do have them keep the more explicit mapping.
     set('nexttrack', () => { if (recording) { onVoiceToggle && onVoiceToggle(true); } else startRecording(); });
     set('previoustrack', () => speakLast());
