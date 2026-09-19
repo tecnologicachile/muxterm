@@ -11,9 +11,13 @@ import {
   Build as ToolIcon,
   Send as SendIcon,
   Mic as MicIcon,
-  Stop as StopIcon
+  Stop as StopIcon,
+  VolumeUp as VolumeUpIcon,
+  VolumeOff as VolumeOffIcon,
+  Hearing as HearingIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
+import { toSpeech, speak, stopSpeaking, speechSupported } from '../utils/speech';
 
 /**
  * Rich view of the Claude Code session running in a terminal.
@@ -411,6 +415,16 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const scrollRef = useRef(null);
   const stickRef = useRef(true);
   const fileRef = useRef(null);
+  const [speaking, setSpeaking] = useState(false);
+  // Remembered per device: you want this on the phone with headphones, not
+  // necessarily on the desktop.
+  const [autoSpeak, setAutoSpeak] = useState(() => {
+    try { return localStorage.getItem('muxterm-autospeak') === '1'; } catch (e) { return false; }
+  });
+  const spokenRef = useRef(new Set());
+
+  const autoSpeakRef = useRef(autoSpeak);
+  useEffect(() => { autoSpeakRef.current = autoSpeak; }, [autoSpeak]);
 
   const merge = useCallback((incoming) => {
     setEvents(prev => {
@@ -448,7 +462,21 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         if (payload.file && fileRef.current && payload.file !== fileRef.current) setEvents([]);
         if (payload.file) fileRef.current = payload.file;
       }
-      merge(payload.events || []);
+      const incoming = payload.events || [];
+      if (payload.backlog) {
+        // Never read the history aloud on opening — only what arrives after.
+        for (const ev of incoming) if (ev.kind === 'text' && ev.uuid) spokenRef.current.add(ev.uuid + ':' + (ev.text || '').length);
+      } else if (autoSpeakRef.current && document.visibilityState === 'visible') {
+        const nuevos = incoming.filter(ev => ev.kind === 'text' && ev.text);
+        for (const ev of nuevos) {
+          const k = (ev.uuid || '') + ':' + ev.text.length;
+          if (spokenRef.current.has(k)) continue;
+          spokenRef.current.add(k);
+          const t = toSpeech(ev.text);
+          if (t) { setSpeaking(true); speak(t, { queue: true, onEnd: () => setSpeaking(false) }); }
+        }
+      }
+      merge(incoming);
     };
     // The server drops the watch when the socket disconnects (a suspended
     // phone does that constantly), and socket.io reuses the same object on
@@ -469,6 +497,27 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     const el = scrollRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [events]);
+
+  const speakLast = () => {
+    if (speaking) { stopSpeaking(); setSpeaking(false); return; }
+    const last = [...events].reverse().find(e => e.kind === 'text' && e.text);
+    if (!last) return;
+    const t = toSpeech(last.text);
+    if (!t) return;
+    setSpeaking(true);
+    speak(t, { onEnd: () => setSpeaking(false), onError: () => setSpeaking(false) });
+  };
+
+  const toggleAutoSpeak = () => {
+    setAutoSpeak(v => {
+      const next = !v;
+      try { localStorage.setItem('muxterm-autospeak', next ? '1' : '0'); } catch (e) {}
+      if (!next) { stopSpeaking(); setSpeaking(false); }
+      return next;
+    });
+  };
+
+  useEffect(() => () => stopSpeaking(), []);   // stop when the view closes
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -515,8 +564,28 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           MODO CONVERSACIÓN
         </Box>
         {title && (
-          <Box sx={{ color: '#777', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Box sx={{ color: '#777', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
             {title}
+          </Box>
+        )}
+        {speechSupported() && (
+          <Box sx={{ display: 'flex', gap: 0.25, ml: 'auto', flexShrink: 0 }}>
+            <IconButton
+              size="small"
+              onClick={speakLast}
+              sx={{ padding: '3px', color: speaking ? '#00ff00' : '#888', '&:hover': { color: '#00ff00' } }}
+              title={speaking ? 'Detener lectura' : 'Escuchar la última respuesta'}
+            >
+              {speaking ? <StopIcon sx={{ fontSize: 16 }} /> : <VolumeUpIcon sx={{ fontSize: 16 }} />}
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={toggleAutoSpeak}
+              sx={{ padding: '3px', color: autoSpeak ? '#00ff00' : '#555', '&:hover': { color: '#00ff00' } }}
+              title={autoSpeak ? 'Leer respuestas automáticamente: activado' : 'Leer respuestas automáticamente: desactivado'}
+            >
+              {autoSpeak ? <HearingIcon sx={{ fontSize: 16 }} /> : <VolumeOffIcon sx={{ fontSize: 16 }} />}
+            </IconButton>
           </Box>
         )}
       </Box>
