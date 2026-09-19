@@ -9,7 +9,9 @@ import {
   Language as WebIcon,
   Search as SearchIcon,
   Build as ToolIcon,
-  Send as SendIcon
+  Send as SendIcon,
+  Mic as MicIcon,
+  Stop as StopIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
 
@@ -294,7 +296,7 @@ function ToolCard({ ev }) {
  * Its own component on purpose: the draft lives here, so typing re-renders this
  * box alone instead of the whole conversation on every keystroke.
  */
-function Composer({ terminalId, waiting, onSent, isActive }) {
+function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceToggle }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
@@ -348,6 +350,20 @@ function Composer({ terminalId, waiting, onSent, isActive }) {
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           InputProps={{ sx: { color: '#ddd', fontSize: '13px', backgroundColor: '#0d0d0d' } }}
         />
+        {onVoiceToggle && (
+          <IconButton
+            onClick={onVoiceToggle}
+            disabled={!!waiting}
+            sx={{
+              color: recording ? '#ff3b3b' : '#888',
+              backgroundColor: recording ? 'rgba(255,59,59,0.12)' : 'transparent',
+              '&:hover': { color: recording ? '#ff6b6b' : '#00ff00' }
+            }}
+            title={recording ? 'Detener grabación' : 'Mensaje de voz'}
+          >
+            {recording ? <StopIcon sx={{ fontSize: 20 }} /> : <MicIcon sx={{ fontSize: 20 }} />}
+          </IconButton>
+        )}
         <IconButton
           onClick={send}
           disabled={sending || !!waiting || !draft.trim()}
@@ -368,7 +384,7 @@ function Composer({ terminalId, waiting, onSent, isActive }) {
 
 /* ---------- main view ---------- */
 
-export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }) {
+export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, recording, onVoiceToggle }) {
   const { socket } = useSocket();
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
@@ -539,6 +555,8 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
         terminalId={terminalId}
         waiting={waiting}
         isActive={isActive}
+        recording={recording}
+        onVoiceToggle={onVoiceToggle}
         onSent={() => { stickRef.current = true; }}
       />
     </Box>

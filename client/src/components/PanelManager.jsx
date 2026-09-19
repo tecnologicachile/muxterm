@@ -569,8 +569,10 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               </IconButton>
             )}
 
-            {/* Voice → transcribe → inject as a Claude prompt */}
-            {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) && (
+            {/* Voice → transcribe → inject as a Claude prompt.
+                In modo conversación the mic lives next to the composer, where
+                the hands already are, so it is not repeated up here. */}
+            {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId && !isChatOn(panel)) && (
               <IconButton
                 size="small"
                 onClick={(e) => {
@@ -735,6 +737,11 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                   terminalId={panel.terminalId}
                   isActive={isActive}
                   onNeedsTerminal={() => goToTerminal(panel.id)}
+                  recording={recordingPanelId === panel.id}
+                  onVoiceToggle={() => {
+                    if (recordingPanelId === panel.id) stopVoiceRecording();
+                    else startVoiceRecording(panel);
+                  }}
                 />
               </Box>
             )}
