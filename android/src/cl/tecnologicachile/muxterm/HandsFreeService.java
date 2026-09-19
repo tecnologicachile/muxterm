@@ -70,7 +70,12 @@ public class HandsFreeService extends Service {
         super.onCreate();
         status = "iniciando";
         createChannel();
-        foreground("Manos libres listo — pulsa el auricular para dictar", false);
+        // Both service types from the start, while the app is still visible:
+        // Android 14+ only lets a foreground service take the microphone type
+        // while the app is in the foreground. Adding it later, with the screen
+        // off, is refused — and a recording made without it is handed silence,
+        // which Whisper then "transcribes" as subtitle credits.
+        foreground("Manos libres listo — pulsa el auricular para dictar", true);
 
         session = new MediaSession(this, "muxterm");
         session.setCallback(new MediaSession.Callback() {

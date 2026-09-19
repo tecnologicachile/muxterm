@@ -675,6 +675,10 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const [micHeld, setMicHeld] = useState(false);
   useEffect(() => {
     if (!onHandsFree) return;
+    // Inside the companion app the service records natively; a page holding
+    // the microphone open at the same time starves it, and Whisper is then
+    // handed silence — which it "transcribes" as subtitle credits.
+    if (inNativeApp()) { setMicHeld(true); return; }
     let alive = true;
     Promise.resolve(onHandsFree(!!autoSpeak)).then(ok => {
       if (alive) setMicHeld(!!autoSpeak && ok !== false);

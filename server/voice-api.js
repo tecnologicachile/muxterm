@@ -12,6 +12,24 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
+// What Whisper's Spanish model emits for silence or near-silence. Not "no
+// speech" — subtitle credits and sign-offs it saw at the end of countless
+// videos. Anything matching is not a dictation.
+const SILENCE_PATTERNS = [
+  /subt[ií]tulos?\s+(realizados|creados|hechos)/i,
+  /amara\.org/i,
+  /antarctica\s+films/i,
+  /^cc\s+por\s+/i,
+  /gracias\s+por\s+ver/i,
+  /suscr[ií]b(e|a)te/i,
+  /^\s*\.{2,}\s*$/,
+];
+function isSilenceHallucination(text) {
+  const t = String(text || '').trim();
+  if (t.length < 2) return true;
+  return SILENCE_PATTERNS.some(re => re.test(t));
+}
+
 // Map the recorder mime type to a filename extension OpenAI accepts.
 function audioFilename(mime) {
   const m = (mime || '').toLowerCase();
@@ -62,6 +80,12 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
 
     const data = await r.json();
     const text = (data && typeof data.text === 'string') ? data.text.trim() : '';
+    if (isSilenceHallucination(text)) {
+      // Whisper does not say "nothing here": on silent audio it produces
+      // subtitle credits. Those were reaching Claude as prompts.
+      logger.error(`Whisper returned a silence hallucination: ${text.slice(0, 80)}`);
+      return res.status(422).json({ status: 'error', message: 'No se captó voz (audio en silencio)' });
+    }
     return res.json({ status: 'ok', text });
   } catch (e) {
     logger.error(`voice/transcribe error: ${e.message}`);
