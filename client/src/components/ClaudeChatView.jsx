@@ -13,8 +13,7 @@ import {
   Mic as MicIcon,
   Stop as StopIcon,
   VolumeUp as VolumeUpIcon,
-  VolumeOff as VolumeOffIcon,
-  Hearing as HearingIcon
+  PlayArrow as PlayArrowIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
 import { toSpeech, speak, stopSpeaking, speechSupported } from '../utils/speech';
@@ -569,23 +568,32 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           </Box>
         )}
         {speechSupported() && (
-          <Box sx={{ display: 'flex', gap: 0.25, ml: 'auto', flexShrink: 0 }}>
+          <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', flexShrink: 0, alignItems: 'center' }}>
+            {/* A play triangle and a worded switch: two speaker glyphs side by
+                side were impossible to tell apart. */}
             <IconButton
               size="small"
               onClick={speakLast}
-              sx={{ padding: '3px', color: speaking ? '#00ff00' : '#888', '&:hover': { color: '#00ff00' } }}
+              sx={{ padding: '3px', color: speaking ? '#00ff00' : '#999', '&:hover': { color: '#00ff00' } }}
               title={speaking ? 'Detener lectura' : 'Escuchar la última respuesta'}
             >
-              {speaking ? <StopIcon sx={{ fontSize: 16 }} /> : <VolumeUpIcon sx={{ fontSize: 16 }} />}
+              {speaking ? <StopIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}
             </IconButton>
-            <IconButton
-              size="small"
+            <Box
               onClick={toggleAutoSpeak}
-              sx={{ padding: '3px', color: autoSpeak ? '#00ff00' : '#555', '&:hover': { color: '#00ff00' } }}
-              title={autoSpeak ? 'Leer respuestas automáticamente: activado' : 'Leer respuestas automáticamente: desactivado'}
+              title={autoSpeak ? 'Lectura automática activada' : 'Lectura automática desactivada'}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer',
+                px: 0.6, py: '2px', borderRadius: 1, userSelect: 'none',
+                border: `1px solid ${autoSpeak ? '#00aa55' : '#3a3a3a'}`,
+                color: autoSpeak ? '#00ff00' : '#666',
+                backgroundColor: autoSpeak ? 'rgba(0,170,85,0.12)' : 'transparent',
+                '&:hover': { borderColor: '#00aa55' }
+              }}
             >
-              {autoSpeak ? <HearingIcon sx={{ fontSize: 16 }} /> : <VolumeOffIcon sx={{ fontSize: 16 }} />}
-            </IconButton>
+              <VolumeUpIcon sx={{ fontSize: 13 }} />
+              <Box component="span" sx={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.04em' }}>AUTO</Box>
+            </Box>
           </Box>
         )}
       </Box>
