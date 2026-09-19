@@ -3,7 +3,11 @@ package cl.tecnologicachile.muxterm;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.media.ToneGenerator;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
@@ -31,6 +35,9 @@ import java.util.Locale;
 public class MainActivity extends Activity {
 
     private MediaSession session;
+    private AudioTrack track;
+    private AudioFocusRequest focus;
+    private String audio = "sin audio";
     private TextView status;
     private int presses = 0;
     private String last = "—";
@@ -80,7 +87,51 @@ public class MainActivity extends Activity {
                 .build());
         session.setActive(true);
 
+        // Since Android 8 the media button goes to whichever app last played
+        // audio — YouTube got it because it sounds. The first version of this
+        // test never played anything, so it never became a candidate. Now it
+        // holds audio focus and loops near-silence, the way a real player would.
+        startAudio();
+
         render();
+    }
+
+    private void startAudio() {
+        try {
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setOnAudioFocusChangeListener(new AudioManager.OnAudioFocusChangeListener() {
+                        @Override public void onAudioFocusChange(int change) {
+                            audio = "foco: " + change;
+                            runOnUiThread(new Runnable() { @Override public void run() { render(); } });
+                        }
+                    })
+                    .build();
+            int granted = am.requestAudioFocus(focus);
+
+            int rate = 8000;
+            short[] samples = new short[rate];              // one second
+            for (int i = 0; i < samples.length; i++) samples[i] = (short) ((i % 2 == 0) ? 1 : -1);
+            int min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            track = new AudioTrack(attrs,
+                    new AudioFormat.Builder().setSampleRate(rate)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build(),
+                    Math.max(min, samples.length * 2), AudioTrack.MODE_STATIC,
+                    AudioManager.AUDIO_SESSION_ID_GENERATE);
+            track.write(samples, 0, samples.length);
+            track.setLoopPoints(0, samples.length, -1);
+            track.play();
+            audio = "reproduciendo (foco " + (granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED ? "concedido" : "denegado") + ")";
+        } catch (Exception e) {
+            audio = "audio falló: " + e.getMessage();
+        }
     }
 
     /** Feedback has to reach you with the screen off, so: sound and vibration. */
@@ -104,6 +155,7 @@ public class MainActivity extends Activity {
 
     private void render() {
         status.setText("muxterm — prueba de botón\n\n"
+                + audio + "\n\n"
                 + "Pulsaciones recibidas\n\n"
                 + presses + "\n\n"
                 + last + "\n\n"
@@ -114,6 +166,12 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        // Kept playing through onPause/onStop on purpose: the screen going off
+        // is the whole point of the test.
+        if (track != null) { try { track.stop(); track.release(); } catch (Exception ignored) { } }
+        if (focus != null) {
+            try { ((AudioManager) getSystemService(AUDIO_SERVICE)).abandonAudioFocusRequest(focus); } catch (Exception ignored) { }
+        }
         if (session != null) { session.setActive(false); session.release(); }
         super.onDestroy();
     }
