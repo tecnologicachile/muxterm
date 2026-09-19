@@ -35,7 +35,11 @@ export const SocketProvider = ({ children }) => {
         setConnected(true);
       });
 
-      newSocket.on('reconnect', () => {
+      // socket.io-client 4 emits 'reconnect' on the Manager (socket.io), not
+      // on the Socket — listening here on the Socket never fired, so nothing
+      // ever re-restored terminals after a server restart. A page that stayed
+      // open (the companion app, a pinned tab) sat on a dead ttyd, "Connecting".
+      newSocket.io.on('reconnect', () => {
         logger.info('Socket reconnected after connection loss');
         setIsReconnected(true);
         // Reset the flag after a short delay to trigger restoration

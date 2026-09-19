@@ -54,6 +54,11 @@ public class MainActivity extends Activity {
         strip.setTextSize(11);
         strip.setPadding(16, 6, 16, 6);
         strip.setText("manos libres: iniciando");
+        // A WebView has no address bar: without this, a page that got stuck
+        // could only be recovered by killing the app.
+        strip.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) { if (web != null) web.reload(); }
+        });
         root.addView(strip);
 
         web = new WebView(this);
@@ -116,7 +121,8 @@ public class MainActivity extends Activity {
             SharedPreferences p = getSharedPreferences(HandsFreeService.PREFS, MODE_PRIVATE);
             String term = p.getString("terminalId", "");
             strip.setText("manos libres: " + (st == null ? "detenido" : st)
-                    + (term.isEmpty() ? "  ·  sin panel" : "  ·  panel " + term.substring(0, Math.min(8, term.length()))));
+                    + (term.isEmpty() ? "  ·  sin panel" : "  ·  panel " + term.substring(0, Math.min(8, term.length())))
+                    + "   (toca para recargar)");
             ui.postDelayed(this, 1000);
         }
     };
