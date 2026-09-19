@@ -1503,22 +1503,27 @@ function TerminalView() {
               </Box>
             )}
 
-            {/* Zona de activación - franja invisible en el borde izquierdo */}
-            <Box
-              onMouseEnter={() => {
-                clearTimeout(sidebarTimeoutRef.current);
-                setSidebarOpen(true);
-              }}
-              sx={{
-                position: 'fixed',
-                top: 64,
-                left: 0,
-                bottom: 0,
-                width: '6px',
-                zIndex: 1002,
-                cursor: 'pointer'
-              }}
-            />
+            {/* Zona de activación - franja invisible en el borde izquierdo.
+                Solo existe con el sidebar cerrado: su z-index es mayor que el
+                del panel, así que dejarla montada lo tapaba por la izquierda y
+                al salir por ese borde cancelaba el cierre, dejándolo pegado. */}
+            {!sidebarOpen && (
+              <Box
+                onMouseEnter={() => {
+                  clearTimeout(sidebarTimeoutRef.current);
+                  setSidebarOpen(true);
+                }}
+                sx={{
+                  position: 'fixed',
+                  top: 64,
+                  left: 0,
+                  bottom: 0,
+                  width: '6px',
+                  zIndex: 1002,
+                  cursor: 'pointer'
+                }}
+              />
+            )}
 
             {/* Sidebar expandido - altura auto, centrado vertical */}
             {sidebarOpen && (
@@ -1527,12 +1532,20 @@ function TerminalView() {
                   clearTimeout(sidebarTimeoutRef.current);
                 }}
                 onMouseLeave={() => {
-                  sidebarTimeoutRef.current = setTimeout(() => {
-                    // Don't close if filter input is focused
-                    if (sidebarFilterRef.current && sidebarFilterRef.current === document.activeElement) return;
-                    setSidebarOpen(false);
-                    setSidebarFilter('');
-                  }, 400);
+                  // Re-arm instead of giving up: bailing out once meant that
+                  // focusing the filter and then clicking elsewhere left the
+                  // sidebar open with nothing scheduled to close it.
+                  const scheduleClose = () => {
+                    sidebarTimeoutRef.current = setTimeout(() => {
+                      if (sidebarFilterRef.current && sidebarFilterRef.current === document.activeElement) {
+                        scheduleClose();
+                        return;
+                      }
+                      setSidebarOpen(false);
+                      setSidebarFilter('');
+                    }, 400);
+                  };
+                  scheduleClose();
                 }}
                 sx={{
                   position: 'fixed',

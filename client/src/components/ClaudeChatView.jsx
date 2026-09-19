@@ -53,6 +53,20 @@ function inline(text, keyBase) {
   return out;
 }
 
+// The browser default scrollbar is light and breaks the dark UI, and muxterm
+// styles them per component rather than globally.
+const darkScroll = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: '#3a3a3a transparent',
+  '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+  '&::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
+  '&::-webkit-scrollbar-thumb': {
+    backgroundColor: '#3a3a3a', borderRadius: '4px',
+    '&:hover': { backgroundColor: '#4d4d4d' }
+  },
+  '&::-webkit-scrollbar-corner': { backgroundColor: 'transparent' }
+};
+
 const isTableRow = (l) => /^\s*\|.*\|\s*$/.test(l);
 const isTableSep = (l) => /^\s*\|[\s:|-]+\|\s*$/.test(l);
 const splitRow = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
@@ -75,7 +89,7 @@ function MiniMarkdown({ text }) {
         <Box key={`k${key++}`} component="pre" sx={{
           m: '6px 0', p: 1, backgroundColor: '#0d0d0d', border: '1px solid #262626',
           borderRadius: 1, overflow: 'auto', fontSize: '12px', lineHeight: 1.5,
-          fontFamily: '"Fira Code", monospace', color: '#d4d4d4'
+          fontFamily: '"Fira Code", monospace', color: '#d4d4d4', ...darkScroll
         }}>
           {lang && <Box component="span" sx={{ color: '#666', fontSize: '10px', display: 'block', mb: 0.5 }}>{lang}</Box>}
           {body.join('\n')}
@@ -91,7 +105,7 @@ function MiniMarkdown({ text }) {
       const rows = [];
       while (i < lines.length && isTableRow(lines[i])) rows.push(splitRow(lines[i++]));
       nodes.push(
-        <Box key={`k${key++}`} sx={{ overflowX: 'auto', my: 0.75 }}>
+        <Box key={`k${key++}`} sx={{ overflowX: 'auto', my: 0.75, ...darkScroll }}>
           <Box component="table" sx={{ borderCollapse: 'collapse', fontSize: '12px', width: '100%' }}>
             <thead>
               <tr>{head.map((c, ci) => (
@@ -174,7 +188,7 @@ function Diff({ patch, filePath }) {
       {(patch || []).map((h, hi) => (
         <Box key={hi} sx={{
           border: '1px solid #262626', borderRadius: 1, overflow: 'auto',
-          backgroundColor: '#0d0d0d', mb: 0.5
+          backgroundColor: '#0d0d0d', mb: 0.5, ...darkScroll
         }}>
           <Box sx={{ fontSize: '10px', color: '#666', px: 1, py: 0.3, borderBottom: '1px solid #222', fontFamily: 'monospace' }}>
             @@ -{h.oldStart},{h.oldLines} +{h.newStart},{h.newLines} @@
@@ -203,7 +217,7 @@ function Mono({ text, color = '#bbb', truncated, fullLength }) {
       fontFamily: '"Fira Code", monospace', fontSize: '11.5px', lineHeight: 1.5,
       whiteSpace: 'pre-wrap', wordBreak: 'break-word', color,
       backgroundColor: '#0d0d0d', border: '1px solid #222', borderRadius: 1,
-      p: 1, mt: 0.5, maxHeight: 320, overflow: 'auto'
+      p: 1, mt: 0.5, maxHeight: 320, overflow: 'auto', ...darkScroll
     }}>
       {text}
       {truncated && <Box sx={{ color: '#666', mt: 0.5 }}>… recortado ({fullLength} caracteres)</Box>}
@@ -280,10 +294,24 @@ function ToolCard({ ev }) {
  * Its own component on purpose: the draft lives here, so typing re-renders this
  * box alone instead of the whole conversation on every keystroke.
  */
-function Composer({ terminalId, waiting, onSent }) {
+function Composer({ terminalId, waiting, onSent, isActive }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
+  const inputRef = useRef(null);
+
+  // Focusing here when the panel is selected saves a click before typing.
+  // Desktop only: on a phone it would pop the on-screen keyboard every time
+  // you switch panels.
+  useEffect(() => {
+    if (!isActive || waiting) return;
+    const smallScreen = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const touchUA = typeof navigator !== 'undefined' &&
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (touchUA && smallScreen) return;
+    const t = setTimeout(() => { try { inputRef.current?.focus(); } catch (e) {} }, 60);
+    return () => clearTimeout(t);
+  }, [isActive, waiting]);
 
   const send = async () => {
     const text = draft.trim();
@@ -314,6 +342,7 @@ function Composer({ terminalId, waiting, onSent }) {
           multiline maxRows={6} fullWidth size="small"
           placeholder={waiting ? 'Responde primero en el terminal…' : 'Escribe un prompt… (Enter envía, Shift+Enter nueva línea)'}
           value={draft}
+          inputRef={inputRef}
           disabled={sending || !!waiting}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
@@ -440,7 +469,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
           {title}
         </Box>
       )}
-      <Box ref={scrollRef} onScroll={onScroll} sx={{ flex: 1, overflow: 'auto', px: 1.5, py: 1 }}>
+      <Box ref={scrollRef} onScroll={onScroll} sx={{ flex: 1, overflow: 'auto', px: 1.5, py: 1, ...darkScroll }}>
         {error && <Box sx={{ color: '#ffa726', fontSize: '12px', p: 2, textAlign: 'center' }}>{error}</Box>}
         {!error && events.length === 0 && (
           <Box sx={{ color: '#666', fontSize: '12px', p: 2, textAlign: 'center' }}>Esperando actividad de Claude…</Box>
@@ -493,6 +522,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
       <Composer
         terminalId={terminalId}
         waiting={waiting}
+        isActive={isActive}
         onSent={() => { stickRef.current = true; }}
       />
     </Box>
