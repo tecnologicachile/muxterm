@@ -415,6 +415,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const stickRef = useRef(true);
   const fileRef = useRef(null);
   const [speaking, setSpeaking] = useState(false);
+  const [speechError, setSpeechError] = useState('');
   // Remembered per device: you want this on the phone with headphones, not
   // necessarily on the desktop.
   const [autoSpeak, setAutoSpeak] = useState(() => {
@@ -504,7 +505,15 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     const t = toSpeech(last.text);
     if (!t) return;
     setSpeaking(true);
-    speak(t, { onEnd: () => setSpeaking(false), onError: () => setSpeaking(false) });
+    setSpeechError('');
+    speak(t, {
+      onEnd: () => setSpeaking(false),
+      onError: (e) => {
+        setSpeaking(false);
+        setSpeechError((e && e.message) || 'No se pudo reproducir la voz');
+        setTimeout(() => setSpeechError(''), 5000);
+      }
+    });
   };
 
   const toggleAutoSpeak = () => {
@@ -604,6 +613,12 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         )}
         {messageNodes}
       </Box>
+
+      {speechError && (
+        <Box sx={{ flexShrink: 0, px: 1.5, py: 0.5, backgroundColor: 'rgba(255,167,38,0.12)', color: '#ffa726', fontSize: '11px' }}>
+          {speechError}. Revisa en Ajustes de Android → Texto a voz que haya una voz instalada.
+        </Box>
+      )}
 
       {waiting && (
         <Box sx={{

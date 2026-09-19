@@ -36,6 +36,22 @@ export function toSpeech(md) {
   }, '').trim();
 }
 
+/**
+ * Android Chrome populates the voice list asynchronously, and a speak() issued
+ * before it is ready can do nothing at all — silently.
+ */
+function whenVoicesReady() {
+  return new Promise((resolve) => {
+    try {
+      if ((window.speechSynthesis.getVoices() || []).length) return resolve();
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      window.speechSynthesis.addEventListener('voiceschanged', finish, { once: true });
+      setTimeout(finish, 1200);          // speak with the default voice rather than hang
+    } catch (e) { resolve(); }
+  });
+}
+
 /** Prefer a Spanish voice when the device has one. */
 function pickVoice() {
   try {
@@ -73,15 +89,26 @@ export function speak(text, { onEnd, onError, queue = false } = {}) {
   }
   if (buf.trim()) chunks.push(buf.trim());
 
-  const voice = pickVoice();
-  chunks.forEach((chunk, i) => {
-    const u = new SpeechSynthesisUtterance(chunk);
-    if (voice) u.voice = voice;
-    u.lang = (voice && voice.lang) || 'es-ES';
-    u.rate = 1.05;
-    if (i === chunks.length - 1 && onEnd) u.onend = onEnd;
-    if (onError) u.onerror = (e) => { if (e && e.error !== 'interrupted') onError(e); };
-    try { window.speechSynthesis.speak(u); } catch (e) { if (onError) onError(e); }
+  whenVoicesReady().then(() => {
+    const voice = pickVoice();
+    let started = false;
+    chunks.forEach((chunk, i) => {
+      const u = new SpeechSynthesisUtterance(chunk);
+      if (voice) u.voice = voice;
+      u.lang = (voice && voice.lang) || 'es-ES';
+      u.rate = 1.05;
+      u.onstart = () => { started = true; };
+      if (i === chunks.length - 1 && onEnd) u.onend = onEnd;
+      if (onError) u.onerror = (e) => { if (e && e.error !== 'interrupted') onError(e); };
+      try { window.speechSynthesis.speak(u); } catch (e) { if (onError) onError(e); }
+    });
+    // Chrome can leave the engine paused, where speak() queues but never plays.
+    try { window.speechSynthesis.resume(); } catch (e) {}
+    // Nothing started after a beat means it failed quietly; say so rather than
+    // leaving a button that looks broken.
+    setTimeout(() => {
+      if (!started && onError) onError(new Error('El navegador no reprodujo la voz'));
+    }, 1800);
   });
 }
 
