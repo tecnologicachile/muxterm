@@ -515,15 +515,30 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
 
   // Between replies the element loops near-silence, so the tab keeps a live
   // media session and Android does not freeze it with the screen off.
+  const [handsFree, setHandsFree] = useState(false);
+
   const keepAlive = useCallback(() => {
     const a = audioRef.current;
     if (!a || !autoSpeakRef.current || !silentUri) return;
     try {
       a.loop = true;
-      a.volume = 0.02;
+      a.volume = 0.05;
       if (a.src !== silentUri) a.src = silentUri;
-      a.play().catch(() => {});
-    } catch (e) {}
+      const p = a.play();
+      if (p && p.then) p.then(() => setHandsFree(true)).catch(() => setHandsFree(false));
+      // Android only routes headset buttons to a page it shows as a player,
+      // and it only shows one that declares metadata and playback state.
+      if ('mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.metadata = new window.MediaMetadata({
+            title: 'muxterm — manos libres',
+            artist: 'Pulsa play para dictar',
+            album: 'Modo conversación'
+          });
+          navigator.mediaSession.playbackState = 'playing';
+        } catch (e) {}
+      }
+    } catch (e) { setHandsFree(false); }
   }, [silentUri]);
 
   const playNext = useCallback(async () => {
@@ -586,6 +601,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   }, [keepAlive]);
 
   const speakLast = () => {
+    if (autoSpeakRef.current) keepAlive();   // this tap is a gesture: use it
     if (speaking) { stopAll(); return; }
     const last = [...events].reverse().find(e => e.kind === 'text' && e.text);
     if (!last) return;
@@ -599,6 +615,16 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     setAutoSpeak(v => {
       const next = !v;
       try { localStorage.setItem('muxterm-autospeak', next ? '1' : '0'); } catch (e) {}
+      if (next) {
+        // Start the audio inside the click: autoplay rules can block a play()
+        // that only happens later from an effect, and then no media session
+        // exists and the headset button has nowhere to go.
+        autoSpeakRef.current = true;
+        setTimeout(() => keepAlive(), 0);
+      } else {
+        setHandsFree(false);
+        try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
+      }
       if (!next) { queueRef.current = []; stopSpeaking(); const a = audioRef.current; if (a) { try { a.pause(); } catch (e) {} } setSpeaking(false); }
       return next;
     });
@@ -725,6 +751,11 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             >
               {speaking ? <StopIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}
             </IconButton>
+            {autoSpeak && !handsFree && (
+              <Box sx={{ color: '#ffa726', fontSize: '9px', maxWidth: 110, lineHeight: 1.15 }}>
+                toca ▶ una vez para activar el manos libres
+              </Box>
+            )}
             <Box
               onClick={toggleAutoSpeak}
               title={autoSpeak ? 'Lectura automática activada' : 'Lectura automática desactivada'}
