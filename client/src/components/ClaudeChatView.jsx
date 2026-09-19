@@ -16,7 +16,7 @@ import {
   PlayArrow as PlayArrowIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
-import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, toneUri, playTone } from '../utils/speech';
+import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, toneUri } from '../utils/speech';
 
 /**
  * Rich view of the Claude Code session running in a terminal.
@@ -544,6 +544,21 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     } catch (e) { setHandsFree(false); }
   }, [silentUri]);
 
+  // Through the element that is already playing: with the screen off Android
+  // refuses to start a brand-new audio element, which is how the beeps were
+  // being played and why they were silent.
+  const beep = useCallback((uri) => {
+    const a = audioRef.current;
+    if (!a || !uri) return;
+    try {
+      a.loop = false;
+      a.volume = 0.9;
+      a.src = uri;
+      a.onended = () => keepAlive();
+      a.play().catch(() => {});
+    } catch (e) {}
+  }, [keepAlive]);
+
   const playNext = useCallback(async () => {
     const a = audioRef.current;
     if (!a || playingRef.current) return;
@@ -670,9 +685,9 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     if (!tones || !autoSpeak) { prevRecordingRef.current = !!recording; return; }
     const was = prevRecordingRef.current;
     prevRecordingRef.current = !!recording;
-    if (!was && recording) playTone(tones.start);
-    if (was && !recording) playTone(tones.done);
-  }, [recording, autoSpeak, tones]);
+    if (!was && recording) beep(tones.start);
+    if (was && !recording) beep(tones.done);
+  }, [recording, autoSpeak, tones, beep]);
 
   // Bluetooth headset buttons reach the page as media session actions, and the
   // silent keep-alive loop is what keeps that session alive with the screen
@@ -688,7 +703,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       onVoiceToggle(true);
       // Silence after a press means the mic never opened; say so with a tone.
       setTimeout(() => {
-        if (!prevRecordingRef.current && tones) playTone(tones.error);
+        if (!prevRecordingRef.current && tones) beep(tones.error);
       }, 1600);
     };
 
@@ -711,7 +726,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       set('play', null); set('pause', null);
       set('nexttrack', null); set('previoustrack', null);
     };
-  }, [autoSpeak, recording, onVoiceToggle, tones, stopAll]);   // eslint-disable-line
+  }, [autoSpeak, recording, onVoiceToggle, tones, stopAll, beep]);   // eslint-disable-line
 
   // Built once per batch of events so typing in the composer never rebuilds
   // hundreds of styled nodes.
