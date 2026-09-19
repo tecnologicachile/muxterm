@@ -516,6 +516,9 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // Between replies the element loops near-silence, so the tab keeps a live
   // media session and Android does not freeze it with the screen off.
   const [handsFree, setHandsFree] = useState(false);
+  // Flips the first time Android actually hands us a headset key, which is the
+  // only proof that the routing works.
+  const [mediaKeys, setMediaKeys] = useState(false);
 
   const keepAlive = useCallback(() => {
     const a = audioRef.current;
@@ -680,6 +683,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     // or pause depending on state. One handler for both, doing whatever makes
     // sense right now: stop the dictation, silence a reply, or start dictating.
     const press = () => {
+      setMediaKeys(true);
       if (recording) { if (onVoiceToggle) onVoiceToggle(true); return; }
       if (playingRef.current) { stopAll(); return; }
       startRecording();
@@ -751,9 +755,17 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             >
               {speaking ? <StopIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}
             </IconButton>
-            {autoSpeak && !handsFree && (
-              <Box sx={{ color: '#ffa726', fontSize: '9px', maxWidth: 110, lineHeight: 1.15 }}>
-                toca ▶ una vez para activar el manos libres
+            {autoSpeak && (
+              <Box
+                onClick={() => keepAlive()}
+                sx={{
+                  fontSize: '9px', maxWidth: 128, lineHeight: 1.15, cursor: 'pointer',
+                  color: handsFree ? '#00aa55' : '#ffa726'
+                }}
+              >
+                {handsFree
+                  ? `manos libres: activo${mediaKeys ? ' · botón ok' : ''}`
+                  : 'manos libres inactivo — tócame'}
               </Box>
             )}
             <Box

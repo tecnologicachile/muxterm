@@ -117,13 +117,17 @@ export function stopSpeaking() {
 }
 
 /**
- * A short, near-silent WAV to loop between replies.
+ * A long, near-silent WAV to loop between replies.
+ *
+ * Half a minute rather than a second: Chrome does not surface media controls —
+ * and therefore does not route headset buttons — for clips it considers too
+ * short to be real media.
  *
  * A tab that is actively playing media does not get frozen with the screen off,
  * which is what keeps the socket alive and lets the next reply be spoken. It is
  * deliberately not digital silence: some engines discard a wholly silent track.
  */
-export function silentLoopUri(seconds = 1) {
+export function silentLoopUri(seconds = 30) {
   const rate = 8000;
   const n = rate * seconds;
   const bytes = new Uint8Array(44 + n);
@@ -135,9 +139,9 @@ export function silentLoopUri(seconds = 1) {
   dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
   put(36, 'data'); dv.setUint32(40, n, true);
   for (let i = 0; i < n; i++) bytes[44 + i] = 128 + (i % 2);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return 'data:audio/wav;base64,' + btoa(bin);
+  // A blob rather than a data URI: base64 would inflate half a minute of audio
+  // to something the browser has to parse on every start.
+  return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
 }
 
 /** Fetch the server-rendered mp3 for `text` as an object URL. */
