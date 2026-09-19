@@ -39,6 +39,10 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   const recordStreamRef = useRef(null);
   // Review dialog after transcription
   const [voiceDialog, setVoiceDialog] = useState({ open: false, terminalId: null, text: '', loading: false, error: '' });
+  // Whether stopping should send straight through or open the review dialog.
+  // Decided when you stop, which is when you know if the dictation was tricky.
+  const autoSendRef = useRef(true);
+  const [voiceToast, setVoiceToast] = useState(null);   // { text } | { error }
 
   // ---- Claude Code chat view ----
   // Which terminals currently run Claude Code (so only those get the toggle).
@@ -116,7 +120,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
       recorder.onstop = () => {
         stopStream();
         const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        transcribeAndReview(panel.terminalId, blob);
+        transcribeAndReview(panel.terminalId, blob, autoSendRef.current);
       };
       mediaRecorderRef.current = recorder;
       recorder.start();
@@ -127,7 +131,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     }
   };
 
-  const stopVoiceRecording = () => {
+  const stopVoiceRecording = (autoSend = true) => {
+    autoSendRef.current = autoSend;
     const recorder = mediaRecorderRef.current;
     setRecordingPanelId(null);
     if (recorder && recorder.state !== 'inactive') {
@@ -137,7 +142,43 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     }
   };
 
-  const transcribeAndReview = async (terminalId, blob) => {
+  const sendText = async (terminalId, text) => {
+    const r = await fetch('/api/claude/send', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ terminalId, text })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.status !== 'ok') throw new Error(d.message || 'No se pudo enviar');
+  };
+
+  const transcribeAndReview = async (terminalId, blob, autoSend = false) => {
+    if (autoSend) {
+      // No dialog: transcribe and send, then say what went out. Anything that
+      // fails falls back to the review dialog rather than dropping the dictation.
+      setVoiceToast({ text: 'Transcribiendo…' });
+      try {
+        const form = new FormData();
+        const ext = (blob.type || '').includes('mp4') ? 'mp4' : (blob.type || '').includes('ogg') ? 'ogg' : 'webm';
+        form.append('audio', blob, `audio.${ext}`);
+        const r = await fetch('/api/voice/transcribe', {
+          method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: form
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.status !== 'ok' || !(data.text || '').trim()) {
+          setVoiceToast(null);
+          setVoiceDialog({ open: true, terminalId, text: data.text || '', loading: false, error: data.message || 'No se entendió el audio' });
+          return;
+        }
+        await sendText(terminalId, data.text.trim());
+        setVoiceToast({ text: data.text.trim() });
+        setTimeout(() => setVoiceToast(null), 4000);
+      } catch (e) {
+        setVoiceToast(null);
+        setVoiceDialog({ open: true, terminalId, text: '', loading: false, error: 'No se pudo enviar: ' + e.message });
+      }
+      return;
+    }
     // Open the dialog immediately in a loading state while Whisper runs.
     setVoiceDialog({ open: true, terminalId, text: '', loading: true, error: '' });
     try {
@@ -163,13 +204,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   const sendVoiceText = async () => {
     const { terminalId, text } = voiceDialog;
     if (!terminalId || !text.trim()) return;
-    try {
-      await fetch('/api/voice/inject', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ terminalId, text: text.trim() })
-      });
-    } catch (e) {}
+    try { await sendText(terminalId, text.trim()); } catch (e) {}
     setVoiceDialog({ open: false, terminalId: null, text: '', loading: false, error: '' });
   };
   const emitScroll = (terminalId, direction) => {
@@ -577,7 +612,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (recordingPanelId === panel.id) stopVoiceRecording();
+                  if (recordingPanelId === panel.id) stopVoiceRecording(false);
                   else startVoiceRecording(panel);
                 }}
                 sx={{
@@ -738,8 +773,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                   isActive={isActive}
                   onNeedsTerminal={() => goToTerminal(panel.id)}
                   recording={recordingPanelId === panel.id}
-                  onVoiceToggle={() => {
-                    if (recordingPanelId === panel.id) stopVoiceRecording();
+                  onVoiceToggle={(autoSend) => {
+                    if (recordingPanelId === panel.id) stopVoiceRecording(autoSend !== false);
                     else startVoiceRecording(panel);
                   }}
                 />
@@ -1060,6 +1095,18 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           <Button onClick={() => setCaptureContent(null)} sx={{ color: '#888' }}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {voiceToast && (
+        <Box sx={{
+          position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 1400, maxWidth: '80vw', px: 2, py: 1, borderRadius: 2,
+          backgroundColor: 'rgba(18,18,18,0.97)', border: '1px solid #2e6b3e',
+          color: '#ddd', fontSize: '12px', boxShadow: '0 4px 18px rgba(0,0,0,0.5)'
+        }}>
+          <Box component="span" sx={{ color: '#00aa55', mr: 0.75 }}>Enviado:</Box>
+          <Box component="span" sx={{ opacity: 0.9 }}>{voiceToast.text}</Box>
+        </Box>
+      )}
 
       {/* Voice transcription review — edit before sending into the terminal */}
       <Dialog

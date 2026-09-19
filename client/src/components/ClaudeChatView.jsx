@@ -350,19 +350,38 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           InputProps={{ sx: { color: '#ddd', fontSize: '13px', backgroundColor: '#0d0d0d' } }}
         />
-        {onVoiceToggle && (
+        {onVoiceToggle && !recording && (
           <IconButton
-            onClick={onVoiceToggle}
+            onClick={() => onVoiceToggle(true)}
             disabled={!!waiting}
-            sx={{
-              color: recording ? '#ff3b3b' : '#888',
-              backgroundColor: recording ? 'rgba(255,59,59,0.12)' : 'transparent',
-              '&:hover': { color: recording ? '#ff6b6b' : '#00ff00' }
-            }}
-            title={recording ? 'Detener grabación' : 'Mensaje de voz'}
+            sx={{ color: '#888', '&:hover': { color: '#00ff00' } }}
+            title="Mensaje de voz"
           >
-            {recording ? <StopIcon sx={{ fontSize: 20 }} /> : <MicIcon sx={{ fontSize: 20 }} />}
+            <MicIcon sx={{ fontSize: 20 }} />
           </IconButton>
+        )}
+        {onVoiceToggle && recording && (
+          <>
+            {/* Stopping is a tap you already make, so it carries the choice:
+                straight through, or via the review dialog. */}
+            <IconButton
+              onClick={() => onVoiceToggle(false)}
+              sx={{ color: '#888', '&:hover': { color: '#ddd' } }}
+              title="Detener y revisar antes de enviar"
+            >
+              <EditIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+            <IconButton
+              onClick={() => onVoiceToggle(true)}
+              sx={{
+                color: '#ff3b3b', backgroundColor: 'rgba(255,59,59,0.12)',
+                '&:hover': { color: '#ff6b6b' }
+              }}
+              title="Detener y enviar directo"
+            >
+              <StopIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </>
         )}
         <IconButton
           onClick={send}
