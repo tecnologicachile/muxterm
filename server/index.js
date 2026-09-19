@@ -160,6 +160,24 @@ app.use('/api/localfs', authenticateToken, (req, res, next) => {
   next();
 }, localFsApi);
 
+// Who is connected over socket.io right now. Tells a page that loaded but
+// never got its live feed (a WebView, say) apart from one that never
+// connected at all — without a debugger on the device.
+app.get('/api/diag/sockets', authenticateToken, (req, res) => {
+  const sockets = [];
+  for (const [id, s] of io.of('/').sockets) {
+    sockets.push({
+      id,
+      userId: s.userId,
+      username: s.username,
+      transport: s.conn && s.conn.transport ? s.conn.transport.name : null,
+      ua: String(s.handshake.headers['user-agent'] || '').slice(0, 90),
+      since: s.handshake.time
+    });
+  }
+  res.json({ status: 'ok', count: sockets.length, sockets });
+});
+
 const diagApi = require('./diag-api');
 app.use('/api/diag', authenticateToken, (req, res, next) => {
   req.userId = req.user.id;

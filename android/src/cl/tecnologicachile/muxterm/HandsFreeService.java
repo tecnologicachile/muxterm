@@ -23,6 +23,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.view.KeyEvent;
 
 import java.io.File;
@@ -58,6 +59,8 @@ public class HandsFreeService extends Service {
     private File recFile;
     private boolean recording = false;
     private boolean busy = false;
+    private long lastPress = 0;
+    private long recStart = 0;
     private PowerManager.WakeLock wake;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -74,15 +77,17 @@ public class HandsFreeService extends Service {
             @Override
             public boolean onMediaButtonEvent(Intent intent) {
                 KeyEvent ev = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
-                // Only the press, or one tap counts twice (down and up).
-                if (ev != null && ev.getAction() == KeyEvent.ACTION_DOWN) toggle();
+                // Only the initial press: a held button repeats ACTION_DOWN
+                // many times a second, which toggled record/stop in a chain
+                // and sent Whisper a burst of unplayable millisecond files.
+                if (ev != null && ev.getAction() == KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) press();
                 return true;
             }
             // Some stacks translate the key before it reaches us; treat those
             // the same, but they never arrive alongside the raw event.
             @Override public void onPlay()  { }
             @Override public void onPause() { }
-            @Override public void onSkipToNext() { toggle(); }
+            @Override public void onSkipToNext() { press(); }
         });
         session.setPlaybackState(new PlaybackState.Builder()
                 .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
@@ -144,6 +149,14 @@ public class HandsFreeService extends Service {
 
     // ---- press → record → send ----
 
+    /** One press per intent: headsets and stacks often deliver a key twice. */
+    private void press() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastPress < 800) return;
+        lastPress = now;
+        toggle();
+    }
+
     private void toggle() {
         if (busy) { tone(ToneGenerator.TONE_PROP_NACK); return; }
         if (recording) stopAndSend(); else startRecording();
@@ -173,6 +186,7 @@ public class HandsFreeService extends Service {
             recorder.setOutputFile(recFile.getAbsolutePath());
             recorder.prepare();
             recorder.start();
+            recStart = SystemClock.elapsedRealtime();
             recording = true;
             status = "grabando";
             tone(ToneGenerator.TONE_PROP_BEEP);
@@ -188,6 +202,18 @@ public class HandsFreeService extends Service {
 
     private void stopAndSend() {
         recording = false;
+        // Under a second of audio is a mis-press, not a dictation, and the
+        // container is often not even finalised yet. Drop it and say so.
+        if (SystemClock.elapsedRealtime() - recStart < 1000) {
+            try { recorder.stop(); } catch (Exception ignored) { }
+            releaseRecorder();
+            wakeOff();
+            if (recFile != null) recFile.delete();
+            status = "grabación demasiado corta, descartada";
+            updateNotification("Demasiado corto — pulsa, habla, y vuelve a pulsar", false);
+            tone(ToneGenerator.TONE_PROP_NACK);
+            return;
+        }
         try { recorder.stop(); } catch (Exception e) { releaseRecorder(); wakeOff(); status = "grabación vacía"; tone(ToneGenerator.TONE_PROP_NACK); foreground("Grabación vacía", false); return; }
         releaseRecorder();
         tone(ToneGenerator.TONE_PROP_ACK);        // heard you; now working
