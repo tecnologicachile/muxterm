@@ -68,11 +68,30 @@ function injectText({ terminalId, text, userId }) {
     logger.error(`send-keys failed for ${terminalId.substring(0, 8)}: ${e.message}`);
     return { status: 502, body: { status: 'error', message: 'No se pudo entregar el texto a la terminal' } };
   }
+  // Claude Code's TUI treats a burst of characters as a paste, and an Enter
+  // that lands while it is still digesting one can be dropped — the prompt
+  // then sits in the box, typed but never sent, and the view looks stale.
+  // So: a longer pause, then check the input line and press Enter again if
+  // the text is still there.
+  const tail = oneLine.slice(-24);
+  const pressEnter = () => execSync(`tmux -L muxterm send-keys -t ${shQuote(session)} Enter`, { timeout: 3000 });
+  const stillTyped = () => {
+    try {
+      const screen = execSync(`tmux -L muxterm capture-pane -p -t ${shQuote(session)}`, { encoding: 'utf8', timeout: 3000 });
+      const lines = screen.split('\n').filter(l => l.trim());
+      return lines.slice(-6).some(l => l.includes(tail));
+    } catch (e) { return false; }
+  };
   setTimeout(() => {
-    try { execSync(`tmux -L muxterm send-keys -t ${shQuote(session)} Enter`, { timeout: 3000 }); } catch (e) {
-      logger.error(`send-keys Enter failed for ${terminalId.substring(0, 8)}: ${e.message}`);
-    }
-  }, 200);
+    try { pressEnter(); } catch (e) { logger.error(`send-keys Enter failed for ${terminalId.substring(0, 8)}: ${e.message}`); }
+    let tries = 0;
+    const verify = () => {
+      if (!stillTyped() || ++tries > 3) return;
+      try { pressEnter(); } catch (e) {}
+      setTimeout(verify, 700);
+    };
+    setTimeout(verify, 900);
+  }, 400);
 
   if (!terminal) {
     logger.info(`Sent to ${terminalId.substring(0, 8)} via tmux (terminal not attached in this process)`);

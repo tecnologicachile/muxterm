@@ -665,9 +665,11 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // the auth token and which terminal this view is on. The last mounted view
   // wins, which on a phone is the one you are looking at.
   useEffect(() => {
-    if (!inNativeApp() || !terminalId) return;
+    // Follows the panel you are looking at, not the last one to mount: with
+    // two panels in modo conversación the dictation went to the other one.
+    if (!inNativeApp() || !terminalId || !isActive) return;
     try { window.muxtermNative.setContext(authToken(), terminalId, window.location.origin); } catch (e) {}
-  }, [terminalId]);
+  }, [terminalId, isActive]);
 
   // Hold the microphone open while hands-free is on, and let it go when off.
   const [micHeld, setMicHeld] = useState(false);
