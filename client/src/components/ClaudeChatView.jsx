@@ -425,6 +425,9 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   });
   const spokenRef = useRef(new Set());
   const audioRef = useRef(null);
+  // True while we are the ones pausing or swapping the source, so a pause the
+  // headset caused can be told apart from our own.
+  const internalRef = useRef(false);
   const queueRef = useRef([]);
   const playingRef = useRef(false);
   const silentUri = useMemo(() => { try { return silentLoopUri(1); } catch (e) { return ''; } }, []);
@@ -524,6 +527,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     const a = audioRef.current;
     if (!a || !autoSpeakRef.current || !silentUri) return;
     try {
+      internalRef.current = true;
       a.loop = true;
       a.volume = 0.05;
       if (a.src !== silentUri) a.src = silentUri;
@@ -551,6 +555,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     const a = audioRef.current;
     if (!a || !uri) return;
     try {
+      internalRef.current = true;
       a.loop = false;
       a.volume = 0.9;
       a.src = uri;
@@ -570,6 +575,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     let url = null;
     try {
       url = await fetchSpeechUrl(text, authToken());
+      internalRef.current = true;
       a.loop = false;
       a.volume = 1;
       a.src = url;
@@ -612,7 +618,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     queueRef.current = [];
     stopSpeaking();
     const a = audioRef.current;
-    if (a) { try { a.pause(); a.onended = null; } catch (e) {} }
+    if (a) { try { internalRef.current = true; a.pause(); a.onended = null; } catch (e) {} }
     playingRef.current = false;
     setSpeaking(false);
     keepAlive();
@@ -707,26 +713,40 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       }, 1600);
     };
 
-    // Basic headsets only have a reliable single press, which arrives as play
-    // or pause depending on state. One handler for both, doing whatever makes
-    // sense right now: stop the dictation, silence a reply, or start dictating.
-    const press = () => {
-      setMediaKeys(true);
-      if (recording) { if (onVoiceToggle) onVoiceToggle(true); return; }
-      if (playingRef.current) { stopAll(); return; }
-      startRecording();
-    };
-
-    set('play', press);
-    set('pause', press);
+    // Deliberately not handling play/pause: taking them over stops Android
+    // pausing the audio, and that pause is the signal we can actually detect.
     // Headsets that do have them keep the more explicit mapping.
     set('nexttrack', () => { if (recording) { onVoiceToggle && onVoiceToggle(true); } else startRecording(); });
     set('previoustrack', () => speakLast());
-    return () => {
-      set('play', null); set('pause', null);
-      set('nexttrack', null); set('previoustrack', null);
-    };
+    return () => { set('nexttrack', null); set('previoustrack', null); };
   }, [autoSpeak, recording, onVoiceToggle, tones, stopAll, beep]);   // eslint-disable-line
+
+  // Android's default response to the headset button is to pause our audio, and
+  // that pause does arrive even where setActionHandler never fires. So the
+  // event itself is the trigger: more reliable than asking to be told.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !autoSpeak) return;
+    const onPause = () => {
+      if (internalRef.current) { internalRef.current = false; return; }
+      setMediaKeys(true);
+      if (recording) { if (onVoiceToggle) onVoiceToggle(true); return; }
+      if (playingRef.current) { stopAll(); return; }
+      if (onVoiceToggle) {
+        onVoiceToggle(true);
+        setTimeout(() => { if (!prevRecordingRef.current && tones) beep(tones.error); }, 1600);
+      }
+    };
+    // Our own src swaps settle quickly; clear the flag so a later real pause is
+    // not mistaken for one of ours.
+    const onPlaying = () => { internalRef.current = false; };
+    a.addEventListener('pause', onPause);
+    a.addEventListener('playing', onPlaying);
+    return () => {
+      a.removeEventListener('pause', onPause);
+      a.removeEventListener('playing', onPlaying);
+    };
+  }, [autoSpeak, recording, onVoiceToggle, stopAll, tones, beep]);
 
   // Built once per batch of events so typing in the composer never rebuilds
   // hundreds of styled nodes.
