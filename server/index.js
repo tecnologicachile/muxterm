@@ -172,10 +172,11 @@ app.get('/api/diag/sockets', authenticateToken, (req, res) => {
       username: s.username,
       transport: s.conn && s.conn.transport ? s.conn.transport.name : null,
       ua: String(s.handshake.headers['user-agent'] || '').slice(0, 90),
-      since: s.handshake.time
+      since: s.handshake.time,
+      watching: s.claudeWatching ? [...s.claudeWatching.keys()] : []
     });
   }
-  res.json({ status: 'ok', count: sockets.length, sockets });
+  res.json({ status: 'ok', count: sockets.length, sockets, watchers: claudeSessions.describeWatchers() });
 });
 
 const diagApi = require('./diag-api');
@@ -1110,6 +1111,7 @@ io.on('connection', (socket) => {
 
   // ---- Claude Code chat view: tail this terminal's session transcript ----
   const claudeListeners = new Map();   // terminalId -> listener
+  socket.claudeWatching = claudeListeners;   // visible to /api/diag/sockets
 
   socket.on('claude-watch', (data) => {
     try {

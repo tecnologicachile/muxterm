@@ -178,7 +178,16 @@ function unwatchAllFor(fn) {
   }
 }
 
+/** Live watchers, for diagnostics: which transcript each terminal streams from. */
+function describeWatchers() {
+  const out = [];
+  for (const [terminalId, w] of watchers) {
+    out.push({ terminalId, file: w.file, listeners: w.listeners.size, offset: w.offset });
+  }
+  return out;
+}
+
 module.exports = {
-  listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR,
+  listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };
