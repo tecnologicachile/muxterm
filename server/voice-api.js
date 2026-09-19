@@ -86,4 +86,54 @@ router.post('/inject', express.json(), (req, res) => {
   }
 });
 
+/**
+ * POST /api/voice/speak
+ * body { text }. Streams back an mp3 of the text read aloud.
+ *
+ * The browser's own speech synthesis does not count as media playback, so
+ * Android suspends it when the screen goes off. Real audio keeps playing, which
+ * is why background listening has to come from a file rather than the Web
+ * Speech API.
+ */
+const SPEAK_MAX_CHARS = 4000;   // bounds what one reply can cost
+
+router.post('/speak', express.json(), async (req, res) => {
+  try {
+    const raw = (req.body && req.body.text) || '';
+    const text = String(raw).trim().slice(0, SPEAK_MAX_CHARS);
+    if (!text) return res.status(400).json({ status: 'error', message: 'text is required' });
+
+    const apiKey = systemSettings.getOpenAiKey();
+    if (!apiKey) return res.status(400).json({ status: 'error', message: 'OpenAI API key not configured' });
+
+    const r = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        // tts-1 renders a whole reply in ~3s; the higher quality models stream
+        // early but take far longer to finish, which risks stalling playback.
+        model: 'tts-1',
+        voice: (req.body && req.body.voice) || 'nova',
+        input: text,
+        response_format: 'mp3'
+      })
+    });
+
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      logger.error(`TTS failed (${r.status}): ${detail.slice(0, 300)}`);
+      return res.status(502).json({ status: 'error', message: `No se pudo generar la voz (${r.status})` });
+    }
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'no-store');
+    // Pipe it through so playback can start before synthesis finishes.
+    const { Readable } = require('stream');
+    Readable.fromWeb(r.body).pipe(res);
+  } catch (e) {
+    logger.error(`voice/speak error: ${e.message}`);
+    if (!res.headersSent) res.status(500).json({ status: 'error', message: 'Internal error' });
+  }
+});
+
 module.exports = router;

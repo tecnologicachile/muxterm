@@ -16,7 +16,7 @@ import {
   PlayArrow as PlayArrowIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
-import { toSpeech, speak, stopSpeaking, speechSupported } from '../utils/speech';
+import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl } from '../utils/speech';
 
 /**
  * Rich view of the Claude Code session running in a terminal.
@@ -404,6 +404,8 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
   );
 }
 
+const authToken = () => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } };
+
 /* ---------- main view ---------- */
 
 export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, recording, onVoiceToggle }) {
@@ -422,7 +424,12 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     try { return localStorage.getItem('muxterm-autospeak') === '1'; } catch (e) { return false; }
   });
   const spokenRef = useRef(new Set());
+  const audioRef = useRef(null);
+  const queueRef = useRef([]);
+  const playingRef = useRef(false);
+  const silentUri = useMemo(() => { try { return silentLoopUri(1); } catch (e) { return ''; } }, []);
 
+  const enqueueSpeechRef = useRef(() => {});
   const autoSpeakRef = useRef(autoSpeak);
   useEffect(() => { autoSpeakRef.current = autoSpeak; }, [autoSpeak]);
 
@@ -466,14 +473,15 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (payload.backlog) {
         // Never read the history aloud on opening — only what arrives after.
         for (const ev of incoming) if (ev.kind === 'text' && ev.uuid) spokenRef.current.add(ev.uuid + ':' + (ev.text || '').length);
-      } else if (autoSpeakRef.current && document.visibilityState === 'visible') {
-        const nuevos = incoming.filter(ev => ev.kind === 'text' && ev.text);
-        for (const ev of nuevos) {
+      } else if (autoSpeakRef.current) {
+        // No visibility check: reading with the screen off is the point, and
+        // the audio element is what makes it possible.
+        for (const ev of incoming.filter(ev => ev.kind === 'text' && ev.text)) {
           const k = (ev.uuid || '') + ':' + ev.text.length;
           if (spokenRef.current.has(k)) continue;
           spokenRef.current.add(k);
           const t = toSpeech(ev.text);
-          if (t) { setSpeaking(true); speak(t, { queue: true, onEnd: () => setSpeaking(false) }); }
+          if (t) enqueueSpeechRef.current(t);
         }
       }
       merge(incoming);
@@ -498,34 +506,109 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [events]);
 
+  // Between replies the element loops near-silence, so the tab keeps a live
+  // media session and Android does not freeze it with the screen off.
+  const keepAlive = useCallback(() => {
+    const a = audioRef.current;
+    if (!a || !autoSpeakRef.current || !silentUri) return;
+    try {
+      a.loop = true;
+      a.volume = 0.02;
+      if (a.src !== silentUri) a.src = silentUri;
+      a.play().catch(() => {});
+    } catch (e) {}
+  }, [silentUri]);
+
+  const playNext = useCallback(async () => {
+    const a = audioRef.current;
+    if (!a || playingRef.current) return;
+    const text = queueRef.current.shift();
+    if (!text) { keepAlive(); return; }
+
+    playingRef.current = true;
+    setSpeaking(true);
+    let url = null;
+    try {
+      url = await fetchSpeechUrl(text, authToken());
+      a.loop = false;
+      a.volume = 1;
+      a.src = url;
+      if ('mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.metadata = new window.MediaMetadata({
+            title: 'Respuesta de Claude', artist: 'muxterm'
+          });
+        } catch (e) {}
+      }
+      await a.play();
+      await new Promise((resolve) => {
+        a.onended = resolve;
+        a.onerror = resolve;
+      });
+    } catch (e) {
+      // Falling back to the browser voice only helps while the screen is on,
+      // which is exactly when it is still allowed to speak.
+      if (document.visibilityState === 'visible' && speechSupported()) {
+        await new Promise((resolve) => speak(text, { onEnd: resolve, onError: resolve }));
+      } else {
+        setSpeechError((e && e.message) || 'No se pudo reproducir la voz');
+        setTimeout(() => setSpeechError(''), 6000);
+      }
+    } finally {
+      if (url) { try { URL.revokeObjectURL(url); } catch (e) {} }
+      playingRef.current = false;
+      setSpeaking(false);
+    }
+    if (queueRef.current.length) playNext(); else keepAlive();
+  }, [keepAlive]);
+
+  const enqueueSpeech = useCallback((text) => {
+    if (!text) return;
+    queueRef.current.push(text);
+    playNext();
+  }, [playNext]);
+
+  const stopAll = useCallback(() => {
+    queueRef.current = [];
+    stopSpeaking();
+    const a = audioRef.current;
+    if (a) { try { a.pause(); a.onended = null; } catch (e) {} }
+    playingRef.current = false;
+    setSpeaking(false);
+    keepAlive();
+  }, [keepAlive]);
+
   const speakLast = () => {
-    if (speaking) { stopSpeaking(); setSpeaking(false); return; }
+    if (speaking) { stopAll(); return; }
     const last = [...events].reverse().find(e => e.kind === 'text' && e.text);
     if (!last) return;
     const t = toSpeech(last.text);
     if (!t) return;
-    setSpeaking(true);
     setSpeechError('');
-    speak(t, {
-      onEnd: () => setSpeaking(false),
-      onError: (e) => {
-        setSpeaking(false);
-        setSpeechError((e && e.message) || 'No se pudo reproducir la voz');
-        setTimeout(() => setSpeechError(''), 5000);
-      }
-    });
+    enqueueSpeech(t);
   };
 
   const toggleAutoSpeak = () => {
     setAutoSpeak(v => {
       const next = !v;
       try { localStorage.setItem('muxterm-autospeak', next ? '1' : '0'); } catch (e) {}
-      if (!next) { stopSpeaking(); setSpeaking(false); }
+      if (!next) { queueRef.current = []; stopSpeaking(); const a = audioRef.current; if (a) { try { a.pause(); } catch (e) {} } setSpeaking(false); }
       return next;
     });
   };
 
-  useEffect(() => () => stopSpeaking(), []);   // stop when the view closes
+  useEffect(() => { enqueueSpeechRef.current = enqueueSpeech; }, [enqueueSpeech]);
+
+  useEffect(() => {
+    if (autoSpeak) keepAlive();
+    else { const a = audioRef.current; if (a) { try { a.pause(); } catch (e) {} } }
+  }, [autoSpeak, keepAlive]);
+
+  useEffect(() => () => {
+    stopSpeaking();
+    const a = audioRef.current;
+    if (a) { try { a.pause(); } catch (e) {} }
+  }, []);
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -660,6 +743,8 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           </Box>
         </Box>
       )}
+
+      <audio ref={audioRef} preload="auto" playsInline style={{ display: 'none' }} />
 
       {/* The prompt goes into the same tmux session, as if typed */}
       <Composer

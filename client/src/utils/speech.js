@@ -115,3 +115,42 @@ export function speak(text, { onEnd, onError, queue = false } = {}) {
 export function stopSpeaking() {
   try { window.speechSynthesis.cancel(); } catch (e) {}
 }
+
+/**
+ * A short, near-silent WAV to loop between replies.
+ *
+ * A tab that is actively playing media does not get frozen with the screen off,
+ * which is what keeps the socket alive and lets the next reply be spoken. It is
+ * deliberately not digital silence: some engines discard a wholly silent track.
+ */
+export function silentLoopUri(seconds = 1) {
+  const rate = 8000;
+  const n = rate * seconds;
+  const bytes = new Uint8Array(44 + n);
+  const dv = new DataView(bytes.buffer);
+  const put = (off, str) => { for (let i = 0; i < str.length; i++) bytes[off + i] = str.charCodeAt(i); };
+  put(0, 'RIFF'); dv.setUint32(4, 36 + n, true); put(8, 'WAVEfmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate, true);
+  dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+  put(36, 'data'); dv.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) bytes[44 + i] = 128 + (i % 2);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
+/** Fetch the server-rendered mp3 for `text` as an object URL. */
+export async function fetchSpeechUrl(text, token) {
+  const r = await fetch('/api/voice/speak', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  });
+  if (!r.ok) {
+    let msg = `No se pudo generar la voz (${r.status})`;
+    try { const d = await r.json(); if (d && d.message) msg = d.message; } catch (e) {}
+    throw new Error(msg);
+  }
+  return URL.createObjectURL(await r.blob());
+}
