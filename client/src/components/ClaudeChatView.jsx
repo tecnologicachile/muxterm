@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { Box, Typography, IconButton, TextField, CircularProgress } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -276,6 +276,67 @@ function ToolCard({ ev }) {
   );
 }
 
+/**
+ * Its own component on purpose: the draft lives here, so typing re-renders this
+ * box alone instead of the whole conversation on every keystroke.
+ */
+function Composer({ terminalId, waiting, onSent }) {
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || sending || waiting) return;
+    setSending(true);
+    setSendError('');
+    try {
+      const token = (() => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } })();
+      const r = await fetch('/api/claude/send', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ terminalId, text })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.status !== 'ok') setSendError(d.message || 'No se pudo enviar');
+      else { setDraft(''); if (onSent) onSent(); }
+    } catch (e) {
+      setSendError('Error de red al enviar');
+    }
+    setSending(false);
+  };
+
+  return (
+    <Box sx={{ flexShrink: 0, borderTop: '1px solid #222', p: 1, backgroundColor: '#111' }}>
+      {sendError && <Box sx={{ color: '#ff8080', fontSize: '11px', mb: 0.5 }}>{sendError}</Box>}
+      <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
+        <TextField
+          multiline maxRows={6} fullWidth size="small"
+          placeholder={waiting ? 'Responde primero en el terminal…' : 'Escribe un prompt… (Enter envía, Shift+Enter nueva línea)'}
+          value={draft}
+          disabled={sending || !!waiting}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          InputProps={{ sx: { color: '#ddd', fontSize: '13px', backgroundColor: '#0d0d0d' } }}
+        />
+        <IconButton
+          onClick={send}
+          disabled={sending || !!waiting || !draft.trim()}
+          sx={{ color: draft.trim() ? '#00ff00' : '#555' }}
+          title="Enviar a Claude"
+        >
+          {sending ? <CircularProgress size={18} sx={{ color: '#00ff00' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
+        </IconButton>
+      </Box>
+      {draft.includes('\n') && (
+        <Box sx={{ color: '#777', fontSize: '10px', mt: 0.5 }}>
+          Los saltos de línea se envían como espacios (la TUI de Claude enviaría el prompt en el primero).
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 /* ---------- main view ---------- */
 
 export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }) {
@@ -283,9 +344,6 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
   const [title, setTitle] = useState('');
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState('');
   const scrollRef = useRef(null);
   const stickRef = useRef(true);
 
@@ -340,36 +398,31 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [events]);
 
-  const sendPrompt = async () => {
-    const text = draft.trim();
-    if (!text || sending || waiting) return;
-    setSending(true);
-    setSendError('');
-    try {
-      const token = (() => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } })();
-      const r = await fetch('/api/claude/send', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ terminalId, text })
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.status !== 'ok') {
-        setSendError(d.message || 'No se pudo enviar');
-      } else {
-        setDraft('');   // it shows up in the conversation once Claude logs it
-        stickRef.current = true;
-      }
-    } catch (e) {
-      setSendError('Error de red al enviar');
-    }
-    setSending(false);
-  };
-
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   };
+
+  // Built once per batch of events so typing in the composer never rebuilds
+  // hundreds of styled nodes.
+  const messageNodes = useMemo(() => events.map((ev, i) => {
+          const pad = ev.sidechain ? { borderLeft: '2px solid #444', pl: 1, ml: 0.5 } : {};
+          if (ev.kind === 'prompt') {
+            return (
+              <Box key={`e${i}`} sx={{ ...pad, mb: 1, mt: 1.5, borderLeft: '3px solid #00aa55', pl: 1.25, backgroundColor: 'rgba(0,170,85,0.06)', py: 0.75, borderRadius: '0 4px 4px 0' }}>
+                <MiniMarkdown text={ev.text} />
+              </Box>
+            );
+          }
+          if (ev.kind === 'text') {
+            return <Box key={`e${i}`} sx={{ ...pad, mb: 1 }}><MiniMarkdown text={ev.text} /></Box>;
+          }
+          if (ev.kind === 'tool') {
+            return <Box key={`e${i}`} sx={pad}><ToolCard ev={ev} /></Box>;
+          }
+          return null;
+  }), [events]);
 
   // Claude is blocked if the newest blocking tool call has no result yet.
   let waiting = null;
@@ -392,23 +445,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
         {!error && events.length === 0 && (
           <Box sx={{ color: '#666', fontSize: '12px', p: 2, textAlign: 'center' }}>Esperando actividad de Claude…</Box>
         )}
-        {events.map((ev, i) => {
-          const pad = ev.sidechain ? { borderLeft: '2px solid #444', pl: 1, ml: 0.5 } : {};
-          if (ev.kind === 'prompt') {
-            return (
-              <Box key={`e${i}`} sx={{ ...pad, mb: 1, mt: 1.5, borderLeft: '3px solid #00aa55', pl: 1.25, backgroundColor: 'rgba(0,170,85,0.06)', py: 0.75, borderRadius: '0 4px 4px 0' }}>
-                <MiniMarkdown text={ev.text} />
-              </Box>
-            );
-          }
-          if (ev.kind === 'text') {
-            return <Box key={`e${i}`} sx={{ ...pad, mb: 1 }}><MiniMarkdown text={ev.text} /></Box>;
-          }
-          if (ev.kind === 'tool') {
-            return <Box key={`e${i}`} sx={pad}><ToolCard ev={ev} /></Box>;
-          }
-          return null;
-        })}
+        {messageNodes}
       </Box>
 
       {waiting && (
@@ -452,36 +489,12 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
         </Box>
       )}
 
-      {/* Composer — the prompt goes into the same tmux session, as if typed */}
-      <Box sx={{ flexShrink: 0, borderTop: '1px solid #222', p: 1, backgroundColor: '#111' }}>
-        {sendError && <Box sx={{ color: '#ff8080', fontSize: '11px', mb: 0.5 }}>{sendError}</Box>}
-        <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
-          <TextField
-            multiline maxRows={6} fullWidth size="small"
-            placeholder={waiting ? 'Responde primero en el terminal…' : 'Escribe un prompt… (Enter envía, Shift+Enter nueva línea)'}
-            value={draft}
-            disabled={sending || !!waiting}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
-            }}
-            InputProps={{ sx: { color: '#ddd', fontSize: '13px', backgroundColor: '#0d0d0d' } }}
-          />
-          <IconButton
-            onClick={sendPrompt}
-            disabled={sending || !!waiting || !draft.trim()}
-            sx={{ color: draft.trim() ? '#00ff00' : '#555' }}
-            title="Enviar a Claude"
-          >
-            {sending ? <CircularProgress size={18} sx={{ color: '#00ff00' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
-          </IconButton>
-        </Box>
-        {draft.includes('\n') && (
-          <Box sx={{ color: '#777', fontSize: '10px', mt: 0.5 }}>
-            Los saltos de línea se envían como espacios (la TUI de Claude enviaría el prompt en el primero).
-          </Box>
-        )}
-      </Box>
+      {/* The prompt goes into the same tmux session, as if typed */}
+      <Composer
+        terminalId={terminalId}
+        waiting={waiting}
+        onSent={() => { stickRef.current = true; }}
+      />
     </Box>
   );
 }
