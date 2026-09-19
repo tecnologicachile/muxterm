@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../utils/AuthContext';
+import CertBanner from './CertBanner';
 import {
   Box,
   Typography,
@@ -936,6 +937,7 @@ function TerminalView() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100dvh', maxHeight: '100dvh', overflow: 'hidden' }}>
       <UpdateNotification />
+      <CertBanner />
       <AppHeader
         mode="terminal"
         sessionName="Workspace"

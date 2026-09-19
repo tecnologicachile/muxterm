@@ -17,9 +17,15 @@
   <div id="root"></div>
   <script type="module" src="/src/index.jsx"></script>
   <script>
+    // Chrome refuses to register a service worker on a page whose certificate
+    // is not trusted, so the outcome doubles as a check for whether this device
+    // has our root CA installed.
+    window.__muxtermCert = 'unknown';
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/sw.js')
+          .then(() => { window.__muxtermCert = 'trusted'; })
+          .catch(() => { window.__muxtermCert = 'untrusted'; });
       });
     }
   </script>
