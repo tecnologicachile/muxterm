@@ -563,7 +563,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                   color: isChatOn(panel) ? '#00ff00' : '#666',
                   '&:hover': { color: '#00ff00' }
                 }}
-                title={isChatOn(panel) ? 'Ver terminal' : 'Ver conversación de Claude'}
+                title={isChatOn(panel) ? 'Ver terminal' : 'Modo conversación'}
               >
                 {isChatOn(panel) ? <TerminalIcon sx={{ fontSize: 14 }} /> : <ChatIcon sx={{ fontSize: 14 }} />}
               </IconButton>

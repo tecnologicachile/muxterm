@@ -375,6 +375,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
   const [title, setTitle] = useState('');
   const scrollRef = useRef(null);
   const stickRef = useRef(true);
+  const fileRef = useRef(null);
 
   const merge = useCallback((incoming) => {
     setEvents(prev => {
@@ -404,7 +405,14 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
       if (!payload || payload.terminalId !== terminalId) return;
       if (payload.error) { setError(payload.error); return; }
       setError('');
-      if (payload.backlog) setEvents([]);
+      // A reconnect re-sends the whole backlog. Clearing it made the
+      // conversation blank and redraw, which is the flicker you see on coming
+      // back to the tab. The merge dedupes by uuid, so only wipe when the
+      // transcript itself changed (a /clear starts a new file).
+      if (payload.backlog) {
+        if (payload.file && fileRef.current && payload.file !== fileRef.current) setEvents([]);
+        if (payload.file) fileRef.current = payload.file;
+      }
       merge(payload.events || []);
     };
     // The server drops the watch when the socket disconnects (a suspended
@@ -464,11 +472,19 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal }
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0a0a' }}>
-      {title && (
-        <Box sx={{ px: 1.5, py: 0.6, borderBottom: '1px solid #222', color: '#888', fontSize: '11px', flexShrink: 0 }}>
-          {title}
+      <Box sx={{
+        px: 1.5, py: 0.6, borderBottom: '1px solid #222', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 1, minWidth: 0
+      }}>
+        <Box sx={{ color: '#00aa55', fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em', flexShrink: 0 }}>
+          MODO CONVERSACIÓN
         </Box>
-      )}
+        {title && (
+          <Box sx={{ color: '#777', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {title}
+          </Box>
+        )}
+      </Box>
       <Box ref={scrollRef} onScroll={onScroll} sx={{ flex: 1, overflow: 'auto', px: 1.5, py: 1, ...darkScroll }}>
         {error && <Box sx={{ color: '#ffa726', fontSize: '12px', p: 2, textAlign: 'center' }}>{error}</Box>}
         {!error && events.length === 0 && (
