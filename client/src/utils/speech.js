@@ -154,3 +154,39 @@ export async function fetchSpeechUrl(text, token) {
   }
   return URL.createObjectURL(await r.blob());
 }
+
+/**
+ * A short tone as a data URI.
+ *
+ * With the screen off a beep is the only feedback there is, so recording has to
+ * announce itself audibly or you cannot tell whether it started.
+ */
+export function toneUri(freq = 880, ms = 140, volume = 0.3) {
+  const rate = 8000;
+  const n = Math.round(rate * ms / 1000);
+  const bytes = new Uint8Array(44 + n);
+  const dv = new DataView(bytes.buffer);
+  const put = (off, str) => { for (let i = 0; i < str.length; i++) bytes[off + i] = str.charCodeAt(i); };
+  put(0, 'RIFF'); dv.setUint32(4, 36 + n, true); put(8, 'WAVEfmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate, true);
+  dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+  put(36, 'data'); dv.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) {
+    // Fade the edges or the tone clicks on start and stop.
+    const fade = Math.min(1, Math.min(i, n - i) / (rate * 0.01));
+    bytes[44 + i] = 128 + Math.round(Math.sin(2 * Math.PI * freq * i / rate) * 127 * volume * fade);
+  }
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
+/** Play a tone without disturbing whatever the main player is doing. */
+export function playTone(uri) {
+  try {
+    const a = new Audio(uri);
+    a.volume = 0.6;
+    a.play().catch(() => {});
+  } catch (e) {}
+}

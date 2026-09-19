@@ -16,7 +16,7 @@ import {
   PlayArrow as PlayArrowIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
-import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl } from '../utils/speech';
+import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, toneUri, playTone } from '../utils/speech';
 
 /**
  * Rich view of the Claude Code session running in a terminal.
@@ -428,6 +428,13 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const queueRef = useRef([]);
   const playingRef = useRef(false);
   const silentUri = useMemo(() => { try { return silentLoopUri(1); } catch (e) { return ''; } }, []);
+  // With the screen off these beeps are the only feedback that exists.
+  const tones = useMemo(() => {
+    try {
+      return { start: toneUri(660, 150), done: toneUri(1046, 150), error: toneUri(300, 380) };
+    } catch (e) { return null; }
+  }, []);
+  const prevRecordingRef = useRef(false);
 
   const enqueueSpeechRef = useRef(() => {});
   const autoSpeakRef = useRef(autoSpeak);
@@ -615,6 +622,38 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     if (!el) return;
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   };
+
+  // Announce recording state out loud while hands-free is in play.
+  useEffect(() => {
+    if (!tones || !autoSpeak) { prevRecordingRef.current = !!recording; return; }
+    const was = prevRecordingRef.current;
+    prevRecordingRef.current = !!recording;
+    if (!was && recording) playTone(tones.start);
+    if (was && !recording) playTone(tones.done);
+  }, [recording, autoSpeak, tones]);
+
+  // Bluetooth headset buttons reach the page as media session actions, and the
+  // silent keep-alive loop is what keeps that session alive with the screen
+  // off — so the hardware button works without an app.
+  useEffect(() => {
+    if (!autoSpeak || !('mediaSession' in navigator)) return;
+    const set = (action, fn) => {
+      try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {}
+    };
+    set('nexttrack', () => {
+      if (!onVoiceToggle) return;
+      const wasRecording = !!recording;
+      onVoiceToggle(true);           // no screen to review on: stop means send
+      if (!wasRecording) {
+        // If the mic never opened, say so with a tone instead of silence.
+        setTimeout(() => {
+          if (!prevRecordingRef.current && tones) playTone(tones.error);
+        }, 1600);
+      }
+    });
+    set('previoustrack', () => speakLast());
+    return () => { set('nexttrack', null); set('previoustrack', null); };
+  }, [autoSpeak, recording, onVoiceToggle, tones]);   // eslint-disable-line
 
   // Built once per batch of events so typing in the composer never rebuilds
   // hundreds of styled nodes.
