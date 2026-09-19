@@ -103,13 +103,14 @@ app.use('/api/auth', authRoutes);
 // Serve CA certificate for easy installation on other devices
 // SFTP file browser API (mounted after authenticateToken is defined)
 
-app.get('/ca.pem', (req, res) => {
+app.get(['/ca.pem', '/ca.crt'], (req, res) => {
   const caPath = path.join(__dirname, '..', 'certs', 'rootCA.pem');
-  if (fs.existsSync(caPath)) {
-    res.download(caPath, 'muxterm-ca.pem');
-  } else {
-    res.status(404).send('CA certificate not available');
-  }
+  if (!fs.existsSync(caPath)) return res.status(404).send('CA certificate not available');
+  // Android's certificate installer rejects a .pem name, so offer .crt too —
+  // same bytes, and it saves renaming the file on the phone.
+  const asCrt = req.path.endsWith('.crt');
+  res.type(asCrt ? 'application/x-x509-ca-cert' : 'application/x-pem-file');
+  res.download(caPath, asCrt ? 'muxterm-ca.crt' : 'muxterm-ca.pem');
 });
 
 // Simple auth middleware for update endpoint
