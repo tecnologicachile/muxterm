@@ -640,20 +640,35 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     const set = (action, fn) => {
       try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {}
     };
-    set('nexttrack', () => {
+
+    const startRecording = () => {
       if (!onVoiceToggle) return;
-      const wasRecording = !!recording;
-      onVoiceToggle(true);           // no screen to review on: stop means send
-      if (!wasRecording) {
-        // If the mic never opened, say so with a tone instead of silence.
-        setTimeout(() => {
-          if (!prevRecordingRef.current && tones) playTone(tones.error);
-        }, 1600);
-      }
-    });
+      onVoiceToggle(true);
+      // Silence after a press means the mic never opened; say so with a tone.
+      setTimeout(() => {
+        if (!prevRecordingRef.current && tones) playTone(tones.error);
+      }, 1600);
+    };
+
+    // Basic headsets only have a reliable single press, which arrives as play
+    // or pause depending on state. One handler for both, doing whatever makes
+    // sense right now: stop the dictation, silence a reply, or start dictating.
+    const press = () => {
+      if (recording) { if (onVoiceToggle) onVoiceToggle(true); return; }
+      if (playingRef.current) { stopAll(); return; }
+      startRecording();
+    };
+
+    set('play', press);
+    set('pause', press);
+    // Headsets that do have them keep the more explicit mapping.
+    set('nexttrack', () => { if (recording) { onVoiceToggle && onVoiceToggle(true); } else startRecording(); });
     set('previoustrack', () => speakLast());
-    return () => { set('nexttrack', null); set('previoustrack', null); };
-  }, [autoSpeak, recording, onVoiceToggle, tones]);   // eslint-disable-line
+    return () => {
+      set('play', null); set('pause', null);
+      set('nexttrack', null); set('previoustrack', null);
+    };
+  }, [autoSpeak, recording, onVoiceToggle, tones, stopAll]);   // eslint-disable-line
 
   // Built once per batch of events so typing in the composer never rebuilds
   // hundreds of styled nodes.
