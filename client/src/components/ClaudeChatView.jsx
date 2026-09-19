@@ -406,6 +406,10 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
 
 const authToken = () => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } };
 
+// Inside the companion app the native service owns the media session, the
+// keep-alive and the headset button; the page must not compete for them.
+const inNativeApp = () => typeof window !== 'undefined' && !!window.muxtermNative;
+
 /* ---------- main view ---------- */
 
 export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, recording, onVoiceToggle, onHandsFree }) {
@@ -524,6 +528,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const [mediaKeys, setMediaKeys] = useState(false);
 
   const keepAlive = useCallback(() => {
+    if (inNativeApp()) { setHandsFree(true); return; }   // the service already holds it
     const a = audioRef.current;
     if (!a || !autoSpeakRef.current || !silentUri) return;
     try {
@@ -656,6 +661,14 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
 
   useEffect(() => { enqueueSpeechRef.current = enqueueSpeech; }, [enqueueSpeech]);
 
+  // Hand the native service what it needs to dictate into this conversation:
+  // the auth token and which terminal this view is on. The last mounted view
+  // wins, which on a phone is the one you are looking at.
+  useEffect(() => {
+    if (!inNativeApp() || !terminalId) return;
+    try { window.muxtermNative.setContext(authToken(), terminalId, window.location.origin); } catch (e) {}
+  }, [terminalId]);
+
   // Hold the microphone open while hands-free is on, and let it go when off.
   const [micHeld, setMicHeld] = useState(false);
   useEffect(() => {
@@ -699,7 +712,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // silent keep-alive loop is what keeps that session alive with the screen
   // off — so the hardware button works without an app.
   useEffect(() => {
-    if (!autoSpeak || !('mediaSession' in navigator)) return;
+    if (!autoSpeak || !('mediaSession' in navigator) || inNativeApp()) return;
     const set = (action, fn) => {
       try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {}
     };
@@ -726,7 +739,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // event itself is the trigger: more reliable than asking to be told.
   useEffect(() => {
     const a = audioRef.current;
-    if (!a || !autoSpeak) return;
+    if (!a || !autoSpeak || inNativeApp()) return;
     const onPause = () => {
       if (internalRef.current) { internalRef.current = false; return; }
       setMediaKeys(true);

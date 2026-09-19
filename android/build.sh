@@ -15,11 +15,20 @@ PKG=cl.tecnologicachile.muxterm
 
 [ -f "$AJAR" ] || { echo "falta android.jar para API $API"; exit 1; }
 
-rm -rf "$OUT"; mkdir -p "$OUT/classes" "$OUT/dex"
+rm -rf "$OUT"; mkdir -p "$OUT/classes" "$OUT/dex" res/raw
+
+# The root CA muxterm's certificate chains to, bundled so the app trusts the
+# server without depending on the phone's user store. Public cert only.
+CA="${MUXTERM_CA:-/opt/muxterm/certs/rootCA.pem}"
+[ -f "$CA" ] || CA="../certs/rootCA.pem"
+[ -f "$CA" ] || { echo "no encuentro rootCA.pem (usa MUXTERM_CA=ruta)"; exit 1; }
+cp "$CA" res/raw/muxterm_ca.pem
 
 echo "1/5  recursos"
-"$BT/aapt2" link -o "$OUT/base.apk" -I "$AJAR" \
-  --manifest AndroidManifest.xml --min-sdk-version 26 --target-sdk-version $API
+"$BT/aapt2" compile --dir res -o "$OUT/res.zip"
+"$BT/aapt2" link -o "$OUT/base.apk" -I "$AJAR" "$OUT/res.zip" \
+  --manifest AndroidManifest.xml --min-sdk-version 26 --target-sdk-version $API \
+  --version-code 2 --version-name 0.2
 
 # Only a JRE is on PATH here; the JDK lives elsewhere.
 JAVAC="$(command -v javac || true)"
@@ -47,8 +56,8 @@ if [ ! -f "$KS" ]; then
     -alias muxterm -dname "CN=muxterm" -validity 10000 -keyalg RSA -keysize 2048 2>/dev/null
 fi
 "$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
-  --out "$OUT/muxterm-poc.apk" "$OUT/aligned.apk"
+  --out "$OUT/muxterm.apk" "$OUT/aligned.apk"
 
-rm -f "$OUT/base.apk" "$OUT/aligned.apk"
+rm -f "$OUT/base.apk" "$OUT/aligned.apk" "$OUT/res.zip"
 echo
-echo "listo: $(pwd)/$OUT/muxterm-poc.apk  ($(du -h "$OUT/muxterm-poc.apk" | cut -f1))"
+echo "listo: $(pwd)/$OUT/muxterm.apk  ($(du -h "$OUT/muxterm.apk" | cut -f1))"

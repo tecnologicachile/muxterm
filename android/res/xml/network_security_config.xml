@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- muxterm serves a certificate from its own mkcert CA. Trusting that CA here
+     covers both the WebView and the service's HttpURLConnection calls, and
+     does not depend on the user having installed it on the phone. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+            <certificates src="@raw/muxterm_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

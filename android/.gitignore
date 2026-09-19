@@ -1,2 +1,3 @@
 build/
 debug.keystore
+res/raw/muxterm_ca.pem

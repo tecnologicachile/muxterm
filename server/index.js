@@ -108,7 +108,7 @@ app.use('/api/auth', authRoutes);
 // Sideloadable build of the companion app (see android/). There is no adb
 // link to the phone, so the app is downloaded from here and installed by hand.
 app.get('/app.apk', (req, res) => {
-  const apk = path.join(__dirname, '..', 'android', 'build', 'muxterm-poc.apk');
+  const apk = path.join(__dirname, '..', 'android', 'build', 'muxterm.apk');
   if (!fs.existsSync(apk)) return res.status(404).send('APK not built');
   res.type('application/vnd.android.package-archive');
   res.download(apk, 'muxterm.apk');
