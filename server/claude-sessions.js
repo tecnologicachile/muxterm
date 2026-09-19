@@ -87,7 +87,21 @@ function hookRegistration(terminalId) {
 /** Exact path if a hook registered it, else the newest transcript for the cwd. */
 function resolveTranscript(terminalId) {
   const hooked = hookRegistration(terminalId);
-  if (hooked) return { file: hooked.transcriptPath, source: 'hook' };
+  if (hooked) {
+    // A registration can go stale without a new SessionStart — a session that
+    // changed identity mid-way kept writing to a new file while the pointer
+    // still named the old one. If a sibling transcript is clearly newer than
+    // the registered file, the conversation has moved; follow it.
+    const sibling = transcript.findTranscriptByCwd(hooked.cwd || path.dirname(hooked.transcriptPath));
+    try {
+      if (sibling && sibling !== hooked.transcriptPath) {
+        const a = fs.statSync(hooked.transcriptPath).mtimeMs;
+        const b = fs.statSync(sibling).mtimeMs;
+        if (b - a > 60 * 1000) return { file: sibling, source: 'cwd (hook stale)' };
+      }
+    } catch (e) {}
+    return { file: hooked.transcriptPath, source: 'hook' };
+  }
   const reg = registry.get(terminalId);
   if (reg && fs.existsSync(reg.transcriptPath)) {
     return { file: reg.transcriptPath, source: 'hook' };
@@ -129,14 +143,20 @@ function watch(terminalId, onEvents) {
     try {
       // A /clear starts a fresh transcript; the hook rewrites the pointer, so
       // check it every few seconds and follow the new file when it moves.
-      if ((++w.ticks % 5) === 0) {
-        const h = hookRegistration(terminalId);
-        if (h && h.transcriptPath !== w.file) {
-          w.file = h.transcriptPath;
+      // Which file to follow can change under us without any hook firing: a
+      // session that switches identity mid-way, a /clear in a session that
+      // predates the hook. The cwd fallback was only consulted when the watch
+      // began, so the tailer sat on a file that had stopped growing while the
+      // conversation carried on in a new one. Re-resolve every few seconds and
+      // follow the file the pane is actually writing to.
+      if ((++w.ticks % 12) === 0) {
+        const r = resolveTranscript(terminalId);
+        if (r.file && r.file !== w.file) {
+          w.file = r.file;
           w.offset = 0;
           const t = transcript.readTail(w.file);
           w.offset = t.size;
-          for (const fn of w.listeners) fn({ terminalId, events: t.events, file: w.file, backlog: true });
+          for (const fn of w.listeners) fn({ terminalId, events: t.events, file: w.file, source: r.source, backlog: true });
           return;
         }
       }
