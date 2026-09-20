@@ -24,6 +24,11 @@ function main() {
   let hook;
   try { hook = JSON.parse(input); } catch (e) { return; }
   if (!hook || !hook.transcript_path) return;
+  // Claude spawns child sessions (subagents, scratchpad work) inside the same
+  // pane; their SessionStart fires too and would overwrite the pane's pointer
+  // with a transcript nobody is reading. Only the session rooted in a real
+  // project directory owns the pane.
+  if (/^\/tmp\/claude-/.test(hook.cwd || '') || /-tmp-claude-/.test(hook.transcript_path)) return;
 
   // tmux session name -> terminalId (muxterm names them webssh_<sessionId>_<uuid>)
   let sessionName = '';

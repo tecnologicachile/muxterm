@@ -86,7 +86,13 @@ function hookRegistration(terminalId) {
 
 /** Exact path if a hook registered it, else the newest transcript for the cwd. */
 function resolveTranscript(terminalId) {
-  const hooked = hookRegistration(terminalId);
+  let hooked = hookRegistration(terminalId);
+  // A child session (subagent, scratchpad) that started in this pane may have
+  // registered itself; its cwd is not the pane's. The pane's own transcript
+  // lives under the directory tmux reports, so a registration from anywhere
+  // else is noise.
+  const paneNow = hooked && listClaudePanes().find(p => p.terminalId === terminalId);
+  if (hooked && paneNow && hooked.cwd && paneNow.cwd && hooked.cwd !== paneNow.cwd) hooked = null;
   if (hooked) {
     // A registration can go stale without a new SessionStart — a session that
     // changed identity mid-way kept writing to a new file while the pointer
