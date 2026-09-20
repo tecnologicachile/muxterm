@@ -148,18 +148,36 @@ export function silentLoopUri(seconds = 30) {
 }
 
 /** Fetch the server-rendered mp3 for `text` as an object URL. */
-export async function fetchSpeechUrl(text, token) {
-  const r = await fetch('/api/voice/speak', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text })
-  });
-  if (!r.ok) {
-    let msg = `No se pudo generar la voz (${r.status})`;
-    try { const d = await r.json(); if (d && d.message) msg = d.message; } catch (e) {}
-    throw new Error(msg);
+export async function fetchSpeechUrl(text, token, attempts = 3) {
+  let lastErr = null;
+  for (let i = 0; i < attempts; i++) {
+    // A phone switching networks, or a WebView that has just been thawed,
+    // drops the odd request as a bare "Failed to fetch". That is worth a
+    // second try; a rejection from the server is not.
+    if (i) await new Promise((res) => setTimeout(res, 1500 * i));
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 45000);
+    try {
+      const r = await fetch('/api/voice/speak', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: ctl.signal
+      });
+      if (!r.ok) {
+        let msg = `No se pudo generar la voz (${r.status})`;
+        try { const d = await r.json(); if (d && d.message) msg = d.message; } catch (e) {}
+        throw Object.assign(new Error(msg), { final: true });
+      }
+      return URL.createObjectURL(await r.blob());
+    } catch (e) {
+      if (e && e.final) throw e;
+      lastErr = e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  return URL.createObjectURL(await r.blob());
+  throw Object.assign(new Error('Sin conexión con el servidor al generar la voz'), { network: true });
 }
 
 /**

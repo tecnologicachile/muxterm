@@ -607,7 +607,8 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (document.visibilityState === 'visible' && speechSupported()) {
         await new Promise((resolve) => speak(text, { onEnd: resolve, onError: resolve }));
       } else {
-        setSpeechError((e && e.message) || 'No se pudo reproducir la voz');
+        setSpeechError(((e && e.message) || 'No se pudo reproducir la voz')
+          + (e && (e.network || e.final) ? '' : '. Revisa en Ajustes de Android → Texto a voz que haya una voz instalada'));
         setTimeout(() => setSpeechError(''), 6000);
       }
     } finally {
@@ -873,7 +874,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
 
       {speechError && (
         <Box sx={{ flexShrink: 0, px: 1.5, py: 0.5, backgroundColor: 'rgba(255,167,38,0.12)', color: '#ffa726', fontSize: '11px' }}>
-          {speechError}. Revisa en Ajustes de Android → Texto a voz que haya una voz instalada.
+          {speechError}.
         </Box>
       )}
 

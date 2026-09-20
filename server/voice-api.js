@@ -149,11 +149,14 @@ router.post('/speak', express.json(), async (req, res) => {
       return res.status(502).json({ status: 'error', message: `No se pudo generar la voz (${r.status})` });
     }
 
+    // Send it whole, with a length. Streamed without one, a drop mid-body
+    // reached the phone as a bare "Failed to fetch" with nothing to retry on;
+    // tts-1 finishes in a few seconds anyway, so waiting costs little.
+    const audio = Buffer.from(await r.arrayBuffer());
     res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', audio.length);
     res.setHeader('Cache-Control', 'no-store');
-    // Pipe it through so playback can start before synthesis finishes.
-    const { Readable } = require('stream');
-    Readable.fromWeb(r.body).pipe(res);
+    res.end(audio);
   } catch (e) {
     logger.error(`voice/speak error: ${e.message}`);
     if (!res.headersSent) res.status(500).json({ status: 'error', message: 'Internal error' });
