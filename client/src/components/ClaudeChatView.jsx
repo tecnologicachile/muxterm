@@ -13,7 +13,8 @@ import {
   Mic as MicIcon,
   Stop as StopIcon,
   VolumeUp as VolumeUpIcon,
-  PlayArrow as PlayArrowIcon
+  PlayArrow as PlayArrowIcon,
+  Headset as HeadsetIcon
 } from '@mui/icons-material';
 import { useSocket } from '../utils/SocketContext';
 import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, toneUri } from '../utils/speech';
@@ -829,18 +830,20 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             >
               {speaking ? <StopIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}
             </IconButton>
-            {autoSpeak && (
-              <Box
+            {autoSpeak && !inNativeApp() && (
+              // In a browser the page itself has to hold the media session and
+              // the mic; one small icon says whether it does. The app's service
+              // holds them regardless, so there is nothing to show there.
+              <IconButton
+                size="small"
                 onClick={() => keepAlive()}
-                sx={{
-                  fontSize: '9px', maxWidth: 128, lineHeight: 1.15, cursor: 'pointer',
-                  color: handsFree ? '#00aa55' : '#ffa726'
-                }}
+                title={handsFree
+                  ? `Manos libres activo${micHeld ? ', micrófono listo' : ', sin micrófono'}${mediaKeys ? ', botón del auricular detectado' : ''}`
+                  : 'Manos libres inactivo: toca para activarlo'}
+                sx={{ padding: '3px', color: handsFree ? '#00aa55' : '#ffa726' }}
               >
-                {handsFree
-                  ? `manos libres: activo${micHeld ? ' · mic' : ' · SIN MIC'}${mediaKeys ? ' · botón ok' : ''}`
-                  : 'manos libres inactivo — tócame'}
-              </Box>
+                <HeadsetIcon sx={{ fontSize: 15 }} />
+              </IconButton>
             )}
             <Box
               onClick={toggleAutoSpeak}

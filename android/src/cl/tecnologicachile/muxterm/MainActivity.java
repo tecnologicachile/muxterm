@@ -35,7 +35,7 @@ public class MainActivity extends Activity {
     private static final int REQ_PERMS = 7;
 
     private WebView web;
-    private TextView strip;
+    private TextView fallback;
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     @Override
@@ -46,20 +46,19 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
 
-        // One line of native status above the page. It is how a problem in the
-        // service becomes visible without a debugger attached to the phone.
-        strip = new TextView(this);
-        strip.setTextColor(0xFF00AA55);
-        strip.setBackgroundColor(0xFF111111);
-        strip.setTextSize(11);
-        strip.setPadding(16, 6, 16, 6);
-        strip.setText("manos libres: iniciando");
-        // A WebView has no address bar: without this, a page that got stuck
-        // could only be recovered by killing the app.
-        strip.setOnClickListener(new android.view.View.OnClickListener() {
+        // A WebView has no address bar, so a page that fails to load needs a
+        // way back that is not killing the app. Hidden until that happens.
+        fallback = new TextView(this);
+        fallback.setTextColor(0xFFDDDDDD);
+        fallback.setBackgroundColor(0xFF111111);
+        fallback.setTextSize(14);
+        fallback.setPadding(32, 24, 32, 24);
+        fallback.setGravity(android.view.Gravity.CENTER);
+        fallback.setVisibility(android.view.View.GONE);
+        fallback.setOnClickListener(new android.view.View.OnClickListener() {
             @Override public void onClick(android.view.View v) { if (web != null) web.reload(); }
         });
-        root.addView(strip);
+        root.addView(fallback);
 
         web = new WebView(this);
         root.addView(web, new LinearLayout.LayoutParams(
@@ -71,7 +70,18 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);          // the page keeps its token in localStorage
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap favicon) {
+                fallback.setVisibility(android.view.View.GONE);
+            }
+            @Override public void onReceivedError(WebView v, int code, String desc, String failingUrl) {
+                if (failingUrl != null && failingUrl.equals(v.getUrl())) showFallback(desc);
+            }
+            @Override public void onReceivedSslError(WebView v, android.webkit.SslErrorHandler h, android.net.http.SslError err) {
+                h.cancel();
+                showFallback("certificado no válido (" + err.getPrimaryError() + ")");
+            }
+        });
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
@@ -80,7 +90,7 @@ public class MainActivity extends Activity {
                 // records natively instead, so this is a fallback.
                 boolean mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
                 if (mic) request.grant(request.getResources()); else request.deny();
-                strip.setText("página pidió micrófono: " + (mic ? "concedido" : "sin permiso RECORD_AUDIO"));
+                if (!mic) android.widget.Toast.makeText(MainActivity.this, "Sin permiso de micrófono", android.widget.Toast.LENGTH_SHORT).show();
             }
         });
         web.addJavascriptInterface(new Bridge(), "muxtermNative");
@@ -114,26 +124,26 @@ public class MainActivity extends Activity {
         if (code != REQ_PERMS) return;
         boolean mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         if (mic) HandsFreeService.start(this);
-        else strip.setText("sin permiso de micrófono: el manos libres no puede grabar");
+        else android.widget.Toast.makeText(this, "Sin permiso de micrófono: el manos libres no puede grabar", android.widget.Toast.LENGTH_LONG).show();
     }
 
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             String st = HandsFreeService.status;
-            SharedPreferences p = getSharedPreferences(HandsFreeService.PREFS, MODE_PRIVATE);
-            String term = p.getString("terminalId", "");
             // Let the page paint the recording state on its own mic button, the
             // way it does when it records itself in a browser.
             if (web != null) {
                 web.evaluateJavascript("window.muxtermNativeState&&window.muxtermNativeState({recording:"
                         + HandsFreeService.recordingNow + ",status:" + org.json.JSONObject.quote(st == null ? "detenido" : st) + "})", null);
             }
-            strip.setText("manos libres: " + (st == null ? "detenido" : st)
-                    + (term.isEmpty() ? "  ·  sin panel" : "  ·  panel " + term.substring(0, Math.min(8, term.length())))
-                    + "   (toca para recargar)");
             ui.postDelayed(this, 1000);
         }
     };
+
+    private void showFallback(String why) {
+        fallback.setText("No se pudo cargar muxterm" + (why == null || why.isEmpty() ? "" : ": " + why) + "\n\nToca para reintentar");
+        fallback.setVisibility(android.view.View.VISIBLE);
+    }
 
     /** What the page hands us. Kept to the minimum the service needs. */
     private final class Bridge {

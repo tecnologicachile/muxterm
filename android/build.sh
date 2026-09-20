@@ -28,7 +28,7 @@ echo "1/5  recursos"
 "$BT/aapt2" compile --dir res -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$AJAR" "$OUT/res.zip" \
   --manifest AndroidManifest.xml --min-sdk-version 26 --target-sdk-version $API \
-  --version-code 2 --version-name 0.2
+  --version-code 3 --version-name 0.3
 
 # Only a JRE is on PATH here; the JDK lives elsewhere.
 JAVAC="$(command -v javac || true)"

@@ -52,10 +52,28 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   const isNative = () => typeof window !== 'undefined' && !!(window.muxtermNative && window.muxtermNative.dictate);
   useEffect(() => {
     if (!isNative()) return;
+    let last = null;
+    let hide = null;
     window.muxtermNativeState = (st) => {
       setRecordingPanelId(st && st.recording ? (activePanel || null) : null);
+      // The service's status line becomes the same passing notice the browser
+      // shows for its own dictations; nothing is shown while it idles.
+      const status = (st && st.status) || '';
+      if (status === last) return;
+      last = status;
+      clearTimeout(hide);
+      const s = status.toLowerCase();
+      if (s === 'grabando') setVoiceToast({ text: 'Grabando…', tone: 'busy' });
+      else if (s === 'transcribiendo') setVoiceToast({ text: 'Transcribiendo…', tone: 'busy' });
+      else if (s.startsWith('enviado:')) {
+        setVoiceToast({ text: status.slice(8).trim(), tone: 'ok' });
+        hide = setTimeout(() => setVoiceToast(null), 4000);
+      } else if (/^(falló|no se pudo|audio falló|sin sesión|grabación|sin permiso)/.test(s)) {
+        setVoiceToast({ text: status.slice(0, 120), tone: 'error' });
+        hide = setTimeout(() => setVoiceToast(null), 6000);
+      } else setVoiceToast(null);
     };
-    return () => { try { delete window.muxtermNativeState; } catch (e) {} };
+    return () => { clearTimeout(hide); try { delete window.muxtermNativeState; } catch (e) {} };
   }, [activePanel]);
 
   // ---- Claude Code chat view ----
@@ -206,7 +224,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     if (autoSend) {
       // No dialog: transcribe and send, then say what went out. Anything that
       // fails falls back to the review dialog rather than dropping the dictation.
-      setVoiceToast({ text: 'Transcribiendo…' });
+      setVoiceToast({ text: 'Transcribiendo…', tone: 'busy' });
       try {
         const form = new FormData();
         const ext = (blob.type || '').includes('mp4') ? 'mp4' : (blob.type || '').includes('ogg') ? 'ogg' : 'webm';
@@ -221,7 +239,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           return;
         }
         await sendText(terminalId, data.text.trim());
-        setVoiceToast({ text: data.text.trim() });
+        setVoiceToast({ text: data.text.trim(), tone: 'ok' });
         setTimeout(() => setVoiceToast(null), 4000);
       } catch (e) {
         setVoiceToast(null);
@@ -1151,10 +1169,12 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         <Box sx={{
           position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
           zIndex: 1400, maxWidth: '80vw', px: 2, py: 1, borderRadius: 2,
-          backgroundColor: 'rgba(18,18,18,0.97)', border: '1px solid #2e6b3e',
+          backgroundColor: 'rgba(18,18,18,0.97)',
+          border: `1px solid ${voiceToast.tone === 'error' ? '#8a3b3b' : voiceToast.tone === 'busy' ? '#555' : '#2e6b3e'}`,
           color: '#ddd', fontSize: '12px', boxShadow: '0 4px 18px rgba(0,0,0,0.5)'
         }}>
-          <Box component="span" sx={{ color: "#00aa55", mr: 0.75 }}>{voiceToast.text && voiceToast.text.startsWith("Grabando") ? "" : "Enviado:"}</Box>
+          {voiceToast.tone === 'ok' && <Box component="span" sx={{ color: '#00aa55', mr: 0.75 }}>Enviado:</Box>}
+          {voiceToast.tone === 'error' && <Box component="span" sx={{ color: '#ff6b6b', mr: 0.75 }}>Error:</Box>}
           <Box component="span" sx={{ opacity: 0.9 }}>{voiceToast.text}</Box>
         </Box>
       )}
