@@ -810,7 +810,10 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             {title}
           </Box>
         )}
-        {speechSupported() && (
+        {/* Always: replies are read from a server-rendered mp3, which needs no
+            speech API. Gating on speechSynthesis hid the controls in the
+            companion app's WebView, which does not have it. */}
+        {(
           <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', flexShrink: 0, alignItems: 'center' }}>
             {/* A play triangle and a worded switch: two speaker glyphs side by
                 side were impossible to tell apart. */}
