@@ -367,13 +367,17 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
           <>
             {/* Stopping is a tap you already make, so it carries the choice:
                 straight through, or via the review dialog. */}
-            <IconButton
-              onClick={() => onVoiceToggle(false)}
-              sx={{ color: '#888', '&:hover': { color: '#ddd' } }}
-              title="Detener y revisar antes de enviar"
-            >
-              <EditIcon sx={{ fontSize: 18 }} />
-            </IconButton>
+            {/* The native recorder cannot hand the text back for review, so
+                inside the app the only stop is "stop and send". */}
+            {!inNativeApp() && (
+              <IconButton
+                onClick={() => onVoiceToggle(false)}
+                sx={{ color: '#888', '&:hover': { color: '#ddd' } }}
+                title="Detener y revisar antes de enviar"
+              >
+                <EditIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            )}
             <IconButton
               onClick={() => onVoiceToggle(true)}
               sx={{

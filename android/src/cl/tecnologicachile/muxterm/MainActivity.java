@@ -122,6 +122,12 @@ public class MainActivity extends Activity {
             String st = HandsFreeService.status;
             SharedPreferences p = getSharedPreferences(HandsFreeService.PREFS, MODE_PRIVATE);
             String term = p.getString("terminalId", "");
+            // Let the page paint the recording state on its own mic button, the
+            // way it does when it records itself in a browser.
+            if (web != null) {
+                web.evaluateJavascript("window.muxtermNativeState&&window.muxtermNativeState({recording:"
+                        + HandsFreeService.recordingNow + ",status:" + org.json.JSONObject.quote(st == null ? "detenido" : st) + "})", null);
+            }
             strip.setText("manos libres: " + (st == null ? "detenido" : st)
                     + (term.isEmpty() ? "  ·  sin panel" : "  ·  panel " + term.substring(0, Math.min(8, term.length())))
                     + "   (toca para recargar)");

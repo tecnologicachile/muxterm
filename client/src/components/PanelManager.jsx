@@ -47,6 +47,17 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   const autoSendRef = useRef(true);
   const [voiceToast, setVoiceToast] = useState(null);   // { text } | { error }
 
+  // Inside the companion app the service records; it pushes its state here
+  // once a second so the mic buttons show "recording" like they do in a browser.
+  const isNative = () => typeof window !== 'undefined' && !!(window.muxtermNative && window.muxtermNative.dictate);
+  useEffect(() => {
+    if (!isNative()) return;
+    window.muxtermNativeState = (st) => {
+      setRecordingPanelId(st && st.recording ? (activePanel || null) : null);
+    };
+    return () => { try { delete window.muxtermNativeState; } catch (e) {} };
+  }, [activePanel]);
+
   // ---- Claude Code chat view ----
   // Which terminals currently run Claude Code (so only those get the toggle).
   const [claudeTerminals, setClaudeTerminals] = useState(() => new Set());
@@ -132,12 +143,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     // Inside the companion app the WebView refuses getUserMedia even with the
     // permission granted; the native recorder is the proven path, so the mic
     // button drives it. Same as the headset: press to start, press to send.
-    if (typeof window !== 'undefined' && window.muxtermNative && window.muxtermNative.dictate) {
-      try {
-        window.muxtermNative.dictate();
-        setVoiceToast({ text: 'Grabando con la app — pulsa el micrófono otra vez para enviar' });
-        setTimeout(() => setVoiceToast(null), 5000);
-      } catch (e) {}
+    if (isNative()) {
+      try { window.muxtermNative.dictate(); } catch (e) {}
       return;
     }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -169,6 +176,12 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   };
 
   const stopVoiceRecording = (autoSend = true) => {
+    // In the app the recorder is native: a stop is the same toggle. It always
+    // sends straight through; there is no review step on that path.
+    if (isNative()) {
+      try { window.muxtermNative.dictate(); } catch (e) {}
+      return;
+    }
     autoSendRef.current = autoSend;
     const recorder = mediaRecorderRef.current;
     setRecordingPanelId(null);

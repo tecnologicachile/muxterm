@@ -52,6 +52,8 @@ public class HandsFreeService extends Service {
 
     /** Last status line, for the activity to show; null when not running. */
     static volatile String status = null;
+    /** Mirrored into the page so its mic button can show the recording state. */
+    static volatile boolean recordingNow = false;
 
     private MediaSession session;
     private AudioTrack track;
@@ -198,10 +200,12 @@ public class HandsFreeService extends Service {
             recorder.start();
             recStart = SystemClock.elapsedRealtime();
             recording = true;
+            recordingNow = true;
             status = "grabando";
             tone(ToneGenerator.TONE_PROP_BEEP);
         } catch (Exception e) {
             recording = false;
+            recordingNow = false;
             releaseRecorder();
             wakeOff();
             status = "no se pudo grabar: " + e.getMessage();
@@ -212,6 +216,7 @@ public class HandsFreeService extends Service {
 
     private void stopAndSend() {
         recording = false;
+        recordingNow = false;
         // Under a second of audio is a mis-press, not a dictation, and the
         // container is often not even finalised yet. Drop it and say so.
         if (SystemClock.elapsedRealtime() - recStart < 1000) {
@@ -338,6 +343,7 @@ public class HandsFreeService extends Service {
     @Override
     public void onDestroy() {
         status = null;
+        recordingNow = false;
         if (recording) { try { recorder.stop(); } catch (Exception ignored) { } }
         releaseRecorder();
         wakeOff();
