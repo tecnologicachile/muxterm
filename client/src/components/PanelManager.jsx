@@ -129,6 +129,17 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
 
   const startVoiceRecording = async (panel) => {
     if (!panel || !panel.terminalId) return;
+    // Inside the companion app the WebView refuses getUserMedia even with the
+    // permission granted; the native recorder is the proven path, so the mic
+    // button drives it. Same as the headset: press to start, press to send.
+    if (typeof window !== 'undefined' && window.muxtermNative && window.muxtermNative.dictate) {
+      try {
+        window.muxtermNative.dictate();
+        setVoiceToast({ text: 'Grabando con la app — pulsa el micrófono otra vez para enviar' });
+        setTimeout(() => setVoiceToast(null), 5000);
+      } catch (e) {}
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setVoiceDialog({ open: true, terminalId: panel.terminalId, text: '', loading: false, error: 'Microphone not available (needs HTTPS).' });
       return;
@@ -1130,7 +1141,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           backgroundColor: 'rgba(18,18,18,0.97)', border: '1px solid #2e6b3e',
           color: '#ddd', fontSize: '12px', boxShadow: '0 4px 18px rgba(0,0,0,0.5)'
         }}>
-          <Box component="span" sx={{ color: '#00aa55', mr: 0.75 }}>Enviado:</Box>
+          <Box component="span" sx={{ color: "#00aa55", mr: 0.75 }}>{voiceToast.text && voiceToast.text.startsWith("Grabando") ? "" : "Enviado:"}</Box>
           <Box component="span" sx={{ opacity: 0.9 }}>{voiceToast.text}</Box>
         </Box>
       )}

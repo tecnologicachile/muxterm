@@ -75,10 +75,12 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
-                // The page's own mic button, for dictating with the screen on.
-                runOnUiThread(new Runnable() {
-                    @Override public void run() { request.grant(request.getResources()); }
-                });
+                // Grant on the spot — deferring it is one of the ways the page
+                // ends up seeing a denial. The page inside the app normally
+                // records natively instead, so this is a fallback.
+                boolean mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+                if (mic) request.grant(request.getResources()); else request.deny();
+                strip.setText("página pidió micrófono: " + (mic ? "concedido" : "sin permiso RECORD_AUDIO"));
             }
         });
         web.addJavascriptInterface(new Bridge(), "muxtermNative");
@@ -129,6 +131,14 @@ public class MainActivity extends Activity {
 
     /** What the page hands us. Kept to the minimum the service needs. */
     private final class Bridge {
+        /** Start or stop a native dictation from the page's mic button. */
+        @JavascriptInterface
+        public void dictate() {
+            android.content.Intent i = new android.content.Intent(MainActivity.this, HandsFreeService.class)
+                    .setAction(HandsFreeService.ACTION_TOGGLE);
+            startService(i);
+        }
+
         @JavascriptInterface
         public void setContext(String token, String terminalId, String origin) {
             SharedPreferences.Editor e = getSharedPreferences(HandsFreeService.PREFS, MODE_PRIVATE).edit();

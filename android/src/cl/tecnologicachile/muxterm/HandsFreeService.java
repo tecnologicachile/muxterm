@@ -45,6 +45,7 @@ import java.util.concurrent.Executors;
 public class HandsFreeService extends Service {
 
     static final String ACTION_STOP = "cl.tecnologicachile.muxterm.STOP";
+    static final String ACTION_TOGGLE = "cl.tecnologicachile.muxterm.TOGGLE";
     static final String PREFS = "muxterm";
     private static final String CHANNEL = "handsfree";
     private static final int NOTIF_ID = 1;
@@ -111,6 +112,10 @@ public class HandsFreeService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        // The page's own mic button, routed here: getUserMedia inside the
+        // WebView is refused on this device even with the permission held,
+        // and the native recorder is the path already proven to work.
+        if (intent != null && ACTION_TOGGLE.equals(intent.getAction())) press();
         return START_STICKY;
     }
 
