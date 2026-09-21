@@ -202,6 +202,28 @@ app.get('/api/claude/panels', authenticateToken, (req, res) => {
   res.json({ status: 'ok', panels: claudeSessions.listClaudePanes() });
 });
 
+// Idle time and memory per terminal, so the list can point at the ones
+// worth closing when the machine runs short.
+app.get('/api/terminals/usage', authenticateToken, (req, res) => {
+  try {
+    const all = require('./terminal-usage').usage();
+    const mine = {};
+    for (const [terminalId, u] of Object.entries(all.terminals)) {
+      const t = ttydManager.getTerminal(terminalId);
+      let owned = !!(t && t.userId === req.user.id);
+      if (!t) {
+        const row = database.findTerminalById(terminalId);
+        owned = !!(row && row.user_id === req.user.id);
+      }
+      if (owned) mine[terminalId] = u;
+    }
+    res.json({ status: 'ok', terminals: mine, mem: all.mem });
+  } catch (e) {
+    logger.error('terminals/usage error: ' + e.message);
+    res.status(500).json({ status: 'error', message: 'Internal error' });
+  }
+});
+
 // Chat view composer: type a prompt straight into the Claude session
 app.post('/api/claude/send', authenticateToken, (req, res) => {
   try {

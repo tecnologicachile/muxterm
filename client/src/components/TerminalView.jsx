@@ -20,7 +20,8 @@ import {
   Terminal as TerminalIcon,
   OpenInNew as RestoreIcon,
   FiberManualRecord as DotIcon,
-  Minimize as MinimizeIcon
+  Minimize as MinimizeIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import PanelManager from './PanelManager';
 import UpdateNotification from './UpdateNotification';
@@ -161,6 +162,42 @@ function TerminalView() {
   const [vaultSearch, setVaultSearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState('');
+  // Idle time and memory per terminal: the machine runs out of RAM before
+  // anything else, and a session untouched for days still holds its share.
+  const [usage, setUsage] = useState({ terminals: {}, mem: null });
+  const [sidebarIdleOnly, setSidebarIdleOnly] = useState(false);
+  const IDLE_SEC = 24 * 3600;
+  useEffect(() => {
+    if (isMobile) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await fetch('/api/terminals/usage', { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
+        const d = await r.json();
+        if (alive && d.status === 'ok') setUsage({ terminals: d.terminals || {}, mem: d.mem || null });
+      } catch (e) {}
+    };
+    load();
+    const t = setInterval(load, sidebarOpen ? 15000 : 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, [isMobile, sidebarOpen]);
+  const fmtIdle = (sec) => {
+    if (sec == null) return '';
+    if (sec < 60) return 'ahora';
+    if (sec < 3600) return `hace ${Math.floor(sec / 60)} min`;
+    if (sec < 86400) return `hace ${Math.floor(sec / 3600)} h`;
+    return `hace ${Math.floor(sec / 86400)} d`;
+  };
+  const fmtMB = (mb) => mb >= 1024 ? `${(mb / 1024).toFixed(1).replace('.', ',')} GB` : `${mb} MB`;
+  const closeMinimizedPanel = (panel) => {
+    if (panel.terminalId && socket) socket.emit('close-terminal', { terminalId: panel.terminalId });
+    setMinimizedPanels(prev => prev.filter(p => p.id !== panel.id));
+  };
+  const confirmClose = (panel) => {
+    const u = usage.terminals[panel.terminalId];
+    const what = u && u.command === 'claude' ? 'la sesión de Claude y todo lo que cuelga de ella' : 'el terminal';
+    return window.confirm(`¿Cerrar "${panel.displayName || panel.name || 'Terminal'}"? Se cierra ${what}${u ? ` (${fmtMB(u.rssMB)})` : ''}.`);
+  };
   const sidebarTimeoutRef = React.useRef(null);
   const sidebarFilterRef = React.useRef(null);
   const [mobilePanelListOpen, setMobilePanelListOpen] = useState(false);
@@ -1442,18 +1479,29 @@ function TerminalView() {
             ...p, status: 'active',
             displayName: p.name || `Terminal ${i + 1}`,
             windowShort: winShort(p.windowId),
-            windowFullName: winName(p.windowId)
+            windowFullName: winName(p.windowId),
+            usage: usage.terminals[p.terminalId] || null
           })),
           ...minimizedPanels.map(p => ({
             ...p, status: 'minimized',
             displayName: p.name || 'Terminal',
             windowShort: winShort(p.windowId),
-            windowFullName: winName(p.windowId)
+            windowFullName: winName(p.windowId),
+            usage: usage.terminals[p.terminalId] || null
           }))
         ];
-        const filtered = sidebarFilter
+        const isIdle = (p) => !!(p.usage && p.usage.idleSec >= IDLE_SEC);
+        const idlePanels = allPanels.filter(isIdle);
+        const idleMB = idlePanels.reduce((a, p) => a + p.usage.rssMB, 0);
+        let filtered = sidebarFilter
           ? allPanels.filter(p => p.displayName.toLowerCase().includes(sidebarFilter.toLowerCase()))
           : allPanels;
+        if (sidebarIdleOnly) filtered = filtered.filter(isIdle);
+        const mem = usage.mem;
+        const memTight = !!(mem && mem.totalMB && mem.availableMB / mem.totalMB < 0.1);
+        const usageLine = (p) => p.usage
+          ? `${fmtIdle(p.usage.idleSec)} · ${fmtMB(p.usage.rssMB)}`
+          : null;
         const filteredActive = filtered.filter(p => p.status === 'active');
         const filteredMinimized = filtered.filter(p => p.status === 'minimized');
 
@@ -1582,6 +1630,32 @@ function TerminalView() {
                   </Typography>
                 </Box>
 
+                {/* Which terminals are idle and what they hold. Only spoken
+                    when there is something to do about it. */}
+                {(idlePanels.length > 0 || memTight) && (
+                  <Box
+                    onClick={() => idlePanels.length > 0 && setSidebarIdleOnly(v => !v)}
+                    title={idlePanels.length > 0 ? (sidebarIdleOnly ? 'Mostrar todos' : 'Mostrar solo los que llevan más de un día sin uso') : undefined}
+                    sx={{
+                      mx: '8px', mb: '8px', px: '8px', py: '5px', borderRadius: '4px',
+                      cursor: idlePanels.length > 0 ? 'pointer' : 'default',
+                      fontSize: '10px', lineHeight: 1.35,
+                      color: memTight ? '#ffa726' : '#8a8a8a',
+                      backgroundColor: sidebarIdleOnly ? 'rgba(255,167,38,0.16)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${sidebarIdleOnly ? '#ffa726' : '#2a2a2a'}`
+                    }}
+                  >
+                    {idlePanels.length > 0 && (
+                      <div>{idlePanels.length} sin uso hace más de 1 día · {fmtMB(idleMB)}</div>
+                    )}
+                    {mem && (
+                      <div style={{ color: memTight ? '#ffa726' : '#555' }}>
+                        RAM libre {fmtMB(mem.availableMB)} de {fmtMB(mem.totalMB)}
+                      </div>
+                    )}
+                  </Box>
+                )}
+
                 {/* Buscador */}
                 <Box sx={{ padding: '0 8px 8px' }}>
                   <input
@@ -1707,10 +1781,11 @@ function TerminalView() {
                           panel.id === activePanel ? 'rgba(0, 255, 0, 0.08)' : 'transparent',
                         borderLeft: panel.id === activePanel ? '2px solid #00ff00' : '2px solid transparent',
                         borderTop: dragOverPanelId === panel.id ? '2px solid #00ff00' : '2px solid transparent',
-                        opacity: dragPanelId === panel.id ? 0.4 : 1,
+                        opacity: dragPanelId === panel.id ? 0.4 : isIdle(panel) ? 0.55 : 1,
                         transition: 'background-color 0.1s ease, opacity 0.1s ease',
                         '&:hover': {
                           backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                          opacity: 1,
                           '& .sidebar-minimize': { opacity: 1 }
                         }
                       }}
@@ -1739,6 +1814,11 @@ function TerminalView() {
                         title={panel.displayName}
                       >
                         {panel.displayName}
+                        {usageLine(panel) && (
+                          <Box component="span" sx={{ display: 'block', fontSize: '9px', color: isIdle(panel) ? '#b08040' : '#666', lineHeight: 1.2 }}>
+                            {usageLine(panel)}
+                          </Box>
+                        )}
                       </Typography>
                       {panels.length > 1 && (
                         <IconButton
@@ -1753,6 +1833,18 @@ function TerminalView() {
                           <MinimizeIcon sx={{ fontSize: 12 }} />
                         </IconButton>
                       )}
+                      <IconButton
+                        className="sidebar-minimize"
+                        size="small"
+                        title="Cerrar terminal"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirmClose(panel)) handleClosePanel(panel.id);
+                        }}
+                        sx={{ opacity: 0, padding: '2px', color: '#666', transition: 'opacity 0.1s', '&:hover': { color: '#ff6b6b' } }}
+                      >
+                        <CloseIcon sx={{ fontSize: 12 }} />
+                      </IconButton>
                     </Box>
                           ))}
                           {/* Minimized panels within this window */}
@@ -1764,14 +1856,28 @@ function TerminalView() {
                                 display: 'flex', alignItems: 'center', gap: '8px',
                                 padding: '5px 12px', cursor: 'pointer',
                                 borderLeft: '2px solid transparent', opacity: 0.45,
-                                '&:hover': { backgroundColor: 'rgba(255,255,255,0.06)', opacity: 0.75 }
+                                '&:hover': { backgroundColor: 'rgba(255,255,255,0.06)', opacity: 0.75, '& .sidebar-minimize': { opacity: 1 } }
                               }}
                             >
                               <DotIcon sx={{ fontSize: 6, color: '#555' }} />
-                              <Typography variant="caption" sx={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <Typography variant="caption" sx={{ flex: 1, fontSize: '11px', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {panel.displayName}
+                                {usageLine(panel) && (
+                                  <Box component="span" sx={{ display: 'block', fontSize: '9px', color: isIdle(panel) ? '#b08040' : '#666', lineHeight: 1.2 }}>
+                                    {usageLine(panel)}
+                                  </Box>
+                                )}
                               </Typography>
-                              <RestoreIcon sx={{ fontSize: 10, color: '#555', ml: 'auto' }} />
+                              <RestoreIcon sx={{ fontSize: 10, color: '#555' }} />
+                              <IconButton
+                                className="sidebar-minimize"
+                                size="small"
+                                title="Cerrar terminal"
+                                onClick={(e) => { e.stopPropagation(); if (confirmClose(panel)) closeMinimizedPanel(panel); }}
+                                sx={{ opacity: 0, padding: '2px', color: '#666', transition: 'opacity 0.1s', '&:hover': { color: '#ff6b6b' } }}
+                              >
+                                <CloseIcon sx={{ fontSize: 12 }} />
+                              </IconButton>
                             </Box>
                           ))}
                         </React.Fragment>
