@@ -952,6 +952,10 @@ io.on('connection', (socket) => {
         }
       } catch (e) {}
 
+      // Whether ttyd was alive before: the page reloads its iframe only when
+      // it was actually respawned, not on every return to the tab.
+      const before = ttydManager.getTerminal(data.terminalId);
+      const wasAlive = !!(before && !before._exited);
       const terminal = await ttydManager.restoreTerminal(
         data.terminalId,
         socket.userId,
@@ -965,7 +969,8 @@ io.on('connection', (socket) => {
       if (terminal && terminal.userId === socket.userId) {
         socket.emit('terminal-restored', {
           terminalId: terminal.id,
-          sessionId: sessionId
+          sessionId: sessionId,
+          respawned: !wasAlive
         });
       } else {
         socket.emit('terminal-error', { message: 'Terminal not found', terminalId: data.terminalId });

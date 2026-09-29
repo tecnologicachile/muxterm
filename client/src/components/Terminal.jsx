@@ -10,6 +10,14 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
   const [iframeReady, setIframeReady] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
+  // Set while a restore was requested only because the tab came back into
+  // view; the reply then decides whether the iframe needs reloading at all.
+  const visibilityRestoreRef = useRef(false);
+  // Whether the terminal had keyboard focus when its iframe was reloaded, so
+  // the fresh one can take it back instead of leaving the cursor nowhere.
+  const refocusRef = useRef(false);
+  const TOUCH_DEVICE = typeof navigator !== 'undefined' &&
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const [retryPassword, setRetryPassword] = useState('');
   const [retrying, setRetrying] = useState(false);
   const activityTimeoutRef = useRef(null);
@@ -66,7 +74,16 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
         // The conditional-detection approach we had before (poll for
         // "Reconnect" text at 500ms) missed cases where ttyd hadn't yet shown
         // the overlay, letting the duplication accumulate.
+        //
+        // Except when nothing restarted: on the desktop, coming back to the
+        // tab used to reload the iframe anyway, which dropped the cursor out of
+        // the terminal every time you switched windows. A phone still reloads,
+        // since the OS freezes its tabs and the frozen xterm needs replacing.
+        const fromVisibility = visibilityRestoreRef.current;
+        visibilityRestoreRef.current = false;
+        if (fromVisibility && data.respawned === false && !TOUCH_DEVICE) return;
         if (iframeRef.current) {
+          refocusRef.current = document.activeElement === iframeRef.current;
           iframeRef.current.src = iframeRef.current.src;
         }
       }
@@ -149,6 +166,7 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
   // terminal-restored and the iframe reloads with a fresh, live xterm buffer.
   useEffect(() => {
     if (becameVisible && localTerminalId && socket && socket.connected) {
+      visibilityRestoreRef.current = true;
       socket.emit('restore-terminal', { terminalId: localTerminalId, sshConnectionId });
     }
     // If the socket is not connected yet, the forced reconnect in SocketContext
@@ -230,6 +248,17 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
               ref={iframeRef}
               src={ttydUrl}
               onLoad={() => {
+                if (refocusRef.current) {
+                  refocusRef.current = false;
+                  // xterm's textarea appears once ttyd has connected; try a few times.
+                  [150, 500, 1200].forEach(delay => setTimeout(() => {
+                    try {
+                      const w = iframeRef.current?.contentWindow;
+                      const ta = w && w.document.querySelector('.xterm-helper-textarea');
+                      if (ta) { w.focus(); ta.focus(); }
+                    } catch (e) {}
+                  }, delay));
+                }
                 try {
                   const doc = iframeRef.current?.contentDocument;
                   if (doc) {
