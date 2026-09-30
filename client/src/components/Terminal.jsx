@@ -266,6 +266,18 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
                     const style = doc.createElement('style');
                     style.textContent = '.xterm-viewport::-webkit-scrollbar { display: none !important; } .xterm-viewport { scrollbar-width: none !important; overflow: hidden !important; } body { background: #000 !important; } body > :not(#terminal-container):not(.xterm) { display: none !important; }';
                     doc.head.appendChild(style);
+                    // A pane in modo conversación, or in another window, keeps
+                    // its iframe mounted but hidden, and ttyd focuses its
+                    // terminal whenever its socket (re)connects. With several
+                    // such panes on one page, the last one to connect took the
+                    // cursor away from the terminal being typed in. A hidden
+                    // pane never gets to keep focus.
+                    doc.addEventListener('focusin', (e) => {
+                      try {
+                        const el = iframeRef.current;
+                        if (el && getComputedStyle(el).visibility === 'hidden' && e.target && e.target.blur) e.target.blur();
+                      } catch (err) {}
+                    }, true);
                     // Propagate clicks to parent for panel selection
                     doc.addEventListener('mousedown', () => {
                       const container = iframeRef.current?.closest('[data-panel-id]');
