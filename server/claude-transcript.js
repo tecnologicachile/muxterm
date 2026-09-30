@@ -191,11 +191,14 @@ function slugForCwd(cwd) {
  * Best-effort lookup when no hook has registered the session: newest .jsonl in
  * the slug dir, validated against the cwd recorded inside the file.
  */
-function findTranscriptByCwd(cwd) {
+function findTranscriptByCwd(cwd, exclude) {
   const dir = path.join(PROJECTS_DIR, slugForCwd(cwd));
   try {
     const files = fs.readdirSync(dir)
       .filter(f => f.endsWith('.jsonl'))
+      // Transcripts another pane has claimed are not candidates: two Claude
+      // sessions in one directory must each keep their own.
+      .filter(f => !(exclude && exclude.has(path.join(dir, f))))
       .map(f => {
         const p = path.join(dir, f);
         return { p, mtime: fs.statSync(p).mtimeMs };

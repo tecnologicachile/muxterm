@@ -84,6 +84,22 @@ function hookRegistration(terminalId) {
   return null;
 }
 
+/** Transcripts registered by the other live panes: not this pane's. */
+function claimedByOthers(terminalId) {
+  const claimed = new Set();
+  const alive = new Set(listClaudePanes().map(p => p.terminalId));
+  try {
+    for (const f of fs.readdirSync(HOOK_DIR)) {
+      if (!f.endsWith('.json')) continue;
+      const id = f.slice(0, -5);
+      if (id === terminalId || !alive.has(id)) continue;
+      const reg = hookRegistration(id);
+      if (reg) claimed.add(reg.transcriptPath);
+    }
+  } catch (e) {}
+  return claimed;
+}
+
 /** Exact path if a hook registered it, else the newest transcript for the cwd. */
 function resolveTranscript(terminalId) {
   let hooked = hookRegistration(terminalId);
@@ -98,7 +114,7 @@ function resolveTranscript(terminalId) {
     // changed identity mid-way kept writing to a new file while the pointer
     // still named the old one. If a sibling transcript is clearly newer than
     // the registered file, the conversation has moved; follow it.
-    const sibling = transcript.findTranscriptByCwd(hooked.cwd || path.dirname(hooked.transcriptPath));
+    const sibling = transcript.findTranscriptByCwd(hooked.cwd || path.dirname(hooked.transcriptPath), claimedByOthers(terminalId));
     try {
       if (sibling && sibling !== hooked.transcriptPath) {
         const a = fs.statSync(hooked.transcriptPath).mtimeMs;
@@ -114,7 +130,7 @@ function resolveTranscript(terminalId) {
   }
   const pane = listClaudePanes().find(p => p.terminalId === terminalId);
   if (!pane) return { file: null, source: 'none' };
-  const file = transcript.findTranscriptByCwd(pane.cwd);
+  const file = transcript.findTranscriptByCwd(pane.cwd, claimedByOthers(terminalId));
   return file ? { file, source: 'cwd', cwd: pane.cwd } : { file: null, source: 'none', cwd: pane.cwd };
 }
 
