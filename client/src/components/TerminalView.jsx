@@ -49,6 +49,9 @@ function TerminalView() {
   // Windows (tabs) — each panel belongs to one window
   const [windows, setWindows] = useState([{ id: 'w1', name: 'Window 1' }]);
   const [activeWindowId, setActiveWindowId] = useState('w1');
+  // Which pane you were on in each window, so coming back to a window lands
+  // you where you left it rather than on its first pane.
+  const [lastActiveByWindow, setLastActiveByWindow] = useState({});
   const [renamingWindowId, setRenamingWindowId] = useState(null);
   const [renameWindowValue, setRenameWindowValue] = useState('');
   const [draggingPanelForWindow, setDraggingPanelForWindow] = useState(null);
@@ -298,6 +301,7 @@ function TerminalView() {
         const migrated = data.panels.map(p => p.windowId ? p : { ...p, windowId: defaultWin });
         setPanels(migrated);
         setActivePanel(data.activePanel || migrated[0].id);
+        if (data.lastActiveByWindow && typeof data.lastActiveByWindow === 'object') setLastActiveByWindow(data.lastActiveByWindow);
         // Load windows or create default
         if (data.windows && data.windows.length > 0) {
           setWindows(data.windows);
@@ -341,10 +345,10 @@ function TerminalView() {
   useEffect(() => {
     if (socket && panels.length > 0) {
       socket.emit('update-workspace', {
-        panels, activePanel, minimizedPanels, windows, activeWindowId
+        panels, activePanel, minimizedPanels, windows, activeWindowId, lastActiveByWindow
       });
     }
-  }, [panels, activePanel, socket, minimizedPanels, windows, activeWindowId]);
+  }, [panels, activePanel, socket, minimizedPanels, windows, activeWindowId, lastActiveByWindow]);
 
   // Update overflow state on tabs (show/hide arrow buttons)
   useEffect(() => {
@@ -424,7 +428,12 @@ function TerminalView() {
     const visiblePanels = panels.filter(p => (p.windowId || 'w1') === activeWindowId);
     if (visiblePanels.length === 0) return;
     const currentValid = visiblePanels.some(p => p.id === activePanel);
-    if (!currentValid) setActivePanel(visiblePanels[0].id);
+    if (currentValid) {
+      setLastActiveByWindow(prev => prev[activeWindowId] === activePanel ? prev : { ...prev, [activeWindowId]: activePanel });
+      return;
+    }
+    const remembered = lastActiveByWindow[activeWindowId];
+    setActivePanel(visiblePanels.some(p => p.id === remembered) ? remembered : visiblePanels[0].id);
   }, [activeWindowId, panels, activePanel]);
 
   // Keyboard shortcut Ctrl+B to toggle sidebar

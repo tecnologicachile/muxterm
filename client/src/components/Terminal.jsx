@@ -204,6 +204,29 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     // fires 'reconnect' → isReconnected above handles the restore once it's back.
   }, [becameVisible]);
 
+  // Becoming the active pane hands it the keyboard, so switching windows or
+  // panes leaves you typing where you left off. Never while the pane is
+  // hidden (modo conversación owns the keyboard there) and never over a text
+  // field you are already typing in.
+  useEffect(() => {
+    if (!isActive || !iframeReady) return;
+    const tryFocus = () => {
+      try {
+        const el = iframeRef.current;
+        if (!el || getComputedStyle(el).visibility === 'hidden') return true;
+        const a = document.activeElement;
+        if (a && a !== document.body && a.tagName !== 'IFRAME') return true;
+        const w = el.contentWindow;
+        const ta = w && w.document.querySelector('.xterm-helper-textarea');
+        if (!ta) return false;
+        w.focus(); ta.focus();
+        return true;
+      } catch (e) { return true; }
+    };
+    const timers = [120, 600, 1500].map(d => setTimeout(tryFocus, d));
+    return () => timers.forEach(clearTimeout);
+  }, [isActive, iframeReady]);
+
   // Watch container size changes + periodic re-measure on activation/mount.
   // Fixes distorted rendering when xterm.js gets out of sync with actual container size
   // (tab switches, panel activations, resize handle drags, etc.)
