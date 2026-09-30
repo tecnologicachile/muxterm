@@ -119,6 +119,15 @@ function parseLine(line) {
     // Pressing Esc lands as a user line "[Request interrupted by user…]":
     // not a prompt, and the turn is over with no turn_duration to say so.
     if (typeof c === 'string' && /^\[Request interrupted/.test(c)) return [{ ...base, kind: 'turn', reason: 'interrupted' }];
+    // A slash command run locally (/advisor, /clear…) is logged as user
+    // lines wrapped in <command-name>, <local-command-stdout> and a caveat.
+    // Claude never sees them, so they start no turn; keep only the command
+    // itself as a note for the thread.
+    if (o.isMeta) return [];
+    if (typeof c === 'string' && /^<(local-command|command-name)/.test(c)) {
+      const m = c.match(/<command-name>([^<]*)<\/command-name>/);
+      return m ? [{ ...base, kind: 'note', text: m[1].trim() }] : [];
+    }
     if (typeof c === 'string') return [{ ...base, kind: 'prompt', ...clip(c, MAX_MESSAGE) }];
     if (Array.isArray(c)) {
       const txt = c.filter(b => b && b.type === 'text').map(b => b.text).join('\n');

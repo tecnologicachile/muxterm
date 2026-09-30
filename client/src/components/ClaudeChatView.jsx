@@ -899,7 +899,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             return <Box key={`e${i}`} sx={pad}><ToolCard ev={ev} /></Box>;
           }
           if (ev.kind === 'note') {
-            return <Box key={`e${i}`} sx={{ ...pad, my: 0.75, fontSize: '10px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>— {ev.text} —</Box>;
+            return <Box key={`e${i}`} sx={{ ...pad, my: 0.75, fontSize: '10px', color: '#666', letterSpacing: '0.5px' }}>— {ev.text} —</Box>;
           }
           return null;
   }), [events]);
