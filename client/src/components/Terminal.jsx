@@ -244,7 +244,12 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     if (!iframeRef.current) return;
     const dispatchResize = () => {
       try {
-        const w = iframeRef.current?.contentWindow;
+        // A hidden pane must stay quiet: tmux sizes a session to whichever
+        // client spoke last, and a hidden pane on the desktop re-fitting
+        // itself was overriding the size the phone had just asked for.
+        const el = iframeRef.current;
+        if (!el || getComputedStyle(el).visibility === 'hidden') return;
+        const w = el.contentWindow;
         if (w) {
           w.dispatchEvent(new Event('resize'));
           if (w.term && typeof w.term.fit === 'function') w.term.fit();

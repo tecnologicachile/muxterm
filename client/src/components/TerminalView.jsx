@@ -1241,6 +1241,11 @@ function TerminalView() {
          {panels.length > 0 ? windows.map(win => {
            if (!panels.some(p => (p.windowId || 'w1') === win.id)) return null;
            const shown = win.id === activeWindowId;
+           // A phone shows one pane at a time and gains nothing from keeping
+           // the other windows alive; worse, every hidden terminal it holds
+           // is another tmux client whose size competes with the one on
+           // screen. Mount only what it shows.
+           if (isMobile && !shown) return null;
            return (
              <Box key={`win-${win.id}`} sx={{
                position: 'absolute', inset: 0,
