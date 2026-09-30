@@ -20,7 +20,10 @@ const NOISE_TYPES = new Set([
   'last-prompt', 'atis-latch', 'summary', 'system'
 ]);
 
-const MAX_TEXT = 4000;      // per rendered block
+const MAX_TEXT = 4000;      // per rendered block of tool output
+// What Claude says and what you asked are never cut: a reply that lost its
+// last line ("¿Envío el mensaje…?") is worse than a long one.
+const MAX_MESSAGE = 200000;
 // Big tool outputs (WebFetch/Read) make lines huge, so a small window shows
 // very few turns. 2 MB lands on a useful number of them.
 const TAIL_BYTES = 2 * 1024 * 1024;
@@ -116,10 +119,10 @@ function parseLine(line) {
     // Pressing Esc lands as a user line "[Request interrupted by user…]":
     // not a prompt, and the turn is over with no turn_duration to say so.
     if (typeof c === 'string' && /^\[Request interrupted/.test(c)) return [{ ...base, kind: 'turn', reason: 'interrupted' }];
-    if (typeof c === 'string') return [{ ...base, kind: 'prompt', ...clip(c) }];
+    if (typeof c === 'string') return [{ ...base, kind: 'prompt', ...clip(c, MAX_MESSAGE) }];
     if (Array.isArray(c)) {
       const txt = c.filter(b => b && b.type === 'text').map(b => b.text).join('\n');
-      if (txt) return [{ ...base, kind: 'prompt', ...clip(txt) }];
+      if (txt) return [{ ...base, kind: 'prompt', ...clip(txt, MAX_MESSAGE) }];
     }
     return [];
   }
@@ -129,7 +132,7 @@ function parseLine(line) {
     const out = [];
     for (const b of blocks) {
       if (!b) continue;
-      if (b.type === 'text' && b.text) out.push({ ...base, kind: 'text', ...clip(b.text) });
+      if (b.type === 'text' && b.text) out.push({ ...base, kind: 'text', ...clip(b.text, MAX_MESSAGE) });
       else if (b.type === 'thinking' && b.thinking) out.push({ ...base, kind: 'thinking', ...clip(b.thinking) });
       else if (b.type === 'tool_use') {
         out.push({
