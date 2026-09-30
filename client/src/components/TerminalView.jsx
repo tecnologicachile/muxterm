@@ -1230,15 +1230,30 @@ function TerminalView() {
       <Box sx={{
         flex: 1,
         overflow: 'hidden',
-        minHeight: 0
+        minHeight: 0,
+        position: 'relative'
       }}>
-         {panels.length > 0 ? (
+         {/* Every window stays mounted; only the active one is shown. Switching
+             used to unmount the panes you left and remount them on return,
+             so each terminal reloaded and reconnected (2-3 s) and fought
+             over the cursor while doing so. Hidden windows keep their size
+             so their terminals stay correctly fitted. */}
+         {panels.length > 0 ? windows.map(win => {
+           if (!panels.some(p => (p.windowId || 'w1') === win.id)) return null;
+           const shown = win.id === activeWindowId;
+           return (
+             <Box key={`win-${win.id}`} sx={{
+               position: 'absolute', inset: 0,
+               visibility: shown ? 'visible' : 'hidden',
+               pointerEvents: shown ? 'auto' : 'none',
+               zIndex: shown ? 1 : 0
+             }}>
            <PanelManager
-             key="panel-manager"
-             windowId={activeWindowId}
+             key={`panel-manager-${win.id}`}
+             windowId={win.id}
              onPanelDragStart={(id) => setDraggingPanelForWindow(id)}
              onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
-             panels={panels.filter(p => (p.windowId || 'w1') === activeWindowId)}
+             panels={panels.filter(p => (p.windowId || 'w1') === win.id)}
              activePanel={activePanel}
                   onPanelSelect={setActivePanel}
                   onPanelClose={handleClosePanel}
@@ -1273,7 +1288,9 @@ function TerminalView() {
                     ));
                   }}
                 />
-         ) : null}
+             </Box>
+           );
+         }) : null}
       </Box>
 
       {/* Mobile bottom bars - fixed */}

@@ -51,7 +51,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // once a second so the mic buttons show "recording" like they do in a browser.
   const isNative = () => typeof window !== 'undefined' && !!(window.muxtermNative && window.muxtermNative.dictate);
   useEffect(() => {
-    if (!isNative()) return;
+    // One PanelManager per window is mounted; only the one holding the
+    // active pane speaks for the page.
+    if (!isNative() || !panels.some(p => p.id === activePanel)) return;
     let last = null;
     let hide = null;
     window.muxtermNativeState = (st) => {
@@ -74,7 +76,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
       } else setVoiceToast(null);
     };
     return () => { clearTimeout(hide); try { delete window.muxtermNativeState; } catch (e) {} };
-  }, [activePanel]);
+  }, [activePanel, panels]);
 
   // ---- Claude Code chat view ----
   // Which terminals currently run Claude Code (so only those get the toggle).
