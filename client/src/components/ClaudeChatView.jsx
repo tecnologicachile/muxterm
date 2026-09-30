@@ -547,7 +547,11 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       const next = prev.slice();
       for (const ev of incoming) {
         if (ev.kind === 'title') { setTitle(ev.text); continue; }
-        if (ev.kind === 'turn') continue;   // bookkeeping for the status tracker
+        if (ev.kind === 'turn') {           // bookkeeping for the status tracker…
+          // …except an interruption, which is worth a line in the thread.
+          if (ev.reason === 'interrupted' && !(ev.uuid && next.some(e => e.uuid === ev.uuid))) next.push({ ...ev, kind: 'note', text: 'Interrumpido' });
+          continue;
+        }
         if (ev.kind === 'result') {
           // Attach to its tool call; if the tool is outside our window, drop it.
           for (let i = next.length - 1; i >= 0; i--) {
@@ -893,6 +897,9 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           }
           if (ev.kind === 'tool') {
             return <Box key={`e${i}`} sx={pad}><ToolCard ev={ev} /></Box>;
+          }
+          if (ev.kind === 'note') {
+            return <Box key={`e${i}`} sx={{ ...pad, my: 0.75, fontSize: '10px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>— {ev.text} —</Box>;
           }
           return null;
   }), [events]);

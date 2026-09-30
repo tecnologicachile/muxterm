@@ -88,7 +88,13 @@ function parseLine(line) {
   if (o.type === 'ai-title') return [{ kind: 'title', text: o.title || o.aiTitle || '' }];
   // The end of a turn is the one system line worth keeping: it is what
   // tells "Claude is busy" from "Claude finished and is waiting for you".
-  if (o.type === 'system') return o.subtype === 'turn_duration' ? [{ kind: 'turn', ts: o.timestamp }] : [];
+  // An away_summary is only written once Claude has gone idle, so it ends a
+  // turn as surely as turn_duration does.
+  if (o.type === 'system') {
+    if (o.subtype === 'turn_duration') return [{ kind: 'turn', ts: o.timestamp }];
+    if (o.subtype === 'away_summary') return [{ kind: 'turn', ts: o.timestamp, reason: 'away' }];
+    return [];
+  }
   if (NOISE_TYPES.has(o.type)) return [];
 
   const base = {
@@ -107,6 +113,9 @@ function parseLine(line) {
       const res = normalizeResult(o.toolUseResult);
       return res ? [{ ...base, kind: 'result', toolId, result: res }] : [];
     }
+    // Pressing Esc lands as a user line "[Request interrupted by user…]":
+    // not a prompt, and the turn is over with no turn_duration to say so.
+    if (typeof c === 'string' && /^\[Request interrupted/.test(c)) return [{ ...base, kind: 'turn', reason: 'interrupted' }];
     if (typeof c === 'string') return [{ ...base, kind: 'prompt', ...clip(c) }];
     if (Array.isArray(c)) {
       const txt = c.filter(b => b && b.type === 'text').map(b => b.text).join('\n');
