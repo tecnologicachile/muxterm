@@ -24,7 +24,7 @@ import ClaudeChatView from './ClaudeChatView';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, onPanelChatView, windowId, onPanelDragStart, onPanelDragEnd }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, onPanelChatView, windowId, onPanelDragStart, onPanelDragEnd, claudeStatus = {} }) {
   const saveKey = (suffix) => windowId ? `muxterm-${windowId}-${suffix}` : undefined;
   const { socket } = useSocket();
 
@@ -643,20 +643,32 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 >✕</Box>
               </>
             )}
-            {/* Activity indicator */}
-            <Box 
-              sx={{
-                width: '14px',
-                height: '14px',
-                borderRadius: '50%',
-                border: '2px solid #00ff00',
-                borderTop: '2px solid transparent',
-                opacity: activityStates[panel.id] ? 1 : 0.3,
-                transition: 'opacity 0.3s ease',
-                animation: activityStates[panel.id] ? 'spin 1s linear infinite' : 'none',
-                backgroundColor: activityStates[panel.id] ? 'rgba(0, 255, 0, 0.1)' : 'transparent'
-              }}
-            />
+            {/* Activity indicator. With Claude Code running, it follows the
+                transcript: green spinning while Claude has your prompt in
+                hand, amber when it is waiting on you; otherwise it follows
+                terminal output as before. */}
+            {(() => {
+              const cs = panel.terminalId && claudeStatus[panel.terminalId];
+              const busy = cs ? cs.busy : activityStates[panel.id];
+              const waiting = !!(cs && cs.waiting);
+              const color = waiting ? '#ffa726' : '#00ff00';
+              return (
+                <Box
+                  title={waiting ? 'Claude te pregunta algo' : busy ? (cs ? 'Claude está trabajando' : 'Actividad') : cs ? 'Claude en reposo' : ''}
+                  sx={{
+                    width: '14px',
+                    height: '14px',
+                    borderRadius: '50%',
+                    border: `2px solid ${color}`,
+                    borderTop: waiting ? `2px solid ${color}` : '2px solid transparent',
+                    opacity: (busy || waiting) ? 1 : 0.3,
+                    transition: 'opacity 0.3s ease',
+                    animation: busy && !waiting ? 'spin 1s linear infinite' : 'none',
+                    backgroundColor: waiting ? 'rgba(255,167,38,0.25)' : busy ? 'rgba(0, 255, 0, 0.1)' : 'transparent'
+                  }}
+                />
+              );
+            })()}
             
             {/* Claude chat view toggle — only on panels running Claude Code */}
             {panel.terminalId && claudeTerminals.has(panel.terminalId) && (

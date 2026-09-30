@@ -155,6 +155,29 @@ public class MainActivity extends Activity {
             startService(i);
         }
 
+        /** "Claude finished" from the page: a WebView has no Notification API. */
+        @JavascriptInterface
+        public void notify(String title, String body) {
+            try {
+                android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                if (Build.VERSION.SDK_INT >= 26) {
+                    nm.createNotificationChannel(new android.app.NotificationChannel("avisos", "Avisos de Claude", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+                }
+                android.content.Intent open = new android.content.Intent(MainActivity.this, MainActivity.class)
+                        .setFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                android.app.PendingIntent pi = android.app.PendingIntent.getActivity(MainActivity.this, 2, open, android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+                android.app.Notification n = new android.app.Notification.Builder(MainActivity.this, "avisos")
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title == null ? "muxterm" : title)
+                        .setContentText(body == null ? "" : body)
+                        .setStyle(new android.app.Notification.BigTextStyle().bigText(body == null ? "" : body))
+                        .setContentIntent(pi)
+                        .setAutoCancel(true)
+                        .build();
+                nm.notify((int) (System.currentTimeMillis() % 100000), n);
+            } catch (Exception e) { /* a missed notice is not worth a crash */ }
+        }
+
         @JavascriptInterface
         public void setContext(String token, String terminalId, String origin) {
             SharedPreferences.Editor e = getSharedPreferences(HandsFreeService.PREFS, MODE_PRIVATE).edit();

@@ -86,6 +86,9 @@ function parseLine(line) {
   try { o = JSON.parse(line); } catch (e) { return []; }
   if (!o || typeof o !== 'object') return [];
   if (o.type === 'ai-title') return [{ kind: 'title', text: o.title || o.aiTitle || '' }];
+  // The end of a turn is the one system line worth keeping: it is what
+  // tells "Claude is busy" from "Claude finished and is waiting for you".
+  if (o.type === 'system') return o.subtype === 'turn_duration' ? [{ kind: 'turn', ts: o.timestamp }] : [];
   if (NOISE_TYPES.has(o.type)) return [];
 
   const base = {

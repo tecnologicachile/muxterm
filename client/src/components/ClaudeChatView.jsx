@@ -117,6 +117,23 @@ const isTableRow = (l) => /^\s*\|.*\|\s*$/.test(l);
 const isTableSep = (l) => /^\s*\|[\s:|-]+\|\s*$/.test(l);
 const splitRow = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
 
+// Claude Code wraps what you paste in <pasted_content id="…">…</pasted_content>
+// (sometimes with the slash escaped) and that wrapper lands in the transcript.
+// Split a prompt into typed and pasted parts so the tags never show.
+function splitPasted(text) {
+  const src = String(text || '');
+  const re = /<\\?pasted_content[^>]*>([\s\S]*?)<\\?\/?\\?pasted_content[^>]*>/g;
+  const parts = [];
+  let last = 0, m;
+  while ((m = re.exec(src))) {
+    if (m.index > last) parts.push({ text: src.slice(last, m.index) });
+    parts.push({ text: m[1].trim(), pasted: true });
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) parts.push({ text: src.slice(last) });
+  return parts.filter(p => p.text.trim());
+}
+
 function MiniMarkdown({ text }) {
   const nodes = [];
   const lines = String(text || '').split('\n');
@@ -530,6 +547,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       const next = prev.slice();
       for (const ev of incoming) {
         if (ev.kind === 'title') { setTitle(ev.text); continue; }
+        if (ev.kind === 'turn') continue;   // bookkeeping for the status tracker
         if (ev.kind === 'result') {
           // Attach to its tool call; if the tool is outside our window, drop it.
           for (let i = next.length - 1; i >= 0; i--) {
@@ -854,7 +872,12 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           if (ev.kind === 'prompt') {
             return (
               <Box key={`e${i}`} sx={{ ...pad, mb: 1, mt: 1.5, borderLeft: '3px solid #00aa55', pl: 1.25, backgroundColor: 'rgba(0,170,85,0.06)', py: 0.75, borderRadius: '0 4px 4px 0' }}>
-                <MiniMarkdown text={ev.text} />
+                {splitPasted(ev.text).map((part, j) => part.pasted ? (
+                  <Box key={j} sx={{ my: 0.5, pl: 1, borderLeft: '2px solid #3a5a48', color: '#b5b5b5', fontSize: '12px' }}>
+                    <Box sx={{ fontSize: '9px', color: '#6a8a78', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25 }}>Texto pegado</Box>
+                    <MiniMarkdown text={part.text} />
+                  </Box>
+                ) : <MiniMarkdown key={j} text={part.text} />)}
               </Box>
             );
           }

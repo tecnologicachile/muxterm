@@ -202,6 +202,12 @@ app.get('/api/claude/panels', authenticateToken, (req, res) => {
   res.json({ status: 'ok', panels: claudeSessions.listClaudePanes() });
 });
 
+// Busy / done / waiting per Claude session, for the indicators and the
+// "it finished" notices.
+app.get('/api/claude/status', authenticateToken, (req, res) => {
+  res.json({ status: 'ok', sessions: require('./claude-status').forUser(req.user.id) });
+});
+
 // Idle time and memory per terminal, so the list can point at the ones
 // worth closing when the machine runs short.
 app.get('/api/terminals/usage', authenticateToken, (req, res) => {
@@ -649,6 +655,8 @@ setInterval(() => {
     }
   } catch (e) {}
 }, 800);
+
+require('./claude-status').init({ io, ttydManager, database });
 
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);

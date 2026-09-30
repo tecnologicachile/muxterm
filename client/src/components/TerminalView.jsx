@@ -21,8 +21,11 @@ import {
   OpenInNew as RestoreIcon,
   FiberManualRecord as DotIcon,
   Minimize as MinimizeIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  NotificationsActive as BellOnIcon,
+  NotificationsOff as BellOffIcon
 } from '@mui/icons-material';
+import { toneUri } from '../utils/speech';
 import PanelManager from './PanelManager';
 import UpdateNotification from './UpdateNotification';
 import AppHeader from './AppHeader';
@@ -62,6 +65,22 @@ function TerminalView() {
   const [tabsOverflow, setTabsOverflow] = useState({ canLeft: false, canRight: false });
   // Global activity tracking — maps terminalId → lastActivityTs
   const [activityMap, setActivityMap] = useState({});
+  // What each Claude session is up to, from its transcript: busy, waiting
+  // on you, or done. Drives the indicators and the "it finished" notices.
+  const [claudeStatus, setClaudeStatus] = useState({});
+  const claudeStatusRef = useRef({});
+  // Sessions that finished or asked something while you were not looking
+  // at them, until you look. terminalId -> { name, text, waiting, at }
+  const [unseen, setUnseen] = useState({});
+  const [notifyPref, setNotifyPref] = useState(() => {
+    try { return localStorage.getItem('muxterm-notify') === '1'; } catch (e) { return false; }
+  });
+  const [docVisible, setDocVisible] = useState(typeof document === 'undefined' || !document.hidden);
+  useEffect(() => {
+    const h = () => setDocVisible(!document.hidden);
+    document.addEventListener('visibilitychange', h);
+    return () => document.removeEventListener('visibilitychange', h);
+  }, []);
   // Update status: { state: 'idle' | 'in-progress' | 'applied', target?: string }
   const [updateStatus, setUpdateStatus] = useState({ state: 'idle' });
   // Suppress the non-blocking update toast while the full-screen UpdateProgress
@@ -268,10 +287,92 @@ function TerminalView() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Update page title
+  // Page title carries how many sessions finished unseen, so it shows in
+  // the browser tab even from another program.
   useEffect(() => {
-    document.title = 'MuxTerm - Workspace';
-  }, []);
+    const n = Object.keys(unseen).length;
+    document.title = n ? `(${n}) MuxTerm` : 'MuxTerm - Workspace';
+  }, [unseen]);
+
+  // The pane is on screen when its window is showing, the tab is visible and,
+  // on a phone, it is the active pane.
+  const panelVisible = (panel) => {
+    if (!panel || !docVisible) return false;
+    if ((panel.windowId || 'w1') !== activeWindowId) return false;
+    if (isMobile && panel.id !== activePanel) return false;
+    return true;
+  };
+  const panelVisibleRef = useRef(panelVisible);
+  useEffect(() => { panelVisibleRef.current = panelVisible; });
+
+  const toggleNotify = async () => {
+    const next = !notifyPref;
+    if (next && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch (e) {}
+    }
+    setNotifyPref(next);
+    try { localStorage.setItem('muxterm-notify', next ? '1' : '0'); } catch (e) {}
+  };
+
+  const notify = (title, body) => {
+    if (!notifyPref) return;
+    try { new Audio(toneUri(880, 140, 0.3)).play().catch(() => {}); } catch (e) {}
+    try {
+      if (window.muxtermNative && window.muxtermNative.notify) { window.muxtermNative.notify(title, body); return; }
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const n = new Notification(title, { body, tag: 'muxterm-' + title, silent: true });
+        n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); };
+      }
+    } catch (e) {}
+  };
+
+  // Claude status: initial snapshot, then live changes.
+  useEffect(() => {
+    if (!socket) return;
+    const load = async () => {
+      try {
+        const r = await fetch('/api/claude/status', { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
+        const d = await r.json();
+        if (d.status === 'ok') { claudeStatusRef.current = d.sessions || {}; setClaudeStatus(d.sessions || {}); }
+      } catch (e) {}
+    };
+    load();
+    socket.on('connect', load);
+    const onStatus = (st) => {
+      if (!st || !st.terminalId) return;
+      const prev = claudeStatusRef.current[st.terminalId] || {};
+      claudeStatusRef.current = { ...claudeStatusRef.current, [st.terminalId]: st };
+      setClaudeStatus(claudeStatusRef.current);
+      const finished = prev.busy && !st.busy && !st.waiting;
+      const asked = st.waiting && !prev.waiting;
+      if (!finished && !asked) return;
+      const panel = [...panelsRef.current, ...minimizedRef.current].find(p => p.terminalId === st.terminalId);
+      const name = (panel && panel.name) || 'Terminal';
+      const text = (st.lastText || '').replace(/\s+/g, ' ').slice(0, 140);
+      if (panel && panelVisibleRef.current(panel) && document.hasFocus()) return;   // you are looking at it
+      setUnseen(u => ({ ...u, [st.terminalId]: { name, text, waiting: !!st.waiting, at: Date.now() } }));
+      notify(asked ? `${name}: Claude te pregunta` : `${name}: Claude terminó`, text);
+    };
+    socket.on('claude-status', onStatus);
+    return () => { socket.off('connect', load); socket.off('claude-status', onStatus); };
+  }, [socket, notifyPref]);
+  const panelsRef = useRef([]);
+  const minimizedRef = useRef([]);
+  useEffect(() => { panelsRef.current = panels; minimizedRef.current = minimizedPanels; }, [panels, minimizedPanels]);
+
+  // Looking at a pane clears its mark.
+  useEffect(() => {
+    if (!Object.keys(unseen).length) return;
+    setUnseen(u => {
+      const next = { ...u };
+      let changed = false;
+      for (const id of Object.keys(next)) {
+        const panel = panels.find(p => p.terminalId === id);
+        if (panel && panelVisible(panel)) { delete next[id]; changed = true; }
+      }
+      return changed ? next : u;
+    });
+  }, [activeWindowId, activePanel, docVisible, panels, unseen]);
 
   // Load workspace on mount
   useEffect(() => {
@@ -1014,6 +1115,9 @@ function TerminalView() {
               // Has recent activity (within 2s) on any panel of this window?
               const now = Date.now();
               const hasActivity = winPanels.some(p => p.terminalId && activityMap[p.terminalId] && (now - activityMap[p.terminalId] < 2000));
+              const winBusy = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].busy);
+              const winWaiting = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].waiting);
+              const winUnseen = winPanels.filter(p => p.terminalId && unseen[p.terminalId]);
               const isTabDragTarget = dragOverTabId === win.id && draggingTabId && draggingTabId !== win.id;
               const isBeingDraggedTab = draggingTabId === win.id;
               return (
@@ -1134,14 +1238,21 @@ function TerminalView() {
                     />
                   ) : (
                     <>
-                      {hasActivity && (
+                      {/* Amber: Claude is asking or finished unseen; green: working. */}
+                      {(winWaiting || winUnseen.length > 0) ? (
+                        <span style={{
+                          width: 7, height: 7, borderRadius: '50%', backgroundColor: '#ffa726',
+                          animation: winWaiting ? 'muxpulse 1s ease-in-out infinite' : 'none', marginRight: 2,
+                          boxShadow: '0 0 4px #ffa726'
+                        }} title={winWaiting ? 'Claude te pregunta algo' : winUnseen.map(p => `${p.name || 'Terminal'}: terminó`).join(' · ')} />
+                      ) : (hasActivity || winBusy) && (
                         <span style={{
                           width: 6, height: 6, borderRadius: '50%', backgroundColor: '#00ff00',
                           animation: 'muxpulse 1s ease-in-out infinite', marginRight: 2
-                        }} title="Activity in this window" />
+                        }} title={winBusy ? 'Claude está trabajando' : 'Activity in this window'} />
                       )}
                       <style>{`@keyframes muxpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
-                      <span>{win.name}</span>
+                      <span style={winUnseen.length > 0 && !isActive ? { color: '#ffa726' } : undefined}>{win.name}</span>
                       {windows.length > 1 && (
                         <span onClick={(e) => {
                           e.stopPropagation();
@@ -1213,6 +1324,16 @@ function TerminalView() {
                 </IconButton>
               )}
 
+            <IconButton
+              color="inherit"
+              size="small"
+              onClick={toggleNotify}
+              sx={{ ml: 1, color: notifyPref ? '#ffa726' : 'inherit', opacity: notifyPref ? 1 : 0.6 }}
+              title={notifyPref ? 'Avisos activados: suena y notifica cuando un Claude termina o pregunta' : 'Avisos desactivados: activar para enterarte cuando un Claude termina'}
+            >
+              {notifyPref ? <BellOnIcon sx={{ fontSize: 18 }} /> : <BellOffIcon sx={{ fontSize: 18 }} />}
+            </IconButton>
+
             {/* Vault status + Settings */}
             <IconButton
               color="inherit"
@@ -1260,6 +1381,7 @@ function TerminalView() {
              onPanelDragEnd={() => { setDraggingPanelForWindow(null); setDragOverWindowTab(null); }}
              panels={panels.filter(p => (p.windowId || 'w1') === win.id)}
              activePanel={activePanel}
+             claudeStatus={claudeStatus}
                   onPanelSelect={setActivePanel}
                   onPanelClose={handleClosePanel}
                   onRenamePanel={handleRenamePanel}
