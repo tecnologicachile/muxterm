@@ -3,6 +3,31 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
+// The last thing on the page that legitimately held the keyboard: a visible
+// terminal's iframe, the chat composer, a text field. Hidden iframes are not
+// recorded, so focus can be handed back when one of them grabs it.
+if (typeof document !== 'undefined' && !window.__muxtermFocusTracked) {
+  window.__muxtermFocusTracked = true;
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!el || el === document.body) return;
+    try { if (el.tagName === 'IFRAME' && getComputedStyle(el).visibility === 'hidden') return; } catch (err) {}
+    window.__muxtermLastFocus = el;
+  }, true);
+}
+function giveFocusBack() {
+  const el = window.__muxtermLastFocus;
+  if (!el || !el.isConnected) { try { window.focus(); document.body.focus(); } catch (e) {} return; }
+  try {
+    if (el.tagName === 'IFRAME') {
+      const w = el.contentWindow;
+      const ta = w && w.document.querySelector('.xterm-helper-textarea');
+      if (ta) { w.focus(); ta.focus(); return; }
+    }
+    el.focus();
+  } catch (e) {}
+}
+
 function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, onActivityChange, sshConnectionId }) {
   const iframeRef = useRef(null);
   const { socket, isReconnected, becameVisible } = useSocket();
@@ -272,10 +297,16 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
                     // such panes on one page, the last one to connect took the
                     // cursor away from the terminal being typed in. A hidden
                     // pane never gets to keep focus.
+                    // Blurring alone is not enough: the page then treats the
+                    // hidden iframe itself as focused and keystrokes vanish
+                    // into it, so the previous holder gets the focus back.
                     doc.addEventListener('focusin', (e) => {
                       try {
                         const el = iframeRef.current;
-                        if (el && getComputedStyle(el).visibility === 'hidden' && e.target && e.target.blur) e.target.blur();
+                        if (el && getComputedStyle(el).visibility === 'hidden') {
+                          if (e.target && e.target.blur) e.target.blur();
+                          setTimeout(giveFocusBack, 0);
+                        }
                       } catch (err) {}
                     }, true);
                     // Propagate clicks to parent for panel selection
