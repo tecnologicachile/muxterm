@@ -15,16 +15,26 @@ if (typeof document !== 'undefined' && !window.__muxtermFocusTracked) {
     window.__muxtermLastFocus = el;
   }, true);
 }
+function focusTerminalIframe(el) {
+  const w = el && el.contentWindow;
+  const ta = w && w.document.querySelector('.xterm-helper-textarea');
+  if (!ta) return false;
+  w.focus(); ta.focus();
+  return true;
+}
 function giveFocusBack() {
+  // The page's own focusin does not see focus entering an iframe, so a
+  // terminal records itself (window.__muxtermActiveIframe) when it takes
+  // the keyboard legitimately. Only something you can type in is worth
+  // going back to; a button or a tab that was merely clicked is not.
   const el = window.__muxtermLastFocus;
-  if (!el || !el.isConnected) { try { window.focus(); document.body.focus(); } catch (e) {} return; }
+  const typable = el && el.isConnected && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) &&
+    getComputedStyle(el).visibility !== 'hidden';
+  const term = window.__muxtermActiveIframe;
   try {
-    if (el.tagName === 'IFRAME') {
-      const w = el.contentWindow;
-      const ta = w && w.document.querySelector('.xterm-helper-textarea');
-      if (ta) { w.focus(); ta.focus(); return; }
-    }
-    el.focus();
+    if (typable) { el.focus(); return; }
+    if (term && term.isConnected && getComputedStyle(term).visibility !== 'hidden' && focusTerminalIframe(term)) return;
+    window.focus(); document.body.focus();
   } catch (e) {}
 }
 
@@ -337,6 +347,9 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
                         if (hidden || uninvited) {
                           if (e.target && e.target.blur) e.target.blur();
                           setTimeout(giveFocusBack, 0);
+                        } else {
+                          window.__muxtermActiveIframe = el;
+                          window.__muxtermLastFocus = el;
                         }
                       } catch (err) {}
                     }, true);
