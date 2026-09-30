@@ -14,8 +14,48 @@ import {
   Stop as StopIcon,
   VolumeUp as VolumeUpIcon,
   PlayArrow as PlayArrowIcon,
-  Headset as HeadsetIcon
+  Headset as HeadsetIcon,
+  ContentCopy as CopyIcon,
+  Check as CheckIcon
 } from '@mui/icons-material';
+
+// Touch devices have no hover, so the copy buttons stay visible there.
+const TOUCH = typeof navigator !== 'undefined' &&
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) {}
+  // Older WebViews and plain http: a hidden textarea and execCommand.
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+
+/** One small copy button that turns into a check for a moment once it copied. */
+function CopyButton({ text, title = 'Copiar', sx }) {
+  const [done, setDone] = useState(false);
+  return (
+    <IconButton
+      size="small"
+      className="copy-btn"
+      title={done ? 'Copiado' : title}
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (await copyText(text)) { setDone(true); setTimeout(() => setDone(false), 1200); }
+      }}
+      sx={{ padding: '2px', color: done ? '#00aa55' : '#666', '&:hover': { color: done ? '#00aa55' : '#ddd' }, ...sx }}
+    >
+      {done ? <CheckIcon sx={{ fontSize: 13 }} /> : <CopyIcon sx={{ fontSize: 13 }} />}
+    </IconButton>
+  );
+}
 import { useSocket } from '../utils/SocketContext';
 import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, toneUri } from '../utils/speech';
 
@@ -91,14 +131,21 @@ function MiniMarkdown({ text }) {
       i++;
       while (i < lines.length && !lines[i].startsWith('```')) body.push(lines[i++]);
       i++;
+      const code = body.join('\n');
       nodes.push(
-        <Box key={`k${key++}`} component="pre" sx={{
-          m: '6px 0', p: 1, backgroundColor: '#0d0d0d', border: '1px solid #262626',
-          borderRadius: 1, overflow: 'auto', fontSize: '12px', lineHeight: 1.5,
-          fontFamily: '"Fira Code", monospace', color: '#d4d4d4', ...darkScroll
-        }}>
-          {lang && <Box component="span" sx={{ color: '#666', fontSize: '10px', display: 'block', mb: 0.5 }}>{lang}</Box>}
-          {body.join('\n')}
+        <Box key={`k${key++}`} sx={{ position: 'relative', m: '6px 0', '&:hover .copy-btn': { opacity: 1 } }}>
+          <Box component="pre" sx={{
+            m: 0, p: 1, backgroundColor: '#0d0d0d', border: '1px solid #262626',
+            borderRadius: 1, overflow: 'auto', fontSize: '12px', lineHeight: 1.5,
+            fontFamily: '"Fira Code", monospace', color: '#d4d4d4', ...darkScroll
+          }}>
+            {lang && <Box component="span" sx={{ color: '#666', fontSize: '10px', display: 'block', mb: 0.5 }}>{lang}</Box>}
+            {code}
+          </Box>
+          <CopyButton text={code} title="Copiar código" sx={{
+            position: 'absolute', top: 4, right: 4, opacity: TOUCH ? 1 : 0, transition: 'opacity 0.1s',
+            backgroundColor: 'rgba(13,13,13,0.85)', '&:hover': { backgroundColor: 'rgba(13,13,13,0.85)', color: '#ddd' }
+          }} />
         </Box>
       );
       continue;
@@ -785,7 +832,14 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             );
           }
           if (ev.kind === 'text') {
-            return <Box key={`e${i}`} sx={{ ...pad, mb: 1 }}><MiniMarkdown text={ev.text} /></Box>;
+            return (
+              <Box key={`e${i}`} sx={{ ...pad, mb: 1, '&:hover .copy-btn': { opacity: 1 } }}>
+                <MiniMarkdown text={ev.text} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-start', mt: '-2px' }}>
+                  <CopyButton text={ev.text} title="Copiar respuesta" sx={{ opacity: TOUCH ? 0.6 : 0, transition: 'opacity 0.1s' }} />
+                </Box>
+              </Box>
+            );
           }
           if (ev.kind === 'tool') {
             return <Box key={`e${i}`} sx={pad}><ToolCard ev={ev} /></Box>;
