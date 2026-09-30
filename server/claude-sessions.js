@@ -164,7 +164,9 @@ function watch(terminalId, onEvents) {
   if (w) {
     w.listeners.add(onEvents);
     const tail = transcript.readTail(w.file);
-    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true });
+    // A joining listener gets the current suggestion too; it is otherwise
+    // only sent when it changes.
+    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '' });
     return;
   }
 
@@ -175,9 +177,10 @@ function watch(terminalId, onEvents) {
   }
 
   const tail = transcript.readTail(file);
-  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: '' };
+  const pane0 = listClaudePanes().find(p => p.terminalId === terminalId);
+  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '' };
   watchers.set(terminalId, w);
-  onEvents({ terminalId, events: tail.events, file, source, backlog: true });
+  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion });
 
   // Poll the size: the file is appended by another process, and polling stat is
   // more dependable than fs.watch for that across filesystems.
