@@ -41,6 +41,12 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
   // Whether the terminal had keyboard focus when its iframe was reloaded, so
   // the fresh one can take it back instead of leaving the cursor nowhere.
   const refocusRef = useRef(false);
+  // ttyd focuses its terminal on its own when the socket opens. That is
+  // wanted only in the active pane; elsewhere, unless a click just happened,
+  // it steals the cursor from wherever you were typing.
+  const isActiveRef = useRef(isActive);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
+  const lastPointerRef = useRef(0);
   const TOUCH_DEVICE = typeof navigator !== 'undefined' &&
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const [retryPassword, setRetryPassword] = useState('');
@@ -303,12 +309,16 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
                     doc.addEventListener('focusin', (e) => {
                       try {
                         const el = iframeRef.current;
-                        if (el && getComputedStyle(el).visibility === 'hidden') {
+                        const hidden = el && getComputedStyle(el).visibility === 'hidden';
+                        const uninvited = !isActiveRef.current && Date.now() - lastPointerRef.current > 1500;
+                        if (hidden || uninvited) {
                           if (e.target && e.target.blur) e.target.blur();
                           setTimeout(giveFocusBack, 0);
                         }
                       } catch (err) {}
                     }, true);
+                    doc.addEventListener('pointerdown', () => { lastPointerRef.current = Date.now(); }, true);
+                    doc.addEventListener('touchstart', () => { lastPointerRef.current = Date.now(); }, true);
                     // Propagate clicks to parent for panel selection
                     doc.addEventListener('mousedown', () => {
                       const container = iframeRef.current?.closest('[data-panel-id]');
