@@ -347,8 +347,13 @@ function ToolCard({ ev }) {
  * Its own component on purpose: the draft lives here, so typing re-renders this
  * box alone instead of the whole conversation on every keystroke.
  */
-function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceToggle }) {
+function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceToggle, suggestion }) {
   const [draft, setDraft] = useState('');
+  const useSuggestion = () => {
+    if (!suggestion) return;
+    setDraft(suggestion);
+    setTimeout(() => { try { inputRef.current?.focus(); } catch (e) {} }, 0);
+  };
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const inputRef = useRef(null);
@@ -390,6 +395,23 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
   return (
     <Box sx={{ flexShrink: 0, borderTop: '1px solid #222', p: 1, backgroundColor: '#111' }}>
       {sendError && <Box sx={{ color: '#ff8080', fontSize: '11px', mb: 0.5 }}>{sendError}</Box>}
+      {suggestion && !draft && !waiting && (
+        // The same suggestion Claude Code shows dimmed in the terminal. Tab or
+        // a click puts it in the box to edit or send.
+        <Box
+          onClick={useSuggestion}
+          title="Sugerencia de Claude Code · Tab para usarla"
+          sx={{
+            mb: 0.75, px: 1, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '12px',
+            color: '#9a9a9a', backgroundColor: 'rgba(255,255,255,0.04)', border: '1px dashed #3a3a3a',
+            display: 'flex', alignItems: 'center', gap: 0.75,
+            '&:hover': { color: '#ddd', borderColor: '#555' }
+          }}
+        >
+          <Box component="span" sx={{ fontSize: '9px', color: '#666', border: '1px solid #444', borderRadius: '3px', px: '4px', flexShrink: 0 }}>Tab</Box>
+          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{suggestion}</Box>
+        </Box>
+      )}
       <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
         <TextField
           multiline maxRows={6} fullWidth size="small"
@@ -398,7 +420,10 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
           inputRef={inputRef}
           disabled={sending || !!waiting}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+            if (e.key === 'Tab' && !e.shiftKey && suggestion && !draft) { e.preventDefault(); useSuggestion(); }
+          }}
           InputProps={{ sx: { color: '#ddd', fontSize: '13px', backgroundColor: '#0d0d0d' } }}
         />
         {onVoiceToggle && !recording && (
@@ -474,6 +499,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const fileRef = useRef(null);
   const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState('');
+  const [suggestion, setSuggestion] = useState('');
   // Remembered per device: you want this on the phone with headphones, not
   // necessarily on the desktop.
   const [autoSpeak, setAutoSpeak] = useState(() => {
@@ -527,6 +553,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (!payload || payload.terminalId !== terminalId) return;
       if (payload.error) { setError(payload.error); return; }
       setError('');
+      if (typeof payload.suggestion === 'string') setSuggestion(payload.suggestion);
       // A reconnect re-sends the whole backlog. Clearing it made the
       // conversation blank and redraw, which is the flicker you see on coming
       // back to the tab. The merge dedupes by uuid, so only wipe when the
@@ -979,6 +1006,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       <Composer
         terminalId={terminalId}
         waiting={waiting}
+        suggestion={suggestion}
         isActive={isActive}
         recording={recording}
         onVoiceToggle={onVoiceToggle}

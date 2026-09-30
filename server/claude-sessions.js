@@ -84,6 +84,27 @@ function hookRegistration(terminalId) {
   return null;
 }
 
+/**
+ * The prompt Claude Code suggests in its input box (accepted with Tab). It is
+ * never written to the transcript, so it is read off the screen: the box sits
+ * between the last two rule lines, and the suggestion is the dim text after
+ * the prompt marker, while anything typed is bright.
+ */
+function readSuggestion(tmuxSession) {
+  try {
+    const out = execSync(`tmux -L muxterm capture-pane -p -e -t ${tmuxSession}`, { encoding: 'utf8', timeout: 2000 });
+    const lines = out.split('\n');
+    const plain = lines.map(l => l.replace(/\x1b\[[0-9;]*m/g, ''));
+    const seps = [];
+    plain.forEach((l, i) => { if (l.trim().startsWith('────')) seps.push(i); });
+    if (seps.length < 2) return '';
+    const box = lines.slice(seps[seps.length - 2] + 1, seps[seps.length - 1]).join(' ');
+    const m = box.match(/❯\s*\x1b\[2m([\s\S]*?)(?:\x1b\[0m|\x1b\[22m|$)/);
+    if (!m) return '';
+    return m[1].replace(/\x1b\[[0-9;]*m/g, '').replace(/\s+/g, ' ').trim();
+  } catch (e) { return ''; }
+}
+
 /** Transcripts registered by the other live panes: not this pane's. */
 function claimedByOthers(terminalId) {
   const claimed = new Set();
@@ -154,7 +175,7 @@ function watch(terminalId, onEvents) {
   }
 
   const tail = transcript.readTail(file);
-  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false };
+  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: '' };
   watchers.set(terminalId, w);
   onEvents({ terminalId, events: tail.events, file, source, backlog: true });
 
@@ -180,6 +201,16 @@ function watch(terminalId, onEvents) {
           w.offset = t.size;
           for (const fn of w.listeners) fn({ terminalId, events: t.events, file: w.file, source: r.source, backlog: true });
           return;
+        }
+      }
+      // Every ~1.2 s, glance at the input box for a suggested prompt and
+      // tell listeners only when it changes (including when it goes away).
+      if ((w.ticks % 3) === 0) {
+        const pane = listClaudePanes().find(p => p.terminalId === terminalId);
+        const suggestion = pane ? readSuggestion(pane.tmuxSession) : '';
+        if (suggestion !== w.suggestion) {
+          w.suggestion = suggestion;
+          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion });
         }
       }
       if (w.reset) { w.reset = false; w.offset = 0; }
@@ -229,7 +260,7 @@ function describeWatchers() {
   return out;
 }
 
-module.exports = {
+module.exports = { readSuggestion,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };
