@@ -360,7 +360,9 @@ function TerminalView() {
   const minimizedRef = useRef([]);
   useEffect(() => { panelsRef.current = panels; minimizedRef.current = minimizedPanels; }, [panels, minimizedPanels]);
 
-  // Looking at a pane clears its mark.
+  // A mark clears only when you select that pane while it is on screen:
+  // opening a window with four panes must not clear all four at once, or
+  // you would not know which one finished.
   useEffect(() => {
     if (!Object.keys(unseen).length) return;
     setUnseen(u => {
@@ -368,7 +370,7 @@ function TerminalView() {
       let changed = false;
       for (const id of Object.keys(next)) {
         const panel = panels.find(p => p.terminalId === id);
-        if (panel && panelVisible(panel)) { delete next[id]; changed = true; }
+        if (panel && panel.id === activePanel && panelVisible(panel)) { delete next[id]; changed = true; }
       }
       return changed ? next : u;
     });
@@ -1382,6 +1384,7 @@ function TerminalView() {
              panels={panels.filter(p => (p.windowId || 'w1') === win.id)}
              activePanel={activePanel}
              claudeStatus={claudeStatus}
+             unseen={unseen}
                   onPanelSelect={setActivePanel}
                   onPanelClose={handleClosePanel}
                   onRenamePanel={handleRenamePanel}
@@ -1959,7 +1962,7 @@ function TerminalView() {
                         sx={{
                           flex: 1,
                           fontSize: '12px',
-                          color: panel.id === activePanel ? '#00ff00' : '#ddd',
+                          color: panel.id === activePanel ? '#00ff00' : (panel.terminalId && unseen[panel.terminalId]) ? '#ffa726' : '#ddd',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'

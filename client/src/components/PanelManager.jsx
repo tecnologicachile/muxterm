@@ -24,7 +24,7 @@ import ClaudeChatView from './ClaudeChatView';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, onPanelChatView, windowId, onPanelDragStart, onPanelDragEnd, claudeStatus = {} }) {
+function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, onPanelChatView, windowId, onPanelDragStart, onPanelDragEnd, claudeStatus = {}, unseen = {} }) {
   const saveKey = (suffix) => windowId ? `muxterm-${windowId}-${suffix}` : undefined;
   const { socket } = useSocket();
 
@@ -565,7 +565,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               if (onRenamePanel) onRenamePanel(panel.id);
             }}
             sx={{
-              color: isActive ? '#00ff00' : '#888',
+              color: isActive ? '#00ff00' : (panel.terminalId && unseen[panel.terminalId]) ? '#ffa726' : '#888',
               fontSize: '11px',
               fontWeight: isActive ? 'bold' : 'normal',
               cursor: panels.length > 1 ? 'grab' : 'pointer',
@@ -576,6 +576,13 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
           >
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>
+          {/* Finished or asked while you were not looking; goes when you select the pane. */}
+          {panel.terminalId && unseen[panel.terminalId] && !isActive && (
+            <Box
+              title={unseen[panel.terminalId].waiting ? 'Claude te preguntó algo' : 'Claude terminó: ' + (unseen[panel.terminalId].text || '')}
+              sx={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#ffa726', boxShadow: '0 0 4px #ffa726', ml: 0.5, flexShrink: 0 }}
+            />
+          )}
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
             {/* Scroll buttons */}
             {panel.terminalId && (
