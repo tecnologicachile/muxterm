@@ -550,12 +550,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     seq.push('\r');
     await sendSeq(seq);
   };
-  useEffect(() => {
-    if (!answering) return;
-    if (!waiting) { setAnswering(false); setPicked(new Set()); return; }
-    const t = setTimeout(() => { setAnswering(false); setAnswerFailed(true); }, 5000);
-    return () => clearTimeout(t);
-  }, [answering, waiting]);
+
   // Remembered per device: you want this on the phone with headphones, not
   // necessarily on the desktop.
   const [autoSpeak, setAutoSpeak] = useState(() => {
@@ -952,6 +947,15 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     if (WAITING_TOOLS.has(e.name) && !e.result) waiting = e;
     break;
   }
+  // (Declared after `waiting` exists: referencing it earlier crashed the
+  // whole page at load with a temporal-dead-zone error.)
+  useEffect(() => {
+    if (!answering) return;
+    if (!waiting) { setAnswering(false); setPicked(new Set()); return; }
+    const t = setTimeout(() => { setAnswering(false); setAnswerFailed(true); }, 5000);
+    return () => clearTimeout(t);
+  }, [answering, waiting]);
+
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0a0a' }}>
