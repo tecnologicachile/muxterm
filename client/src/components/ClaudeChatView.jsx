@@ -517,6 +517,14 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState('');
   const [suggestion, setSuggestion] = useState('');
+  // A tool permission prompt read off the terminal screen, answered from here
+  // by sending its number to the pane.
+  const [permission, setPermission] = useState(null);
+  const answerPermission = (n) => {
+    if (!socket) return;
+    socket.emit('send-keys', { terminalId, keys: String(n) });
+    setPermission(null);
+  };
   // Remembered per device: you want this on the phone with headphones, not
   // necessarily on the desktop.
   const [autoSpeak, setAutoSpeak] = useState(() => {
@@ -576,6 +584,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (payload.error) { setError(payload.error); return; }
       setError('');
       if (typeof payload.suggestion === 'string') setSuggestion(payload.suggestion);
+      if ('permission' in payload) setPermission(payload.permission || null);
       // A reconnect re-sends the whole backlog. Clearing it made the
       // conversation blank and redraw, which is the flicker you see on coming
       // back to the tab. The merge dedupes by uuid, so only wipe when the
@@ -989,7 +998,41 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         </Box>
       )}
 
-      {waiting && (
+      {permission && (
+        <Box sx={{
+          flexShrink: 0, borderTop: '1px solid #4a3c00', backgroundColor: 'rgba(255,167,38,0.10)',
+          px: 1.5, py: 1
+        }}>
+          <Box sx={{ color: '#ffa726', fontSize: '12px', fontWeight: 700, mb: 0.5 }}>
+            Claude pide permiso: {permission.title}
+          </Box>
+          {permission.body && (
+            <Box component="pre" sx={{ m: 0, mb: 0.75, whiteSpace: 'pre-wrap', fontFamily: '"Fira Code", monospace', fontSize: '11.5px', color: '#ccc', maxHeight: 160, overflow: 'auto', ...darkScroll }}>{permission.body}</Box>
+          )}
+          <Box sx={{ color: '#ddd', fontSize: '12px', mb: 0.5 }}>{permission.question}</Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            {permission.options.map((opt) => (
+              <Box
+                key={opt.n}
+                component="button"
+                onClick={() => answerPermission(opt.n)}
+                sx={{
+                  cursor: 'pointer', border: '1px solid #ffa726', background: opt.n === 1 ? 'rgba(255,167,38,0.18)' : 'transparent',
+                  color: '#ffa726', borderRadius: 1, fontSize: '11.5px', padding: '4px 10px',
+                  '&:hover': { backgroundColor: 'rgba(255,167,38,0.25)' }
+                }}
+              >{opt.n}. {opt.label}</Box>
+            ))}
+            <Box
+              component="button"
+              onClick={() => onNeedsTerminal && onNeedsTerminal()}
+              sx={{ cursor: 'pointer', border: '1px solid #555', background: 'transparent', color: '#aaa', borderRadius: 1, fontSize: '11px', padding: '4px 10px' }}
+            >Ir al terminal</Box>
+          </Box>
+        </Box>
+      )}
+
+      {waiting && !permission && (
         <Box sx={{
           flexShrink: 0, borderTop: '1px solid #4a3c00', backgroundColor: 'rgba(255,167,38,0.10)',
           px: 1.5, py: 1

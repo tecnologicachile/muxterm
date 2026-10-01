@@ -351,7 +351,7 @@ function TerminalView() {
       const text = (st.lastText || '').replace(/\s+/g, ' ').slice(0, 140);
       if (panel && panelVisibleRef.current(panel) && document.hasFocus()) return;   // you are looking at it
       setUnseen(u => ({ ...u, [st.terminalId]: { name, text, waiting: !!st.waiting, at: Date.now() } }));
-      notify(asked ? `${name}: Claude te pregunta` : `${name}: Claude terminó`, text);
+      notify(asked ? (st.permission ? `${name}: Claude pide permiso` : `${name}: Claude te pregunta`) : `${name}: Claude terminó`, st.permission || text);
     };
     socket.on('claude-status', onStatus);
     return () => { socket.off('connect', load); socket.off('claude-status', onStatus); };

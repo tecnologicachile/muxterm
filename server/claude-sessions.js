@@ -90,9 +90,53 @@ function hookRegistration(terminalId) {
  * between the last two rule lines, and the suggestion is the dim text after
  * the prompt marker, while anything typed is bright.
  */
+// One screen read per pane per second serves both the suggestion and the
+// permission prompt, however many watchers ask.
+const screenCache = new Map();
+function readScreen(tmuxSession) {
+  const c = screenCache.get(tmuxSession);
+  if (c && Date.now() - c.at < 1000) return c.out;
+  let out = '';
+  try { out = execSync(`tmux -L muxterm capture-pane -p -e -t ${tmuxSession}`, { encoding: 'utf8', timeout: 2000 }); } catch (e) {}
+  screenCache.set(tmuxSession, { at: Date.now(), out });
+  return out;
+}
+
+/**
+ * A tool permission prompt, which lives only on screen:
+ *   Run shell command … Do you want to proceed? ❯ 1. Yes  2. No  Esc to cancel
+ * Returns { title, body, options: [{ n, label }] } or null.
+ */
+function readPermission(tmuxSession) {
+  try {
+    const plain = readScreen(tmuxSession).split('\n')
+      .map(l => l.replace(/\x1b\[[0-9;]*m/g, '').replace(/[│╭╮╰╯─]/g, ' ').replace(/\s+$/, ''));
+    let q = -1;
+    for (let i = plain.length - 1; i >= 0; i--) if (/Do you want to (proceed|make this edit|allow|run|continue)/i.test(plain[i])) { q = i; break; }
+    if (q < 0) return null;
+    const options = [];
+    let end = q;
+    for (let i = q + 1; i < plain.length && i < q + 12; i++) {
+      const m = plain[i].match(/^\s*❯?\s*(\d+)\.\s+(.+?)\s*$/);
+      if (m) { options.push({ n: Number(m[1]), label: m[2] }); end = i; continue; }
+      if (/Esc to cancel/i.test(plain[i])) { end = i; break; }
+      if (options.length && plain[i].trim() === '') break;
+    }
+    if (!options.length) return null;
+    // The box above the question holds the title and the details, with
+    // blank lines between them; its top is where the frame was (now blanks
+    // for two lines running) or the screen top. Cap at 25 lines.
+    let top = q - 1;
+    while (top > 0 && q - top < 25 && !(plain[top].trim() === '' && plain[top - 1].trim() === '')) top--;
+    const block = plain.slice(top, q).map(l => l.trim()).filter(Boolean);
+    const title = block.shift() || 'Permiso';
+    return { title, body: block.join('\n').slice(0, 1500), options, question: plain[q].trim() };
+  } catch (e) { return null; }
+}
+
 function readSuggestion(tmuxSession) {
   try {
-    const out = execSync(`tmux -L muxterm capture-pane -p -e -t ${tmuxSession}`, { encoding: 'utf8', timeout: 2000 });
+    const out = readScreen(tmuxSession);
     const lines = out.split('\n');
     const plain = lines.map(l => l.replace(/\x1b\[[0-9;]*m/g, ''));
     const seps = [];
@@ -166,7 +210,7 @@ function watch(terminalId, onEvents) {
     const tail = transcript.readTail(w.file);
     // A joining listener gets the current suggestion too; it is otherwise
     // only sent when it changes.
-    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '' });
+    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null });
     return;
   }
 
@@ -178,9 +222,10 @@ function watch(terminalId, onEvents) {
 
   const tail = transcript.readTail(file);
   const pane0 = listClaudePanes().find(p => p.terminalId === terminalId);
-  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '' };
+  const perm0 = pane0 ? readPermission(pane0.tmuxSession) : null;
+  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0) };
   watchers.set(terminalId, w);
-  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion });
+  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0 });
 
   // Poll the size: the file is appended by another process, and polling stat is
   // more dependable than fs.watch for that across filesystems.
@@ -211,9 +256,11 @@ function watch(terminalId, onEvents) {
       if ((w.ticks % 3) === 0) {
         const pane = listClaudePanes().find(p => p.terminalId === terminalId);
         const suggestion = pane ? readSuggestion(pane.tmuxSession) : '';
-        if (suggestion !== w.suggestion) {
-          w.suggestion = suggestion;
-          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion });
+        const permission = pane ? readPermission(pane.tmuxSession) : null;
+        const permKey = JSON.stringify(permission);
+        if (suggestion !== w.suggestion || permKey !== w.permKey) {
+          w.suggestion = suggestion; w.permKey = permKey;
+          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission });
         }
       }
       if (w.reset) { w.reset = false; w.offset = 0; }
@@ -263,7 +310,7 @@ function describeWatchers() {
   return out;
 }
 
-module.exports = { readSuggestion,
+module.exports = { readSuggestion, readPermission,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };

@@ -27,7 +27,8 @@ function ownerOf(terminalId) {
 
 function publicState(st) {
   return {
-    terminalId: st.terminalId, busy: st.busy, waiting: st.waiting,
+    terminalId: st.terminalId, busy: st.busy, waiting: st.waiting || !!st.permission,
+    permission: st.permission ? st.permission.title : null,
     lastText: st.lastText, finishedAt: st.finishedAt, since: st.since
   };
 }
@@ -82,6 +83,14 @@ function tick() {
       if ((++st.ticks % RERESOLVE_TICKS) === 0) {
         const r = sessions.resolveTranscript(st.terminalId);
         if (r.file && r.file !== st.file) { start(st); continue; }
+      }
+      // A permission prompt is on screen only; it counts as waiting on you.
+      const perm = sessions.readPermission(p.tmuxSession);
+      const permTitle = perm ? perm.title + '|' + perm.question : null;
+      if (permTitle !== st.permTitle) {
+        st.permTitle = permTitle;
+        st.permission = perm;
+        emit(st);
       }
       if (!st.file) continue;
       let size;
