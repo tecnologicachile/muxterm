@@ -112,7 +112,9 @@ function readPermission(tmuxSession) {
     const plain = readScreen(tmuxSession).split('\n')
       .map(l => l.replace(/\x1b\[[0-9;]*m/g, '').replace(/[│╭╮╰╯─]/g, ' ').replace(/\s+$/, ''));
     let q = -1;
-    for (let i = plain.length - 1; i >= 0; i--) if (/Do you want to (proceed|make this edit|allow|run|continue)/i.test(plain[i])) { q = i; break; }
+    // Tool permissions ask "Do you want to proceed?"; plan approval asks
+    // "Would you like to proceed?".
+    for (let i = plain.length - 1; i >= 0; i--) if (/(Do you want|Would you like) to (proceed|make this edit|allow|run|continue)/i.test(plain[i])) { q = i; break; }
     if (q < 0) return null;
     const options = [];
     let end = q;

@@ -170,7 +170,12 @@ function clipInput(name, input) {
     const q = input.questions[0];
     pick.question = clip(q.question || '', 400).text;
     pick.header = q.header || '';
-    pick.options = (q.options || []).slice(0, 6).map(opt => clip(opt.label || '', 120).text);
+    pick.multiSelect = !!q.multiSelect;
+    pick.questionCount = input.questions.length;
+    pick.options = (q.options || []).slice(0, 10).map(opt => ({
+      label: clip(opt.label || '', 120).text,
+      description: clip(opt.description || '', 300).text
+    }));
   }
   if (name === 'ExitPlanMode' && typeof input.plan === 'string') {
     pick.plan = clip(input.plan, 1200).text;

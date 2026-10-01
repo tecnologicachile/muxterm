@@ -525,6 +525,37 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     socket.emit('send-keys', { terminalId, keys: String(n) });
     setPermission(null);
   };
+  // Answering a picker from here does what your fingers would: Down to the
+  // option, Space to tick (multi-select), Enter to confirm. Then the tool's
+  // result shows up in the transcript and the banner goes; if it does not,
+  // the terminal gets to sort it out.
+  const [picked, setPicked] = useState(new Set());
+  const [answering, setAnswering] = useState(false);
+  const [answerFailed, setAnswerFailed] = useState(false);
+  const sendSeq = async (keys) => {
+    for (const k of keys) {
+      socket.emit('send-keys', { terminalId, keys: k });
+      await new Promise(r => setTimeout(r, 70));
+    }
+  };
+  const answerPick = async (indexes) => {
+    if (!socket || !indexes.length) return;
+    setAnswering(true); setAnswerFailed(false);
+    const seq = [];
+    let cursor = 0;
+    for (const idx of [...indexes].sort((a, b) => a - b)) {
+      for (; cursor < idx; cursor++) seq.push('\x1b[B');
+      if (indexes.length > 1 || waiting?.input?.multiSelect) seq.push(' ');
+    }
+    seq.push('\r');
+    await sendSeq(seq);
+  };
+  useEffect(() => {
+    if (!answering) return;
+    if (!waiting) { setAnswering(false); setPicked(new Set()); return; }
+    const t = setTimeout(() => { setAnswering(false); setAnswerFailed(true); }, 5000);
+    return () => clearTimeout(t);
+  }, [answering, waiting]);
   // Remembered per device: you want this on the phone with headphones, not
   // necessarily on the desktop.
   const [autoSpeak, setAutoSpeak] = useState(() => {
@@ -1055,21 +1086,58 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             <Box sx={{ color: '#ddd', fontSize: '12px', mb: 0.5 }}>{waiting.input.question}</Box>
           )}
           {waiting.input && waiting.input.options && waiting.input.options.length > 0 && (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-              {waiting.input.options.map((opt, i) => (
-                <Box key={i} sx={{
-                  fontSize: '11px', color: '#bbb', border: '1px solid #333',
-                  borderRadius: 1, px: 0.75, py: 0.25
-                }}>{opt}</Box>
-              ))}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {waiting.input.options.map((opt, i) => {
+                const label = typeof opt === 'string' ? opt : opt.label;
+                const desc = typeof opt === 'string' ? '' : opt.description;
+                const multi = !!waiting.input.multiSelect;
+                const on = picked.has(i);
+                return (
+                  <Box
+                    key={i}
+                    component="button"
+                    disabled={answering}
+                    onClick={() => {
+                      if (multi) setPicked(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
+                      else answerPick([i]);
+                    }}
+                    sx={{
+                      textAlign: 'left', cursor: answering ? 'wait' : 'pointer', borderRadius: 1, px: 1, py: 0.6,
+                      border: `1px solid ${on ? '#ffa726' : '#444'}`, background: on ? 'rgba(255,167,38,0.18)' : 'rgba(255,255,255,0.03)',
+                      color: '#ddd', fontSize: '12px', '&:hover': { borderColor: '#ffa726' }
+                    }}
+                  >
+                    <Box component="span" sx={{ color: '#ffa726', mr: 0.75 }}>{multi ? (on ? '☑' : '☐') : `${i + 1}.`}</Box>
+                    {label}
+                    {desc && <Box sx={{ color: '#888', fontSize: '11px', mt: 0.25 }}>{desc}</Box>}
+                  </Box>
+                );
+              })}
+              {waiting.input.multiSelect && (
+                <Box
+                  component="button"
+                  disabled={answering || !picked.size}
+                  onClick={() => answerPick([...picked])}
+                  sx={{ alignSelf: 'flex-start', cursor: 'pointer', border: '1px solid #ffa726', background: 'rgba(255,167,38,0.18)', color: '#ffa726', borderRadius: 1, fontSize: '11.5px', padding: '4px 12px', opacity: picked.size ? 1 : 0.5 }}
+                >Confirmar {picked.size ? `(${picked.size})` : ''}</Box>
+              )}
             </Box>
           )}
           {waiting.name === 'ExitPlanMode' && (
             <Box sx={{ color: '#bbb', fontSize: '11.5px' }}>Claude pide aprobar un plan.</Box>
           )}
-          <Box sx={{ color: '#8a7a55', fontSize: '10px', mt: 0.5 }}>
-            Se responde con las flechas en el terminal; esta vista no puede hacerlo.
-          </Box>
+          {answering && <Box sx={{ color: '#ffa726', fontSize: '11px', mt: 0.5 }}>Respondiendo en el terminal…</Box>}
+          {answerFailed && (
+            <Box sx={{ color: '#ff8080', fontSize: '11px', mt: 0.5 }}>El cuadro no se cerró; revísalo en el terminal.</Box>
+          )}
+          {waiting.input && waiting.input.questionCount > 1 && (
+            <Box sx={{ color: '#8a7a55', fontSize: '10px', mt: 0.5 }}>
+              Esta pregunta tiene {waiting.input.questionCount} partes; las siguientes se responden en el terminal.
+            </Box>
+          )}
+          {waiting.name !== 'AskUserQuestion' && (
+            <Box sx={{ color: '#8a7a55', fontSize: '10px', mt: 0.5 }}>Se responde en el terminal.</Box>
+          )}
         </Box>
       )}
 
