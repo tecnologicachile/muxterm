@@ -520,18 +520,24 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             zIndex: 100, cursor: isResizing ? 'col-resize' : 'default'
           }} />
         )}
+        {/* The header carries the session's state as a faint tint: green
+            while Claude works, amber pulsing when it waits on you or finished
+            unseen. Quiet enough to read from the corner of the eye. */}
+        {(() => { const cs = panel.terminalId && claudeStatus[panel.terminalId]; const needsYou = !!(cs && cs.waiting) || !!(panel.terminalId && unseen[panel.terminalId] && !isActive); const busy = !!(cs && cs.busy); return (
         <Box
           className="panel-header"
           sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            backgroundColor: '#1a1a1a',
-            borderBottom: '1px solid #333',
+            backgroundColor: needsYou ? 'rgba(255,167,38,0.16)' : busy ? 'rgba(0,255,0,0.07)' : '#1a1a1a',
+            borderBottom: `1px solid ${needsYou ? '#8a5a10' : busy ? '#1f4a1f' : '#333'}`,
+            animation: needsYou ? 'muxheadpulse 2.4s ease-in-out infinite' : 'none',
+            '@keyframes muxheadpulse': { '0%,100%': { backgroundColor: 'rgba(255,167,38,0.16)' }, '50%': { backgroundColor: 'rgba(255,167,38,0.05)' } },
             padding: '2px 8px',
             minHeight: '24px',
             cursor: 'default',
-            transition: 'background-color 0.1s',
+            transition: 'background-color 0.3s',
             userSelect: 'none',
             WebkitUserSelect: 'none',
             WebkitTouchCallout: 'none',
@@ -815,6 +821,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
             )}
           </Box>
         </Box>
+        ); })()}
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
           {panel.type === 'sftp' ? (
             <SftpViewer
