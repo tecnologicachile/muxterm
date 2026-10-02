@@ -57,6 +57,9 @@ function bwPath() {
   if (bwPathCache && fs.existsSync(bwPathCache)) return bwPathCache;
   const home = os.homedir();
   const dirs = [
+    // muxterm pins its own copy (package.json): the current Bitwarden CLI
+    // refuses to log in to the Vaultwarden releases out there.
+    path.join(__dirname, '..', 'node_modules', '.bin'),
     ...(process.env.PATH || '').split(path.delimiter),
     path.join(home, '.npm-global', 'bin'), path.join(home, '.local', 'bin'), path.join(home, 'node_modules', '.bin'),
     '/usr/local/bin', '/snap/bin', '/opt/homebrew/bin'
