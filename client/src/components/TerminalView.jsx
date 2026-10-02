@@ -1868,6 +1868,12 @@ function TerminalView() {
                       if (!grouped[wid]) grouped[wid] = [];
                       grouped[wid].push(p);
                     }
+                    // A window whose panes are all minimized still gets its
+                    // group, or those panes would vanish from the list.
+                    for (const p of filteredMinimized) {
+                      const wid = p.windowId || 'w1';
+                      if (!grouped[wid]) grouped[wid] = [];
+                    }
                     // Sort windows by their natural order
                     const winOrder = windows.map(w => w.id);
                     const sortedWids = Object.keys(grouped).sort((a, b) => {
