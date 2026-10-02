@@ -571,8 +571,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               if (onRenamePanel) onRenamePanel(panel.id);
             }}
             sx={{
-              color: isActive ? '#00ff00' : (panel.terminalId && unseen[panel.terminalId]) ? '#ffa726' : '#888',
-              fontSize: '11px',
+              color: isActive ? '#00ff00' : (panel.terminalId && unseen[panel.terminalId]) ? '#ffa726' : '#c8c8c8',
+              fontSize: '12px',
               fontWeight: isActive ? 'bold' : 'normal',
               cursor: panels.length > 1 ? 'grab' : 'pointer',
               '&:active': { cursor: panels.length > 1 ? 'grabbing' : 'pointer' },
