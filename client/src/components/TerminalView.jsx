@@ -2625,7 +2625,13 @@ function TerminalView() {
             <Box sx={{ p: 1.5, border: '1px solid #333', borderRadius: 1, backgroundColor: '#111' }}>
               <TextField margin="dense" label="Server URL" fullWidth variant="outlined" size="small"
                 value={vaultServerUrl} onChange={(e) => setVaultServerUrl(e.target.value)}
-                placeholder="https://vault.example.com"
+                // Tidied on blur so a slip like "htts://" never reaches the login.
+                onBlur={() => setVaultServerUrl(v => { const u = String(v || '').trim().replace(/^([a-z]*:\/\/\s*)+/i, '').replace(/\/+$/, ''); return u ? 'https://' + u : ''; })}
+                placeholder="vault.tecnologicachile.cl"
+                helperText={vaultServerUrl.trim()
+                  ? `Se conectará a: https://${vaultServerUrl.trim().replace(/^([a-z]*:\/\/\s*)+/i, '').replace(/\/+$/, '')}`
+                  : 'Sin https://, solo el dominio'}
+                FormHelperTextProps={{ sx: { color: '#777', fontSize: '10px', ml: 0.5 } }}
               />
               <TextField margin="dense" label="Email" fullWidth variant="outlined" size="small"
                 value={vaultClientId} onChange={(e) => setVaultClientId(e.target.value)}
