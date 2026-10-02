@@ -3,7 +3,9 @@ import Guacamole from 'guacamole-common-js';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
-function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', isActive, panelId, onActivityChange, displayMode = 'fit' }) {
+// resolution: 'fit' (the pane's own pixels, renegotiated live as the pane
+// resizes) or a fixed 'WxH'. dpi: 96 = 100 %, 120 = 125 %, 144 = 150 %.
+function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', isActive, panelId, onActivityChange, displayMode = 'fit', resolution = 'fit', dpi = 96 }) {
   const containerRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const clientRef = useRef(null);
@@ -169,7 +171,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       }
       tokenRequestedRef.current = false;
     };
-  }, [socket, rdpConnectionId, vncConnectionId, connectionType]);
+  }, [socket, rdpConnectionId, vncConnectionId, connectionType, resolution, dpi]);
 
   const reconnect = () => {
     setError(null);
@@ -487,11 +489,12 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         handleConnectionError(msg);
       };
 
-      // Connect with token and container dimensions
+      // Connect at the chosen resolution: the pane's own size, or a fixed one.
       const container = canvasContainerRef.current;
-      const width = container.offsetWidth || 1024;
-      const height = container.offsetHeight || 768;
-      const connectString = `token=${encodeURIComponent(token)}&GUAC_WIDTH=${width}&GUAC_HEIGHT=${height}&GUAC_DPI=96`;
+      const fixed = /^(\d{3,5})x(\d{3,5})$/i.exec(String(resolution || ''));
+      const width = fixed ? Number(fixed[1]) : (container.offsetWidth || 1024);
+      const height = fixed ? Number(fixed[2]) : (container.offsetHeight || 768);
+      const connectString = `token=${encodeURIComponent(token)}&GUAC_WIDTH=${width}&GUAC_HEIGHT=${height}&GUAC_DPI=${Number(dpi) || 96}`;
       client.connect(connectString);
 
     } catch (err) {
@@ -541,13 +544,30 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     rescale();
   }, [currentMode]);
 
-  // Handle container resize
+  // Handle container resize. With "fit" resolution the remote desktop is
+  // asked to adopt the pane's new size (resize-method display-update on the
+  // server), so it stays sharp instead of being scaled; a fixed resolution
+  // only rescales the picture.
+  const sizeTimerRef = useRef(null);
   useEffect(() => {
     if (!canvasContainerRef.current) return;
-    const observer = new ResizeObserver(() => rescale());
+    const observer = new ResizeObserver(() => {
+      rescale();
+      if (resolution !== 'fit' || connectionType !== 'rdp') return;
+      clearTimeout(sizeTimerRef.current);
+      sizeTimerRef.current = setTimeout(() => {
+        const client = clientRef.current;
+        const c = canvasContainerRef.current;
+        if (!client || !c || !c.offsetWidth || !c.offsetHeight) return;
+        const d = client.getDisplay();
+        if (Math.abs(d.getWidth() - c.offsetWidth) < 4 && Math.abs(d.getHeight() - c.offsetHeight) < 4) return;
+        try { client.sendSize(c.offsetWidth, c.offsetHeight); } catch (e) {}
+        setTimeout(rescale, 400);
+      }, 350);
+    });
     observer.observe(canvasContainerRef.current);
-    return () => observer.disconnect();
-  }, [currentMode]);
+    return () => { observer.disconnect(); clearTimeout(sizeTimerRef.current); };
+  }, [currentMode, resolution, connectionType]);
 
   // Set viewport to overlay mode when RDP/VNC panel is active
   useEffect(function() {

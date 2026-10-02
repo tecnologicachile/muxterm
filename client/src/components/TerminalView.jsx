@@ -101,6 +101,11 @@ function TerminalView() {
   const [settingsPanel, setSettingsPanel] = useState(null);
   const [settingsPanelName, setSettingsPanelName] = useState('');
   const [settingsStartupCommand, setSettingsStartupCommand] = useState('');
+  const [settingsPanelType, setSettingsPanelType] = useState('local');
+  const [settingsRdpResolution, setSettingsRdpResolution] = useState('fit');
+  const [settingsRdpCustom, setSettingsRdpCustom] = useState('');
+  const [settingsRdpDpi, setSettingsRdpDpi] = useState(96);
+  const RDP_PRESETS = ['1920x1080', '1680x1050', '1600x900', '1366x768', '1280x720', '1024x768'];
   const [minimizedPanels, setMinimizedPanels] = useState([]);
   
   const [terminalCounter, setTerminalCounter] = useState(1);
@@ -1025,6 +1030,11 @@ function TerminalView() {
       setSettingsPanel(panelId);
       setSettingsPanelName(panel.name || '');
       setSettingsStartupCommand(panel.startupCommand || '');
+      setSettingsPanelType(panel.type || 'local');
+      const res = panel.rdpResolution || 'fit';
+      setSettingsRdpResolution(res === 'fit' || RDP_PRESETS.includes(res) ? res : 'custom');
+      setSettingsRdpCustom(res !== 'fit' && !RDP_PRESETS.includes(res) ? res : '');
+      setSettingsRdpDpi(panel.rdpDpi || 96);
       setSettingsDialogOpen(true);
     }
   };
@@ -1032,6 +1042,12 @@ function TerminalView() {
   const confirmPanelSettings = () => {
     if (settingsPanel) {
       const updates = { name: settingsPanelName.trim(), startupCommand: settingsStartupCommand.trim() || undefined };
+      if (settingsPanelType === 'rdp') {
+        const custom = settingsRdpCustom.trim().toLowerCase().replace(/\s+/g, '').replace('×', 'x');
+        const res = settingsRdpResolution === 'custom' ? (/^\d{3,5}x\d{3,5}$/.test(custom) ? custom : 'fit') : settingsRdpResolution;
+        updates.rdpResolution = res;
+        updates.rdpDpi = Number(settingsRdpDpi) || 96;
+      }
       setPanels(panels.map(p => p.id === settingsPanel ? { ...p, ...updates } : p));
       setMinimizedPanels(minimizedPanels.map(p => p.id === settingsPanel ? { ...p, ...updates } : p));
     }
@@ -2109,6 +2125,7 @@ function TerminalView() {
             autoFocus margin="dense" label="Panel Name" fullWidth variant="outlined"
             value={settingsPanelName} onChange={(e) => setSettingsPanelName(e.target.value)}
           />
+          {settingsPanelType !== 'rdp' && settingsPanelType !== 'vnc' && settingsPanelType !== 'sftp' && (
           <TextField
             margin="dense" label="Startup command (runs on reboot)" fullWidth variant="outlined" size="small"
             placeholder="e.g. claude --dangerously-skip-permissions --continue"
@@ -2116,6 +2133,39 @@ function TerminalView() {
             helperText="This command will execute automatically when the terminal is restored after a reboot"
             sx={{ mt: 2 }}
           />
+          )}
+          {settingsPanelType === 'rdp' && (
+            <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
+              <TextField
+                select margin="dense" label="Resolución" size="small" sx={{ minWidth: 200 }}
+                SelectProps={{ native: true }}
+                value={settingsRdpResolution} onChange={(e) => setSettingsRdpResolution(e.target.value)}
+                helperText={settingsRdpResolution === 'fit' ? 'El escritorio sigue el tamaño del panel, también al redimensionarlo' : 'Tamaño fijo; la imagen se escala al panel'}
+              >
+                <option value="fit">Ajustar al panel</option>
+                {RDP_PRESETS.map(r => <option key={r} value={r}>{r.replace('x', ' × ')}</option>)}
+                <option value="custom">Personalizada…</option>
+              </TextField>
+              {settingsRdpResolution === 'custom' && (
+                <TextField
+                  margin="dense" label="Ancho × alto" size="small" sx={{ width: 140 }}
+                  placeholder="1440x900"
+                  value={settingsRdpCustom} onChange={(e) => setSettingsRdpCustom(e.target.value)}
+                />
+              )}
+              <TextField
+                select margin="dense" label="Escala" size="small" sx={{ minWidth: 120 }}
+                SelectProps={{ native: true }}
+                value={settingsRdpDpi} onChange={(e) => setSettingsRdpDpi(Number(e.target.value))}
+                helperText="Tamaño de texto e iconos en Windows"
+              >
+                <option value={96}>100 %</option>
+                <option value={120}>125 %</option>
+                <option value={144}>150 %</option>
+              </TextField>
+              <Box sx={{ width: '100%', fontSize: '11px', color: '#777' }}>Al guardar, la sesión RDP se reconecta con la nueva configuración.</Box>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSettingsDialogOpen(false)}>Cancel</Button>

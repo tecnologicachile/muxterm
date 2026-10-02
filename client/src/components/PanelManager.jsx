@@ -841,6 +841,8 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               panelId={panel.id}
               onActivityChange={handleActivityChange}
               displayMode={panel.displayMode || 'fit'}
+              resolution={panel.rdpResolution || 'fit'}
+              dpi={panel.rdpDpi || 96}
             />
           ) : (
             <Box sx={{ position: 'relative', height: '100%', width: '100%' }}>
