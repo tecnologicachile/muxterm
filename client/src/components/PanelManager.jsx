@@ -722,8 +722,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               </IconButton>
             )}
 
-            {/* Panel settings */}
-            {((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) && (
+            {/* Panel settings: terminals (name, startup command) and
+                RDP/VNC (name, resolution, scale) */}
+            {(((!panel.type || panel.type === 'local' || panel.type === 'ssh') && panel.terminalId) || panel.type === 'rdp' || panel.type === 'vnc') && (
               <IconButton
                 size="small"
                 onClick={(e) => { e.stopPropagation(); if (onPanelSettings) onPanelSettings(panel.id); }}
