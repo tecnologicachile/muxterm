@@ -44,10 +44,32 @@ setInterval(() => {
   }
 }, KEEPALIVE_INTERVAL);
 
+// Where the Bitwarden CLI lives. Under systemd the service's PATH is the
+// bare system one, while `bw` is usually installed per user (npm -g into
+// ~/.npm-global, ~/.local/bin, a snap), so "spawn bw ENOENT" meant nothing
+// more than that. BW_PATH wins when set.
+
+const path = require('path');
+const os = require('os');
+let bwPathCache = null;
+function bwPath() {
+  if (bwPathCache && fs.existsSync(bwPathCache)) return bwPathCache;
+  const home = os.homedir();
+  const dirs = [
+    ...(process.env.PATH || '').split(path.delimiter),
+    path.join(home, '.npm-global', 'bin'), path.join(home, '.local', 'bin'), path.join(home, 'node_modules', '.bin'),
+    '/usr/local/bin', '/snap/bin', '/opt/homebrew/bin'
+  ];
+  const found = process.env.BW_PATH || dirs.map(d => path.join(d, 'bw')).find(p => { try { return fs.existsSync(p); } catch (e) { return false; } });
+  bwPathCache = found || 'bw';
+  return bwPathCache;
+}
+
 function runBwRaw(args, options = {}) {
   return new Promise((resolve, reject) => {
     const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default'), NODE_TLS_REJECT_UNAUTHORIZED: '0', BW_NOINTERACTION: 'true' };
-    execFile('bw', args, { env, timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(bwPath(), args, { env, timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && err.code === 'ENOENT') { reject(new Error('Bitwarden CLI (bw) no está instalado o no se encuentra; instala @bitwarden/cli o define BW_PATH')); return; }
       const output = (stdout || '').trim();
       const errOutput = (stderr || '').trim();
       if (err) reject(new Error(output || errOutput || err.message));
