@@ -49,6 +49,7 @@ setInterval(() => {
 // ~/.npm-global, ~/.local/bin, a snap), so "spawn bw ENOENT" meant nothing
 // more than that. BW_PATH wins when set.
 
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 let bwPathCache = null;
