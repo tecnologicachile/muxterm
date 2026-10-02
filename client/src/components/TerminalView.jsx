@@ -2024,6 +2024,7 @@ function TerminalView() {
                                   </Box>
                                 )}
                               </Typography>
+                              <Box component="span" sx={{ fontSize: '8px', color: '#666', border: '1px solid #3a3a3a', borderRadius: '3px', px: '3px', flexShrink: 0 }}>minimizado</Box>
                               <RestoreIcon sx={{ fontSize: 10, color: '#555' }} />
                               <IconButton
                                 className="sidebar-minimize"

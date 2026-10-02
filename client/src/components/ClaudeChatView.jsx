@@ -520,6 +520,8 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // A tool permission prompt read off the terminal screen, answered from here
   // by sending its number to the pane.
   const [permission, setPermission] = useState(null);
+  // Claude Code's own status line (model, context used…), read off the pane.
+  const [statusLine, setStatusLine] = useState(null);
   const answerPermission = (n) => {
     if (!socket) return;
     socket.emit('send-keys', { terminalId, keys: String(n) });
@@ -611,6 +613,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       setError('');
       if (typeof payload.suggestion === 'string') setSuggestion(payload.suggestion);
       if ('permission' in payload) setPermission(payload.permission || null);
+      if ('status' in payload) setStatusLine(payload.status || null);
       // A reconnect re-sends the whole backlog. Clearing it made the
       // conversation blank and redraw, which is the flicker you see on coming
       // back to the tab. The merge dedupes by uuid, so only wipe when the
@@ -1148,6 +1151,26 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       <audio ref={audioRef} preload="auto" playsInline style={{ display: 'none' }} />
 
       {/* The prompt goes into the same tmux session, as if typed */}
+      {statusLine && (
+        <Box sx={{
+          flexShrink: 0, px: 1.5, py: '3px', borderTop: '1px solid #1c1c1c', backgroundColor: '#0e0e0e',
+          display: 'flex', flexWrap: 'wrap', gap: '4px 10px', fontSize: '10px', color: '#777', fontFamily: 'monospace',
+          whiteSpace: 'nowrap', overflow: 'hidden'
+        }} title="Barra de estado de Claude Code">
+          {statusLine.model && <span>{statusLine.model}</span>}
+          {statusLine.project && <span>{statusLine.project}</span>}
+          {statusLine.context != null && (
+            <span style={{ color: statusLine.context >= 85 ? '#ff8080' : statusLine.context >= 65 ? '#ffa726' : '#777' }}>
+              contexto {statusLine.context}%
+            </span>
+          )}
+          {statusLine.usage != null && <span>uso {statusLine.usage}%</span>}
+          {statusLine.weekly != null && <span>semana {statusLine.weekly}%</span>}
+          {statusLine.mode && <span>{statusLine.mode}</span>}
+          {statusLine.agents != null && <span>{statusLine.agents} agente{statusLine.agents === 1 ? '' : 's'}</span>}
+        </Box>
+      )}
+
       <Composer
         terminalId={terminalId}
         waiting={waiting}

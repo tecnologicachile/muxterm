@@ -136,6 +136,34 @@ function readPermission(tmuxSession) {
   } catch (e) { return null; }
 }
 
+/**
+ * Claude Code's status lines under its input box: model, project and branch,
+ * context used, usage, permission mode, agents. Screen only, like the rest.
+ */
+function readStatusLine(tmuxSession) {
+  try {
+    // Besides colours, the project line carries OSC 8 hyperlinks.
+    const plain = readScreen(tmuxSession).split('\n')
+      .map(l => l.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-9;]*m/g, ''));
+    let last = -1;
+    plain.forEach((l, i) => { if (l.trim().startsWith('────')) last = i; });
+    if (last < 0) return null;
+    const lines = plain.slice(last + 1, last + 5).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return null;
+    const text = lines.join(' │ ');
+    const pct = (label) => { const m = text.match(new RegExp(label + '\\s*[█░]*\\s*(\\d+)%')); return m ? Number(m[1]) : null; };
+    const model = (text.match(/^\[([^\]]+)\]/) || [])[1] || null;
+    const project = (text.match(/\]\s*│\s*([^│]+?)\s*(?:│|$)/) || [])[1] || null;
+    const mode = (text.match(/⏵⏵\s*([^(·│]+)/) || [])[1];
+    const agents = (text.match(/←\s*(\d+)\s*agents?/) || [])[1];
+    return {
+      model, project: project ? project.trim() : null,
+      context: pct('Context'), usage: pct('Usage'), weekly: pct('Weekly'),
+      mode: mode ? mode.trim() : null, agents: agents ? Number(agents) : null
+    };
+  } catch (e) { return null; }
+}
+
 function readSuggestion(tmuxSession) {
   try {
     const out = readScreen(tmuxSession);
@@ -212,7 +240,7 @@ function watch(terminalId, onEvents) {
     const tail = transcript.readTail(w.file);
     // A joining listener gets the current suggestion too; it is otherwise
     // only sent when it changes.
-    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null });
+    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null, status: w.statusKey ? JSON.parse(w.statusKey) : null });
     return;
   }
 
@@ -225,9 +253,10 @@ function watch(terminalId, onEvents) {
   const tail = transcript.readTail(file);
   const pane0 = listClaudePanes().find(p => p.terminalId === terminalId);
   const perm0 = pane0 ? readPermission(pane0.tmuxSession) : null;
-  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0) };
+  const status0 = pane0 ? readStatusLine(pane0.tmuxSession) : null;
+  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0), statusKey: JSON.stringify(status0) };
   watchers.set(terminalId, w);
-  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0 });
+  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0, status: status0 });
 
   // Poll the size: the file is appended by another process, and polling stat is
   // more dependable than fs.watch for that across filesystems.
@@ -260,9 +289,11 @@ function watch(terminalId, onEvents) {
         const suggestion = pane ? readSuggestion(pane.tmuxSession) : '';
         const permission = pane ? readPermission(pane.tmuxSession) : null;
         const permKey = JSON.stringify(permission);
-        if (suggestion !== w.suggestion || permKey !== w.permKey) {
-          w.suggestion = suggestion; w.permKey = permKey;
-          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission });
+        const status = pane ? readStatusLine(pane.tmuxSession) : null;
+        const statusKey = JSON.stringify(status);
+        if (suggestion !== w.suggestion || permKey !== w.permKey || statusKey !== w.statusKey) {
+          w.suggestion = suggestion; w.permKey = permKey; w.statusKey = statusKey;
+          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission, status });
         }
       }
       if (w.reset) { w.reset = false; w.offset = 0; }
@@ -312,7 +343,7 @@ function describeWatchers() {
   return out;
 }
 
-module.exports = { readSuggestion, readPermission,
+module.exports = { readSuggestion, readPermission, readStatusLine,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };
