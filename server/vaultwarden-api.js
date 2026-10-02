@@ -66,13 +66,29 @@ function bwPath() {
   return bwPathCache;
 }
 
+/**
+ * A server URL as typed by a person: "vault.example.com", "https://vault…/",
+ * or a slip like "htts://vault…" that bw would turn into "https://htts://…".
+ * Keep the host and path, drop any scheme fragments, and use https.
+ */
+function normalizeServerUrl(raw) {
+  let u = String(raw || '').trim();
+  if (!u) return u;
+  u = u.replace(/^([a-z]*:\/\/\s*)+/i, '');
+  return 'https://' + u.replace(/\/+$/, '');
+}
+
 function runBwRaw(args, options = {}) {
   return new Promise((resolve, reject) => {
     const env = { ...process.env, ...options.env, BITWARDENCLI_APPDATA_DIR: '/tmp/bw-' + (options.userId || 'default'), NODE_TLS_REJECT_UNAUTHORIZED: '0', BW_NOINTERACTION: 'true' };
     execFile(bwPath(), args, { env, timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err && err.code === 'ENOENT') { reject(new Error('Bitwarden CLI (bw) no está instalado o no se encuentra; instala @bitwarden/cli o define BW_PATH')); return; }
       const output = (stdout || '').trim();
-      const errOutput = (stderr || '').trim();
+      // bw's stderr starts with Node's own deprecation and TLS warnings;
+      // they are not the error.
+      const errOutput = (stderr || '').split('\n')
+        .filter(l => !/^\(node:\d+\)|^\(Use `node --trace|DeprecationWarning|NODE_TLS_REJECT_UNAUTHORIZED/.test(l.trim()))
+        .join('\n').trim();
       if (err) reject(new Error(output || errOutput || err.message));
       else resolve(output);
     });
@@ -117,7 +133,7 @@ async function runBw(args, options = {}) {
 router.post('/config', async (req, res) => {
   try {
     const { serverUrl } = req.body;
-    const url = serverUrl || VAULT_URL;
+    const url = normalizeServerUrl(serverUrl || VAULT_URL);
     if (!url) return res.status(400).json({ status: 'error', message: 'Server URL required' });
     await runBw(['config', 'server', url], { userId: req.userId });
     res.json({ status: 'ok', serverUrl: url });
@@ -138,7 +154,7 @@ router.post('/login', async (req, res) => {
     try { await runBw(['logout'], { userId: req.userId }); } catch (e) { /* ignore */ }
 
     if (serverUrl) {
-      await runBw(['config', 'server', serverUrl], { userId: req.userId });
+      await runBw(['config', 'server', normalizeServerUrl(serverUrl)], { userId: req.userId });
     }
 
     // Login with email + password
