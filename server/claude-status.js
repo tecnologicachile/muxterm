@@ -11,6 +11,7 @@
 const fs = require('fs');
 const sessions = require('./claude-sessions');
 const transcript = require('./claude-transcript');
+const activity = require('./claude-activity');
 
 const TICK_MS = 1000;
 const RERESOLVE_TICKS = 10;
@@ -43,15 +44,56 @@ function emit(st) {
 }
 
 /** Fold events into the state; returns true when busy/waiting changed. */
-function apply(st, events) {
+// What a blocking tool is asking, for the activity log.
+function waitingSummary(ev) {
+  const inp = ev.input || {};
+  if (inp.question) return inp.question;
+  if (ev.name === 'ExitPlanMode') return 'Plan listo para revisar';
+  if (ev.name === 'EnterPlanMode') return 'Quiere entrar en modo plan';
+  return ev.name;
+}
+
+/**
+ * Fold transcript events into the session state, and log the ones worth
+ * keeping. `historical` is the tail replayed at startup: it is written as
+ * already seen, so a restart does not turn last week into pending items.
+ */
+function apply(st, events, { historical = false } = {}) {
   const before = `${st.busy}|${st.waiting}`;
+  const tid = st.terminalId;
   for (const ev of events) {
     if (ev.sidechain) continue;
-    if (ev.kind === 'prompt') { st.busy = true; st.waiting = false; st.waitingTool = null; st.since = ev.ts || new Date().toISOString(); }
-    else if (ev.kind === 'text' && ev.text) st.lastText = String(ev.text).slice(0, 300);
-    else if (ev.kind === 'tool' && WAITING_TOOLS.has(ev.name)) { st.waiting = true; st.waitingTool = ev.toolId; }
-    else if (ev.kind === 'result' && st.waitingTool && ev.toolId === st.waitingTool) { st.waiting = false; st.waitingTool = null; }
-    else if (ev.kind === 'turn') { st.busy = false; st.waiting = false; st.waitingTool = null; st.finishedAt = ev.ts || new Date().toISOString(); }
+    if (ev.kind === 'prompt') {
+      st.busy = true; st.waiting = false; st.waitingTool = null; st.since = ev.ts || new Date().toISOString();
+      st.turnText = '';
+      activity.record({ terminalId: tid, kind: 'prompt', ts: ev.ts, summary: ev.text, ref: ev.uuid || 'prompt:' + ev.ts, seen: true });
+    }
+    else if (ev.kind === 'text' && ev.text) {
+      st.lastText = String(ev.text).slice(0, 300);
+      if (!ev.narration) st.turnText = st.lastText;
+    }
+    else if (ev.kind === 'tool' && WAITING_TOOLS.has(ev.name)) {
+      st.waiting = true; st.waitingTool = ev.toolId;
+      activity.record({ terminalId: tid, kind: 'waiting', ts: ev.ts, summary: waitingSummary(ev), ref: ev.toolId, seen: historical });
+    }
+    else if (ev.kind === 'result') {
+      if (st.waitingTool && ev.toolId === st.waitingTool) { st.waiting = false; st.waitingTool = null; }
+      if (ev.toolId) activity.resolve({ terminalId: tid, ref: ev.toolId });
+      const r = ev.result || {};
+      if (r.type === 'command' && r.ok === false) {
+        activity.record({ terminalId: tid, kind: 'error', ts: ev.ts, summary: `Falló ${r.name || 'un comando'}`, ref: 'err:' + (ev.uuid || ev.toolId), seen: historical });
+      }
+    }
+    else if (ev.kind === 'turn') {
+      st.busy = false; st.waiting = false; st.waitingTool = null; st.finishedAt = ev.ts || new Date().toISOString();
+      const interrupted = ev.reason === 'interrupted';
+      activity.record({
+        terminalId: tid, kind: interrupted ? 'interrupted' : 'done', ts: ev.ts,
+        summary: interrupted ? 'Interrumpido' : (st.turnText || st.lastText || 'Terminó'),
+        ref: ev.uuid || 'turn:' + (ev.ts || ''), seen: historical
+      });
+      st.turnText = '';
+    }
   }
   return before !== `${st.busy}|${st.waiting}`;
 }
@@ -64,7 +106,7 @@ function start(st) {
   const tail = transcript.readTail(st.file);
   st.offset = tail.size;
   st.busy = false; st.waiting = false; st.waitingTool = null;
-  apply(st, tail.events);
+  apply(st, tail.events, { historical: true });
 }
 
 function tick() {
@@ -90,6 +132,9 @@ function tick() {
       if (permTitle !== st.permTitle) {
         st.permTitle = permTitle;
         st.permission = perm;
+        // A prompt that went away was answered (or dismissed) in the terminal.
+        if (!perm) activity.resolve({ terminalId: st.terminalId, kind: 'permission' });
+        else activity.record({ terminalId: st.terminalId, kind: 'permission', summary: perm.title + (perm.question ? ': ' + perm.question : ''), ref: activity.refFor('perm', permTitle) });
         emit(st);
       }
       if (!st.file) continue;
@@ -120,4 +165,4 @@ function forUser(userId) {
   return out;
 }
 
-module.exports = { init, forUser };
+module.exports = { init, forUser, _apply: apply };

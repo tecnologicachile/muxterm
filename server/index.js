@@ -208,6 +208,25 @@ app.get('/api/claude/status', authenticateToken, (req, res) => {
   res.json({ status: 'ok', sessions: require('./claude-status').forUser(req.user.id) });
 });
 
+// Activity log of Claude sessions: what finished, what is waiting on you,
+// and what you have already looked at. See docs/design/bandeja-actividad.md.
+const claudeActivity = require('./claude-activity');
+app.get('/api/activity', authenticateToken, (req, res) => {
+  const { since, limit, terminalId } = req.query;
+  res.json({ status: 'ok', events: claudeActivity.list(req.user.id, { since, limit, terminalId }) });
+});
+app.get('/api/activity/pending', authenticateToken, (req, res) => {
+  res.json({ status: 'ok', events: claudeActivity.pending(req.user.id), unseen: claudeActivity.unseenByTerminal(req.user.id) });
+});
+app.post('/api/activity/seen', authenticateToken, (req, res) => {
+  const { ids, terminalId, until } = req.body || {};
+  if (!Array.isArray(ids) && !terminalId) return res.status(400).json({ status: 'error', message: 'ids or terminalId required' });
+  res.json({ status: 'ok', updated: claudeActivity.markSeen(req.user.id, { ids, terminalId, until }) });
+});
+app.post('/api/activity/seen-all', authenticateToken, (req, res) => {
+  res.json({ status: 'ok', updated: claudeActivity.markAllSeen(req.user.id) });
+});
+
 // Idle time and memory per terminal, so the list can point at the ones
 // worth closing when the machine runs short.
 app.get('/api/terminals/usage', authenticateToken, (req, res) => {
@@ -656,7 +675,9 @@ setInterval(() => {
   } catch (e) {}
 }, 800);
 
+require('./claude-activity').init({ io, ttydManager, database });
 require('./claude-status').init({ io, ttydManager, database });
+setInterval(() => require('./claude-activity').prune(), 60 * 60 * 1000);
 
 io.on('connection', (socket) => {
   logger.info(`User ${socket.username} connected`);
