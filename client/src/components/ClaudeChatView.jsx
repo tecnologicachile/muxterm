@@ -629,7 +629,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       } else if (autoSpeakRef.current) {
         // No visibility check: reading with the screen off is the point, and
         // the audio element is what makes it possible.
-        for (const ev of incoming.filter(ev => ev.kind === 'text' && ev.text)) {
+        for (const ev of incoming.filter(ev => ev.kind === 'text' && ev.text && !ev.narration)) {
           const k = (ev.uuid || '') + ':' + ev.text.length;
           if (spokenRef.current.has(k)) continue;
           spokenRef.current.add(k);
@@ -772,7 +772,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const speakLast = () => {
     if (autoSpeakRef.current) keepAlive();   // this tap is a gesture: use it
     if (speaking) { stopAll(); return; }
-    const last = [...events].reverse().find(e => e.kind === 'text' && e.text);
+    const last = [...events].reverse().find(e => e.kind === 'text' && e.text && !e.narration);
     if (!last) return;
     const t = toSpeech(last.text);
     if (!t) return;
@@ -925,7 +925,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           }
           if (ev.kind === 'text') {
             return (
-              <Box key={`e${i}`} sx={{ ...pad, mb: 1, '&:hover .copy-btn': { opacity: 1 } }}>
+              <Box key={`e${i}`} sx={{ ...pad, mb: 1, '&:hover .copy-btn': { opacity: 1 }, ...(ev.narration ? { color: '#9a9a9a', fontSize: '12px' } : {}) }}>
                 <MiniMarkdown text={ev.text} />
                 <Box sx={{ display: 'flex', justifyContent: 'flex-start', mt: '-2px' }}>
                   <CopyButton text={ev.text} title="Copiar respuesta" sx={{ opacity: TOUCH ? 0.6 : 0, transition: 'opacity 0.1s' }} />

@@ -142,7 +142,15 @@ function parseLine(line) {
     for (const b of blocks) {
       if (!b) continue;
       if (b.type === 'text' && b.text) out.push({ ...base, kind: 'text', ...clip(b.text, MAX_MESSAGE) });
-      else if (b.type === 'thinking' && b.thinking) out.push({ ...base, kind: 'thinking', ...clip(b.thinking) });
+      else if (b.type === 'thinking' && b.thinking) {
+        // Newer models narrate their progress ("Pasan los tests. Ahora el
+        // panel…") in a thinking block that Claude Code prints like a reply.
+        // Real thinking arrives with its text blanked and seconds of duration;
+        // narration keeps its text and takes a few milliseconds. Show it.
+        const narration = typeof o.thinkingDurationMs === 'number' && o.thinkingDurationMs < 100;
+        if (narration) out.push({ ...base, kind: 'text', narration: true, ...clip(b.thinking, MAX_MESSAGE) });
+        else out.push({ ...base, kind: 'thinking', ...clip(b.thinking) });
+      }
       else if (b.type === 'tool_use') {
         out.push({
           ...base, kind: 'tool', toolId: b.id, name: b.name,
