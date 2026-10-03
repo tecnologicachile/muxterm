@@ -316,6 +316,34 @@ function TerminalView() {
   const panelVisibleRef = useRef(panelVisible);
   useEffect(() => { panelVisibleRef.current = panelVisible; });
 
+  // Web Push rides on the same switch as the bell: on, and this browser is
+  // subscribed so the phone hears about it with the tab closed; off, and the
+  // subscription goes.
+  const syncPush = async (enabled) => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}`, 'Content-Type': 'application/json' };
+      if (!enabled) {
+        if (existing) {
+          fetch('/api/push/unsubscribe', { method: 'POST', headers, body: JSON.stringify({ endpoint: existing.endpoint }) }).catch(() => {});
+          await existing.unsubscribe();
+        }
+        return;
+      }
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      const r = await fetch('/api/push/vapid-public-key', { headers });
+      const d = await r.json();
+      if (d.status !== 'ok') return;
+      const raw = atob(d.key.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(d.key.length / 4) * 4, '='));
+      const key = Uint8Array.from(raw, c => c.charCodeAt(0));
+      const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      await fetch('/api/push/subscribe', { method: 'POST', headers, body: JSON.stringify({ subscription: sub.toJSON() }) });
+    } catch (e) { logger.warn('push subscription failed: ' + (e && e.message)); }
+  };
+  useEffect(() => { if (notifyPref) syncPush(true); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggleNotify = async () => {
     const next = !notifyPref;
     if (next && typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -323,6 +351,7 @@ function TerminalView() {
     }
     setNotifyPref(next);
     try { localStorage.setItem('muxterm-notify', next ? '1' : '0'); } catch (e) {}
+    syncPush(next);
   };
 
   const notify = (title, body) => {
@@ -394,6 +423,17 @@ function TerminalView() {
     const mini = minimizedPanels.find(p => p.terminalId === terminalId);
     if (mini) handleRestorePanel(mini);
   };
+  // A tap on a push notification lands here with the pane to show.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMsg = (ev) => {
+      const d = ev.data || {};
+      if (d.type === 'muxterm-goto' && d.terminalId) goToTerminal(d.terminalId);
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  });
+
   const terminalName = (terminalId) => {
     const p = panels.find(x => x.terminalId === terminalId) || minimizedPanels.find(x => x.terminalId === terminalId);
     return (p && p.name) || 'Terminal cerrado';

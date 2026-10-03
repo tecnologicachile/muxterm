@@ -12,13 +12,35 @@
  * See docs/design/bandeja-actividad.md.
  */
 const crypto = require('crypto');
+const path = require('path');
+const push = require('./push');
 
 const MAX_SUMMARY = 300;
 const KEEP_DAYS = 7;
 const KEEP_PER_SESSION = 500;
 
-let io = null, database = null, ttydManager = null;
+let io = null, database = null, ttydManager = null, sessions = null;
 let q = null;
+
+// How long a finished turn waits before it is pushed: long enough for a page
+// that was looking at it to mark it seen, which is the signal that you know.
+const DONE_PUSH_DELAY_MS = 10000;
+
+/** "baseapi" for the pane's cwd: the server has no better name for a session. */
+function sessionName(terminalId) {
+  try {
+    const pane = sessions && sessions.listClaudePanes().find(p => p.terminalId === terminalId);
+    return pane && pane.cwd ? path.basename(pane.cwd) : 'Claude';
+  } catch (e) { return 'Claude'; }
+}
+
+function pushFor(row) {
+  const name = sessionName(row.terminal_id);
+  const titles = { waiting: `${name}: Claude te pregunta`, permission: `${name}: Claude pide permiso`, done: `${name}: Claude terminó`, error: `${name}: falló un comando` };
+  const title = titles[row.kind];
+  if (!title) return;
+  push.send(row.user_id, { title, body: row.summary, tag: 'muxterm-' + row.terminal_id, terminalId: row.terminal_id, eventId: row.id, url: '/workspace' }).catch(() => {});
+}
 
 function ownerOf(terminalId) {
   const t = ttydManager && ttydManager.getTerminal(terminalId);
@@ -80,7 +102,7 @@ function prepare() {
 }
 
 function init(deps) {
-  io = deps.io; database = deps.database; ttydManager = deps.ttydManager;
+  io = deps.io; database = deps.database; ttydManager = deps.ttydManager; sessions = deps.sessions || null;
   prepare();
 }
 
@@ -99,6 +121,19 @@ function record({ terminalId, kind, ts, summary, ref, seen }) {
   if (!info.changes) return null;
   const row = q.byId.get(info.lastInsertRowid);
   emitTo(userId, 'activity:new', { event: row });
+  // To the phone: a question or permission right away; a finished turn only
+  // if nobody has looked at it after a moment.
+  if (!seen) {
+    if (row.kind === 'waiting' || row.kind === 'permission') pushFor(row);
+    else if (row.kind === 'done' || row.kind === 'error') {
+      setTimeout(() => {
+        try {
+          const now = q.byId.get(row.id);
+          if (now && !now.seen_at) pushFor(now);
+        } catch (e) {}
+      }, DONE_PUSH_DELAY_MS);
+    }
+  }
   return row;
 }
 

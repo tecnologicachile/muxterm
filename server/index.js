@@ -227,6 +227,29 @@ app.post('/api/activity/seen-all', authenticateToken, (req, res) => {
   res.json({ status: 'ok', updated: claudeActivity.markAllSeen(req.user.id) });
 });
 
+// Web Push: the browser subscribes through its service worker and hands us
+// the subscription; the activity log uses it to reach the phone.
+const webPush = require('./push');
+app.get('/api/push/vapid-public-key', authenticateToken, (req, res) => {
+  const key = webPush.publicKey();
+  if (!key) return res.status(503).json({ status: 'error', message: 'Push not available' });
+  res.json({ status: 'ok', key, devices: webPush.countFor(req.user.id) });
+});
+app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+  const { subscription } = req.body || {};
+  if (!subscription || !subscription.endpoint) return res.status(400).json({ status: 'error', message: 'subscription required' });
+  webPush.subscribe(req.user.id, subscription, req.headers['user-agent']);
+  res.json({ status: 'ok', devices: webPush.countFor(req.user.id) });
+});
+app.post('/api/push/unsubscribe', authenticateToken, (req, res) => {
+  const { endpoint } = req.body || {};
+  res.json({ status: 'ok', removed: webPush.unsubscribe(req.user.id, endpoint), devices: webPush.countFor(req.user.id) });
+});
+app.post('/api/push/test', authenticateToken, async (req, res) => {
+  const sent = await webPush.send(req.user.id, { title: 'MuxTerm', body: 'Los avisos al teléfono funcionan.', tag: 'muxterm-test', url: '/workspace' });
+  res.json({ status: 'ok', sent });
+});
+
 // Idle time and memory per terminal, so the list can point at the ones
 // worth closing when the machine runs short.
 app.get('/api/terminals/usage', authenticateToken, (req, res) => {
@@ -675,7 +698,8 @@ setInterval(() => {
   } catch (e) {}
 }, 800);
 
-require('./claude-activity').init({ io, ttydManager, database });
+require('./push').init({ database });
+require('./claude-activity').init({ io, ttydManager, database, sessions: claudeSessions });
 require('./claude-status').init({ io, ttydManager, database });
 setInterval(() => require('./claude-activity').prune(), 60 * 60 * 1000);
 

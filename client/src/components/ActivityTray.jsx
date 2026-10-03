@@ -46,18 +46,35 @@ const dayLabel = (ts) => {
   return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-function Entry({ e, name, where, onGo, highlight }) {
+const TOUCH = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(hover: none)').matches;
+
+function Entry({ e, name, where, onGo, onSeen, highlight }) {
   const unseen = isUnseen(e);
   return (
     <Box
       onClick={() => onGo(e)}
+      title={e.summary}
       sx={{
-        display: 'flex', gap: 1, px: 1.5, py: 1, cursor: 'pointer', minHeight: 44,
+        display: 'flex', gap: 1, px: 1.5, py: 1, cursor: 'pointer', minHeight: 44, position: 'relative',
         borderLeft: `3px solid ${KIND_COLOR[e.kind] || '#555'}`,
         backgroundColor: highlight ? 'rgba(255,167,38,0.08)' : 'transparent',
-        '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
+        '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' },
+        '&:hover .seen-btn': { opacity: 1 }
       }}
     >
+      {unseen && (
+        <Box
+          className="seen-btn"
+          title="Marcar visto"
+          onClick={(ev) => { ev.stopPropagation(); onSeen(e); }}
+          sx={{
+            position: 'absolute', right: 8, bottom: 6, width: 28, height: 28, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#aaa',
+            backgroundColor: 'rgba(40,40,40,0.95)', border: '1px solid #444', opacity: TOUCH ? 0.8 : 0, transition: 'opacity 0.1s',
+            '&:hover': { color: '#fff', borderColor: '#888' }
+          }}
+        >✓</Box>
+      )}
       <Box sx={{ width: 8, pt: '7px', flexShrink: 0 }}>
         {unseen && <Box sx={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#ffa726' }} />}
       </Box>
@@ -112,11 +129,13 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
 
   if (!open) return null;
 
+  // Jumping to the pane is what you opened the tray for: it closes behind you.
   const go = (e) => {
     if (!e.seen_at) markSeen({ ids: [e.id] });
     onGoTo(e.terminal_id);
-    if (isMobile) onClose();
+    onClose();
   };
+  const seenOne = (e) => markSeen({ ids: [e.id] });
 
   return (
     <Box sx={{
@@ -165,7 +184,7 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
             <Typography sx={{ fontSize: 10, color: '#ffa726', letterSpacing: 1, textTransform: 'uppercase', px: 1.5, pt: 1, pb: 0.5 }}>
               Esperando por ti · {shownPending.length}
             </Typography>
-            {shownPending.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} highlight />)}
+            {shownPending.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} onSeen={seenOne} highlight />)}
           </Box>
         )}
         {groups.length === 0 && (
@@ -176,7 +195,7 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
         {groups.map(g => (
           <Box key={g.label}>
             <Typography sx={{ fontSize: 10, color: '#666', letterSpacing: 1, textTransform: 'uppercase', px: 1.5, pt: 1.25, pb: 0.5 }}>{g.label}</Typography>
-            {g.items.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} />)}
+            {g.items.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} onSeen={seenOne} />)}
           </Box>
         ))}
       </Box>
