@@ -19,6 +19,33 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   const clipboardOpenRef = useRef(false);
   const [dragOver, setDragOver] = useState(false);
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  // Key combinations the browser or the local OS would swallow (the Proxmox
+  // console offers the same list). Pressed in order, released in reverse.
+  const [keysOpen, setKeysOpen] = useState(false);
+  const KEY_COMBOS = [
+    { label: 'Ctrl+Alt+Supr', keys: [0xFFE3, 0xFFE9, 0xFFFF] },
+    { label: 'Ctrl+Alt+Fin', keys: [0xFFE3, 0xFFE9, 0xFF57] },
+    { label: 'Alt+Tab', keys: [0xFFE9, 0xFF09] },
+    { label: 'Alt+F4', keys: [0xFFE9, 0xFFC1] },
+    { label: 'Win', keys: [0xFFEB] },
+    { label: 'Win+D', keys: [0xFFEB, 0x64] },
+    { label: 'Win+R', keys: [0xFFEB, 0x72] },
+    { label: 'Ctrl+Esc', keys: [0xFFE3, 0xFF1B] },
+    { label: 'Ctrl+Shift+Esc', keys: [0xFFE3, 0xFFE1, 0xFF1B] },
+    { label: 'Esc', keys: [0xFF1B] },
+    { label: 'Tab', keys: [0xFF09] },
+    { label: 'Imp Pant', keys: [0xFF61] }
+  ];
+  const sendCombo = (keys) => {
+    const c = clientRef.current;
+    if (!c) return;
+    try {
+      keys.forEach(k => c.sendKeyEvent(1, k));
+      [...keys].reverse().forEach(k => c.sendKeyEvent(0, k));
+    } catch (e) {}
+    setKeysOpen(false);
+    if (keyboardSinkRef.current) keyboardSinkRef.current.focus();
+  };
   const toolbarTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const [currentMode, setCurrentMode] = useState(displayMode);
@@ -784,7 +811,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       {connected && toolbarOpen && (
         <div
           onMouseEnter={() => clearTimeout(toolbarTimeoutRef.current)}
-          onMouseLeave={() => { toolbarTimeoutRef.current = setTimeout(() => { if (!clipboardOpen) setToolbarOpen(false); }, 400); }}
+          onMouseLeave={() => { toolbarTimeoutRef.current = setTimeout(() => { if (!clipboardOpen && !keysOpen) setToolbarOpen(false); }, 400); }}
           style={{
             position: 'absolute',
             top: '50%',
@@ -804,7 +831,12 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
           }}
         >
           <style>{`@keyframes slideInRight { from { opacity:0; transform: translateY(-50%) translateX(10px); } to { opacity:1; transform: translateY(-50%) translateX(0); }}`}</style>
-          <div onClick={() => { if (!clipboardOpen) setClipboardText(''); setClipboardOpen(!clipboardOpen); }}
+          <div onClick={() => { setKeysOpen(!keysOpen); setClipboardOpen(false); }}
+            title="Teclas especiales"
+            style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', backgroundColor: keysOpen ? 'rgba(0,255,0,0.15)' : 'transparent', border: '1px solid #333', fontSize: '14px', transition: 'all 0.1s' }}>
+            ⌨
+          </div>
+          <div onClick={() => { if (!clipboardOpen) setClipboardText(''); setClipboardOpen(!clipboardOpen); setKeysOpen(false); }}
             title="Clipboard"
             style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', backgroundColor: clipboardOpen ? 'rgba(0,255,0,0.15)' : 'transparent', border: '1px solid #333', fontSize: '14px', transition: 'all 0.1s' }}>
             📋
@@ -823,6 +855,23 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         if (files) { for (let i = 0; i < files.length; i++) uploadFile(files[i]); }
         e.target.value = '';
       }} />
+      {/* Special key combinations */}
+      {keysOpen && connected && (
+        <div style={{
+          position: 'absolute', top: 36, right: 8, width: '300px',
+          backgroundColor: 'rgba(20, 20, 20, 0.95)', border: '1px solid #444',
+          borderRadius: '6px', padding: '10px', zIndex: 20,
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px'
+        }}>
+          {KEY_COMBOS.map(k => (
+            <button key={k.label} onClick={() => sendCombo(k.keys)} style={{
+              padding: '6px 8px', backgroundColor: '#2a2a2a', color: '#ddd',
+              border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
+              fontSize: '12px', whiteSpace: 'nowrap'
+            }}>{k.label}</button>
+          ))}
+        </div>
+      )}
       {/* Clipboard textarea */}
       {clipboardOpen && (
         <div style={{
