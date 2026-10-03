@@ -23,8 +23,11 @@ import {
   Minimize as MinimizeIcon,
   Close as CloseIcon,
   NotificationsActive as BellOnIcon,
-  NotificationsOff as BellOffIcon
+  NotificationsOff as BellOffIcon,
+  Inbox as InboxIcon
 } from '@mui/icons-material';
+import ActivityTray from './ActivityTray';
+import useActivity from '../utils/useActivity';
 import { toneUri } from '../utils/speech';
 import PanelManager from './PanelManager';
 import UpdateNotification from './UpdateNotification';
@@ -69,9 +72,12 @@ function TerminalView() {
   // on you, or done. Drives the indicators and the "it finished" notices.
   const [claudeStatus, setClaudeStatus] = useState({});
   const claudeStatusRef = useRef({});
-  // Sessions that finished or asked something while you were not looking
-  // at them, until you look. terminalId -> { name, text, waiting, at }
-  const [unseen, setUnseen] = useState({});
+  // Sessions with something you have not looked at, from the activity log
+  // the server keeps (so it survives a reload and matches on every device).
+  // terminalId -> { text, waiting, at }
+  const activity = useActivity(socket);
+  const unseen = activity.unseen;
+  const [trayOpen, setTrayOpen] = useState(false);
   const [notifyPref, setNotifyPref] = useState(() => {
     try { return localStorage.getItem('muxterm-notify') === '1'; } catch (e) { return false; }
   });
@@ -355,7 +361,6 @@ function TerminalView() {
       const name = (panel && panel.name) || 'Terminal';
       const text = (st.lastText || '').replace(/\s+/g, ' ').slice(0, 140);
       if (panel && panelVisibleRef.current(panel) && document.hasFocus()) return;   // you are looking at it
-      setUnseen(u => ({ ...u, [st.terminalId]: { name, text, waiting: !!st.waiting, at: Date.now() } }));
       notify(asked ? (st.permission ? `${name}: Claude pide permiso` : `${name}: Claude te pregunta`) : `${name}: Claude terminó`, st.permission || text);
     };
     socket.on('claude-status', onStatus);
@@ -370,16 +375,29 @@ function TerminalView() {
   // you would not know which one finished.
   useEffect(() => {
     if (!Object.keys(unseen).length) return;
-    setUnseen(u => {
-      const next = { ...u };
-      let changed = false;
-      for (const id of Object.keys(next)) {
-        const panel = panels.find(p => p.terminalId === id);
-        if (panel && panel.id === activePanel && panelVisible(panel)) { delete next[id]; changed = true; }
-      }
-      return changed ? next : u;
-    });
+    if (!document.hasFocus()) return;
+    for (const id of Object.keys(unseen)) {
+      const panel = panels.find(p => p.terminalId === id);
+      if (panel && panel.id === activePanel && panelVisible(panel)) activity.markSeen({ terminalId: id });
+    }
   }, [activeWindowId, activePanel, docVisible, panels, unseen]);
+
+  // Jump to the pane a tray entry points at, restoring it if minimized.
+  const goToTerminal = (terminalId) => {
+    const panel = panels.find(p => p.terminalId === terminalId);
+    if (panel) {
+      const win = panel.windowId || 'w1';
+      if (win !== activeWindowId) setActiveWindowId(win);
+      setActivePanel(panel.id);
+      return;
+    }
+    const mini = minimizedPanels.find(p => p.terminalId === terminalId);
+    if (mini) handleRestorePanel(mini);
+  };
+  const terminalName = (terminalId) => {
+    const p = panels.find(x => x.terminalId === terminalId) || minimizedPanels.find(x => x.terminalId === terminalId);
+    return (p && p.name) || 'Terminal cerrado';
+  };
 
   // Load workspace on mount
   useEffect(() => {
@@ -1345,6 +1363,23 @@ function TerminalView() {
             <IconButton
               color="inherit"
               size="small"
+              onClick={() => setTrayOpen(v => !v)}
+              sx={{ ml: 1, position: 'relative', color: trayOpen ? '#ffa726' : 'inherit' }}
+              title="Actividad de las sesiones Claude"
+            >
+              <InboxIcon sx={{ fontSize: 18 }} />
+              {(activity.unseenCount > 0 || activity.pending.length > 0) && (
+                <Box sx={{
+                  position: 'absolute', top: 0, right: 0, minWidth: 16, height: 16, px: '4px', borderRadius: 8,
+                  backgroundColor: activity.pending.length ? '#ffa726' : '#2e8b45', color: '#000',
+                  fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center'
+                }}>{activity.pending.length || activity.unseenCount}</Box>
+              )}
+            </IconButton>
+
+            <IconButton
+              color="inherit"
+              size="small"
               onClick={toggleNotify}
               sx={{ ml: 1, color: notifyPref ? '#ffa726' : 'inherit', opacity: notifyPref ? 1 : 0.6 }}
               title={notifyPref ? 'Avisos activados: suena y notifica cuando un Claude termina o pregunta' : 'Avisos desactivados: activar para enterarte cuando un Claude termina'}
@@ -1372,6 +1407,18 @@ function TerminalView() {
         minHeight: 0,
         position: 'relative'
       }}>
+         <ActivityTray
+           open={trayOpen}
+           onClose={() => setTrayOpen(false)}
+           events={activity.events}
+           pending={activity.pending}
+           unseenCount={activity.unseenCount}
+           nameOf={terminalName}
+           onGoTo={goToTerminal}
+           markSeen={activity.markSeen}
+           markAllSeen={activity.markAllSeen}
+           isMobile={isMobile}
+         />
          {/* Every window stays mounted; only the active one is shown. Switching
              used to unmount the panes you left and remount them on return,
              so each terminal reloaded and reconnected (2-3 s) and fought
