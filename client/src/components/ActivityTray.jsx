@@ -22,6 +22,12 @@ const KIND_COLOR = {
   waiting: '#ffa726', permission: '#ffa726', done: '#2e8b45', error: '#d9534f', interrupted: '#888', prompt: '#555'
 };
 
+// A question or permission already answered reads as past tense in the log.
+const label = (e) => {
+  if (e.resolved_at && e.kind === 'waiting') return 'Preguntó';
+  if (e.resolved_at && e.kind === 'permission') return 'Pidió permiso';
+  return KIND_LABEL[e.kind] || e.kind;
+};
 const two = (n) => String(n).padStart(2, '0');
 const hhmm = (ts) => { const d = new Date(ts); return `${two(d.getHours())}:${two(d.getMinutes())}`; };
 const ago = (ts) => {
@@ -59,7 +65,7 @@ function Entry({ e, name, onGo, highlight }) {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'baseline' }}>
           <Typography sx={{ fontSize: 12, color: unseen ? '#eee' : '#aaa', fontWeight: unseen ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {name}
-            <Box component="span" sx={{ color: KIND_COLOR[e.kind] || '#777', fontWeight: 400, ml: 0.75, fontSize: 11 }}>{KIND_LABEL[e.kind] || e.kind}</Box>
+            <Box component="span" sx={{ color: KIND_COLOR[e.kind] || '#777', fontWeight: 400, ml: 0.75, fontSize: 11 }}>{label(e)}</Box>
           </Typography>
           <Typography sx={{ fontSize: 11, color: '#666', flexShrink: 0 }} title={new Date(e.ts).toLocaleString()}>
             {highlight ? ago(e.ts) : hhmm(e.ts)}
