@@ -1222,8 +1222,18 @@ const saveCwdsOnce = () => {
   }
 };
 process.on('exit', saveCwdsOnce);
-process.on('SIGTERM', saveCwdsOnce);
-process.on('SIGINT', saveCwdsOnce);
+// Saving is all this handler did, and nothing else stops the timers and
+// servers, so the process lived on until systemd gave up and sent SIGKILL
+// (90 s per restart, every time). Save, then leave: tmux and ttyd are our
+// children but KillMode=process keeps them, which is what lets sessions
+// survive a restart.
+const shutdown = (signal) => {
+  saveCwdsOnce();
+  console.log(`[SHUTDOWN] ${signal}: exiting`);
+  process.exit(0);
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Periodic CWD save every 3 minutes (protects against power loss / crash)
 // Excludes minimized panels — they don't change CWD while minimized
