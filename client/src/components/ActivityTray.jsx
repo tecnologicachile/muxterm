@@ -46,7 +46,7 @@ const dayLabel = (ts) => {
   return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-function Entry({ e, name, onGo, highlight }) {
+function Entry({ e, name, where, onGo, highlight }) {
   const unseen = isUnseen(e);
   return (
     <Box
@@ -65,6 +65,7 @@ function Entry({ e, name, onGo, highlight }) {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'baseline' }}>
           <Typography sx={{ fontSize: 12, color: unseen ? '#eee' : '#aaa', fontWeight: unseen ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {name}
+            {where && <Box component="span" sx={{ color: '#666', fontWeight: 400, ml: 0.5, fontSize: 11 }}>· {where}</Box>}
             <Box component="span" sx={{ color: KIND_COLOR[e.kind] || '#777', fontWeight: 400, ml: 0.75, fontSize: 11 }}>{label(e)}</Box>
           </Typography>
           <Typography sx={{ fontSize: 11, color: '#666', flexShrink: 0 }} title={new Date(e.ts).toLocaleString()}>
@@ -82,11 +83,24 @@ function Entry({ e, name, onGo, highlight }) {
   );
 }
 
-export default function ActivityTray({ open, onClose, events, pending, unseenCount, nameOf, onGoTo, markSeen, markAllSeen, isMobile }) {
+export default function ActivityTray({ open, onClose, events, pending, unseenCount, nameOf, whereOf, onGoTo, markSeen, markAllSeen, isMobile }) {
   const [onlyPending, setOnlyPending] = useState(false);
+  // One chip per session that has events, newest activity first.
+  const [session, setSession] = useState(null);
+  const sessions = useMemo(() => {
+    const seen = new Map();
+    for (const e of events) {
+      const s = seen.get(e.terminal_id) || { id: e.terminal_id, unseen: 0 };
+      if (isUnseen(e)) s.unseen++;
+      seen.set(e.terminal_id, s);
+    }
+    return [...seen.values()];
+  }, [events]);
+  const sessionOk = (e) => !session || e.terminal_id === session;
+  const shownPending = useMemo(() => pending.filter(sessionOk), [pending, session]);
 
   const groups = useMemo(() => {
-    const list = events.filter(e => !isOpen(e) && (!onlyPending || isUnseen(e)));
+    const list = events.filter(e => !isOpen(e) && sessionOk(e) && (!onlyPending || isUnseen(e)));
     const out = [];
     for (const e of list) {
       const label = dayLabel(e.ts);
@@ -94,7 +108,7 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
       out[out.length - 1].items.push(e);
     }
     return out;
-  }, [events, onlyPending]);
+  }, [events, onlyPending, session]);
 
   if (!open) return null;
 
@@ -111,7 +125,7 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
       backgroundColor: 'rgba(16,16,16,0.98)', borderLeft: '1px solid #333',
       display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,0.5)'
     }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderBottom: '1px solid #2a2a2a' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderBottom: '1px solid #2a2a2a', flexWrap: 'wrap', rowGap: 0.5 }}>
         <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#ddd', flex: 1 }}>
           Actividad {unseenCount ? <Box component="span" sx={{ color: '#ffa726' }}>· {unseenCount} sin ver</Box> : null}
         </Typography>
@@ -125,24 +139,44 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
         <IconButton size="small" onClick={onClose} sx={{ color: '#888' }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>
       </Box>
 
+      {sessions.length > 1 && (
+        <Box sx={{
+          display: 'flex', gap: 0.5, px: 1.5, py: 0.75, overflowX: 'auto', flexShrink: 0, borderBottom: '1px solid #2a2a2a',
+          '&::-webkit-scrollbar': { height: 3 }, '&::-webkit-scrollbar-thumb': { backgroundColor: '#333' }
+        }}>
+          {[{ id: null, name: 'Todas', unseen: unseenCount }, ...sessions.map(s => ({ ...s, name: nameOf(s.id) }))].map(s => {
+            const on = session === s.id;
+            return (
+              <Box key={s.id || 'all'} onClick={() => setSession(on && s.id ? null : s.id)} sx={{
+                fontSize: 11, px: 1, py: 0.25, borderRadius: 3, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                border: '1px solid', borderColor: on ? '#ffa726' : '#3a3a3a', color: on ? '#ffa726' : '#999',
+                backgroundColor: on ? 'rgba(255,167,38,0.08)' : 'transparent', minHeight: isMobile ? 32 : 'auto', display: 'flex', alignItems: 'center'
+              }}>
+                {s.name}{s.unseen ? <Box component="span" sx={{ ml: 0.5, color: '#ffa726' }}>{s.unseen}</Box> : null}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
       <Box sx={{ flex: 1, overflowY: 'auto', '&::-webkit-scrollbar': { width: 6 }, '&::-webkit-scrollbar-thumb': { backgroundColor: '#333' } }}>
-        {pending.length > 0 && (
+        {shownPending.length > 0 && (
           <Box sx={{ borderBottom: '1px solid #2a2a2a', pb: 0.5 }}>
             <Typography sx={{ fontSize: 10, color: '#ffa726', letterSpacing: 1, textTransform: 'uppercase', px: 1.5, pt: 1, pb: 0.5 }}>
-              Esperando por ti · {pending.length}
+              Esperando por ti · {shownPending.length}
             </Typography>
-            {pending.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} onGo={go} highlight />)}
+            {shownPending.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} highlight />)}
           </Box>
         )}
         {groups.length === 0 && (
           <Typography sx={{ fontSize: 12, color: '#666', px: 1.5, py: 3, textAlign: 'center' }}>
-            {onlyPending ? 'Nada sin ver.' : 'Sin actividad todavía.'}
+            {onlyPending ? 'Nada sin ver.' : session ? 'Sin actividad de esta sesión.' : 'Sin actividad todavía.'}
           </Typography>
         )}
         {groups.map(g => (
           <Box key={g.label}>
             <Typography sx={{ fontSize: 10, color: '#666', letterSpacing: 1, textTransform: 'uppercase', px: 1.5, pt: 1.25, pb: 0.5 }}>{g.label}</Typography>
-            {g.items.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} onGo={go} />)}
+            {g.items.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} />)}
           </Box>
         ))}
       </Box>

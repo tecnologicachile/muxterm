@@ -398,6 +398,14 @@ function TerminalView() {
     const p = panels.find(x => x.terminalId === terminalId) || minimizedPanels.find(x => x.terminalId === terminalId);
     return (p && p.name) || 'Terminal cerrado';
   };
+  // The window a pane lives in, when there is more than one: "Terminal 1"
+  // alone says nothing when three windows each have one.
+  const terminalWhere = (terminalId) => {
+    if (windows.length < 2) return '';
+    const p = panels.find(x => x.terminalId === terminalId) || minimizedPanels.find(x => x.terminalId === terminalId);
+    const w = p && windows.find(x => x.id === (p.windowId || 'w1'));
+    return (w && w.name) || '';
+  };
 
   // Load workspace on mount
   useEffect(() => {
@@ -1414,6 +1422,7 @@ function TerminalView() {
            pending={activity.pending}
            unseenCount={activity.unseenCount}
            nameOf={terminalName}
+           whereOf={terminalWhere}
            onGoTo={goToTerminal}
            markSeen={activity.markSeen}
            markAllSeen={activity.markAllSeen}
