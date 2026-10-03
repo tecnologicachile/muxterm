@@ -26,6 +26,25 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   const isActiveRef = useRef(isActive);
   const retryTimerRef = useRef(null);
   const [reconnecting, setReconnecting] = useState(false);
+  // The state handler below is created once per connection, so it would read
+  // a stale `connected`; the ref is what it checks.
+  const connectedRef = useRef(false);
+  // Set before we disconnect on purpose (unmount, retry, new resolution), so
+  // the DISCONNECTED event that follows is not mistaken for a lost session.
+  const closingRef = useRef(false);
+  const connectTimerRef = useRef(null);
+
+  // Tear down the client quietly.
+  const dropClient = () => {
+    if (connectTimerRef.current) { clearTimeout(connectTimerRef.current); connectTimerRef.current = null; }
+    if (clientRef.current) {
+      closingRef.current = true;
+      try { clientRef.current.disconnect(); } catch (e) {}
+      closingRef.current = false;
+      clientRef.current = null;
+    }
+    connectedRef.current = false;
+  };
   const mobileInputRef = useRef(null);
   const keyboardSinkRef = useRef(null);
   const [zoom, setZoom] = useState(1);
@@ -165,10 +184,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     return () => {
       socket.off(tokenEvent, handleToken);
       socket.off(errorEvent, handleError);
-      if (clientRef.current) {
-        try { clientRef.current.disconnect(); } catch (e) {}
-        clientRef.current = null;
-      }
+      dropClient();
       tokenRequestedRef.current = false;
     };
   }, [socket, rdpConnectionId, vncConnectionId, connectionType, resolution, dpi]);
@@ -177,10 +193,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
     setError(null);
     setConnected(false);
     tokenRequestedRef.current = false;
-    if (clientRef.current) {
-      try { clientRef.current.disconnect(); } catch (e) {}
-      clientRef.current = null;
-    }
+    dropClient();
     const connId = connectionType === 'vnc' ? vncConnectionId : rdpConnectionId;
     const requestId = panelId || connId;
     const tokenEvent = connectionType === 'vnc' ? `vnc-token-created-${requestId}` : `rdp-token-created-${requestId}`;
@@ -211,10 +224,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
 
     setReconnecting(true);
     setError(null);
-    if (clientRef.current) {
-      try { clientRef.current.disconnect(); } catch (e) {}
-      clientRef.current = null;
-    }
+    dropClient();
     // Poll guacd health until ready, then reconnect with delay
     const pollHealth = () => {
       fetch('/api/guacd-health').then(r => r.json()).then(data => {
@@ -236,7 +246,10 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
 
   // Cleanup retry timer
   useEffect(() => {
-    return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); };
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+    };
   }, []);
 
   const connectRdp = (token) => {
@@ -439,6 +452,8 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       client.onstatechange = (state) => {
 
         if (state === 3) { // CONNECTED
+          connectedRef.current = true;
+          if (connectTimerRef.current) { clearTimeout(connectTimerRef.current); connectTimerRef.current = null; }
           setConnected(true);
           setError(null);
           setReconnecting(false);
@@ -459,13 +474,17 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
             }
           }, 500);
         } else if (state === 5) { // DISCONNECTED
-          const wasConnected = connected;
+          const wasConnected = connectedRef.current;
+          connectedRef.current = false;
           setConnected(false);
           if (onActivityChange) onActivityChange(panelId, false);
-          // If was previously connected, show disconnect message (not reconnect loop)
-          if (wasConnected) {
-            setError('Connection lost. The remote session was disconnected.');
-          }
+          if (closingRef.current) return;   // we asked for it
+          // The session dropped under us (guacd drops a browser that stalls
+          // for 15 s, which a swapped-out machine does). Reconnect; after
+          // repeated failures the error view offers a manual retry.
+          handleConnectionError(wasConnected
+            ? 'Connection lost. The remote session was disconnected.'
+            : 'Disconnected before the session was established.');
         }
       };
 
@@ -496,6 +515,13 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       const height = fixed ? Number(fixed[2]) : (container.offsetHeight || 768);
       const connectString = `token=${encodeURIComponent(token)}&GUAC_WIDTH=${width}&GUAC_HEIGHT=${height}&GUAC_DPI=${Number(dpi) || 96}`;
       client.connect(connectString);
+      // Remote hosts over the internet take ~20 s to log in; past 45 s
+      // something is stuck (a tunnel that never answered, a guacd that hung).
+      if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = setTimeout(() => {
+        connectTimerRef.current = null;
+        if (!connectedRef.current && clientRef.current === client) handleConnectionError('Timed out connecting to the remote desktop.');
+      }, 45000);
 
     } catch (err) {
       logger.error('Failed to connect RDP:', err);
@@ -620,7 +646,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
         flexDirection: 'column', gap: '12px'
       }}>
         <div style={{ width: '32px', height: '32px', border: '3px solid #333', borderTop: '3px solid #ffaa00', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <span>Waiting for remote desktop service...</span>
+        <span>Reconnecting to the remote desktop...</span>
         <span style={{ color: '#666', fontSize: '11px' }}>Will reconnect automatically when ready</span>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
