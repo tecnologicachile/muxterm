@@ -128,6 +128,16 @@ function parseLine(line) {
       const m = c.match(/<command-name>([^<]*)<\/command-name>/);
       return m ? [{ ...base, kind: 'note', text: m[1].trim() }] : [];
     }
+    // A background task that finished is reported to Claude as a user line
+    // wrapped in <task-notification>. Nobody typed it: show it as a note
+    // carrying the task's summary, not as a prompt.
+    if (typeof c === 'string' && /^\s*<task-notification>/.test(c)) {
+      const m = c.match(/<summary>([\s\S]*?)<\/summary>/);
+      const what = m ? m[1].trim() : 'Tarea en segundo plano terminada';
+      return [{ ...base, kind: 'note', text: clip(what, 200).text }];
+    }
+    // Reminders the harness injects for Claude's eyes only.
+    if (typeof c === 'string' && /^\s*<system-reminder>[\s\S]*<\/system-reminder>\s*$/.test(c)) return [];
     if (typeof c === 'string') return [{ ...base, kind: 'prompt', ...clip(c, MAX_MESSAGE) }];
     if (Array.isArray(c)) {
       const txt = c.filter(b => b && b.type === 'text').map(b => b.text).join('\n');
