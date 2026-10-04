@@ -553,13 +553,15 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       const height = fixed ? Number(fixed[2]) : (container.offsetHeight || 768);
       const connectString = `token=${encodeURIComponent(token)}&GUAC_WIDTH=${width}&GUAC_HEIGHT=${height}&GUAC_DPI=${Number(dpi) || 96}`;
       client.connect(connectString);
-      // Remote hosts over the internet take ~20 s to log in; past 45 s
-      // something is stuck (a tunnel that never answered, a guacd that hung).
+      // Remote hosts over the internet take ~20 s to log in. guacd gives up
+      // on a server that never answers after ~40 s and says why ("Server
+      // refused connection"); this timer waits past that so you read its
+      // verdict, and only covers a tunnel that went silent altogether.
       if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
       connectTimerRef.current = setTimeout(() => {
         connectTimerRef.current = null;
         if (!connectedRef.current && clientRef.current === client) handleConnectionError('Timed out connecting to the remote desktop.');
-      }, 45000);
+      }, 60000);
 
     } catch (err) {
       logger.error('Failed to connect RDP:', err);
