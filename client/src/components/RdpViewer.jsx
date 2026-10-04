@@ -238,9 +238,18 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   };
 
   const reconnectAttemptsRef = useRef(0);
+  const connectedAtRef = useRef(0);
+  const [retryWait, setRetryWait] = useState(0);
 
   const handleConnectionError = (msg) => {
-    // Prevent infinite loop — max 5 consecutive reconnect cycles
+    // A session that lived a while and dropped is a blip: come back quickly,
+    // and the attempt counter starts over. One that died within half a minute
+    // of connecting is a loop in the making (a browser that stalls under the
+    // first full-screen paint, say): each try waits twice as long, up to a
+    // minute, and after five the error view hands it back to you.
+    const shortLived = connectedAtRef.current && (Date.now() - connectedAtRef.current) < 30000;
+    if (!shortLived && connectedAtRef.current) reconnectAttemptsRef.current = 0;
+    connectedAtRef.current = 0;
     reconnectAttemptsRef.current++;
     if (reconnectAttemptsRef.current > 5) {
       setReconnecting(false);
@@ -248,19 +257,20 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       reconnectAttemptsRef.current = 0;
       return;
     }
+    const waitMs = Math.min(60000, 5000 * Math.pow(2, Math.max(0, reconnectAttemptsRef.current - 1)));
 
     setReconnecting(true);
+    setRetryWait(Math.round(waitMs / 1000));
     setError(null);
     dropClient();
-    // Poll guacd health until ready, then reconnect with delay
+    // Poll guacd health until ready, then reconnect after the wait
     const pollHealth = () => {
       fetch('/api/guacd-health').then(r => r.json()).then(data => {
         if (data.status === 'ok') {
-          // Wait 5 seconds after guacd is ready before reconnecting
           retryTimerRef.current = setTimeout(() => {
             setReconnecting(false);
             reconnect();
-          }, 5000);
+          }, waitMs);
         } else {
           retryTimerRef.current = setTimeout(pollHealth, 3000);
         }
@@ -480,6 +490,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
 
         if (state === 3) { // CONNECTED
           connectedRef.current = true;
+          connectedAtRef.current = Date.now();
           if (connectTimerRef.current) { clearTimeout(connectTimerRef.current); connectTimerRef.current = null; }
           setConnected(true);
           setError(null);
@@ -674,7 +685,13 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       }}>
         <div style={{ width: '32px', height: '32px', border: '3px solid #333', borderTop: '3px solid #ffaa00', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         <span>Reconnecting to the remote desktop...</span>
-        <span style={{ color: '#666', fontSize: '11px' }}>Will reconnect automatically when ready</span>
+        <span style={{ color: '#666', fontSize: '11px' }}>
+          {reconnectAttemptsRef.current > 1 ? `Intento ${reconnectAttemptsRef.current} de 5 · espera ${retryWait} s` : 'Will reconnect automatically when ready'}
+        </span>
+        <button onClick={() => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); setReconnecting(false); reconnect(); }} style={{
+          marginTop: '4px', padding: '4px 12px', backgroundColor: '#222', color: '#aaa',
+          border: '1px solid #444', borderRadius: '4px', cursor: 'pointer', fontSize: '11px'
+        }}>Reconectar ahora</button>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );

@@ -73,7 +73,10 @@ class GuacamoleManager {
           },
           log: {
             level: 'VERBOSE'
-          }
+          },
+          // guacd drops a browser that stays silent for 15 s; the default
+          // 10 s here only got there first. Leave the verdict to guacd.
+          maxInactivityTime: 30000
         }
       );
 
