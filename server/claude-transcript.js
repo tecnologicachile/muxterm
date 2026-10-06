@@ -136,6 +136,24 @@ function parseLine(line) {
       const what = m ? m[1].trim() : 'Tarea en segundo plano terminada';
       return [{ ...base, kind: 'note', text: clip(what, 200).text }];
     }
+    // A message from another Claude session arrives as a user line: a
+    // framing sentence, a <teammate-message> whose body is JSON or prose,
+    // and a paragraph of harness warnings. Keep who said it and what.
+    if (typeof c === 'string' && /^\s*Another Claude session sent a message:/.test(c)) {
+      const m = c.match(/<teammate-message([^>]*)>([\s\S]*?)<\/teammate-message>/);
+      const attrs = m ? m[1] : '';
+      const attr = (k) => { const a = attrs.match(new RegExp(k + '="([^"]*)"')); return a ? a[1] : ''; };
+      let from = attr('teammate_id'), summary = attr('summary'), text = m ? m[2].trim() : c;
+      if (/^\s*\{/.test(text)) {
+        try {
+          const j = JSON.parse(text);
+          from = j.from || from;
+          summary = j.summary || summary;
+          text = j.result || j.message || j.text || (j.type ? `(${j.type})` : text);
+        } catch (e) { /* prose after all */ }
+      }
+      return [{ ...base, kind: 'peer', from: from || 'otra sesión', summary: clip(summary, 300).text, ...clip(String(text), MAX_MESSAGE) }];
+    }
     // Reminders the harness injects for Claude's eyes only.
     if (typeof c === 'string' && /^\s*<system-reminder>[\s\S]*<\/system-reminder>\s*$/.test(c)) return [];
     if (typeof c === 'string') return [{ ...base, kind: 'prompt', ...clip(c, MAX_MESSAGE) }];

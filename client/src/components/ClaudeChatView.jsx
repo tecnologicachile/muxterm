@@ -939,6 +939,16 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           if (ev.kind === 'note') {
             return <Box key={`e${i}`} sx={{ ...pad, my: 0.75, fontSize: '10px', color: '#666', letterSpacing: '0.5px' }}>— {ev.text} —</Box>;
           }
+          if (ev.kind === 'peer') {
+            return (
+              <Box key={`e${i}`} sx={{ ...pad, mb: 1, mt: 1.5, borderLeft: '3px solid #3b82c4', pl: 1.25, backgroundColor: 'rgba(59,130,196,0.07)', py: 0.75, borderRadius: '0 4px 4px 0' }}>
+                <Box sx={{ fontSize: '9px', color: '#6a9ac4', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25 }}>
+                  Mensaje de otra sesión · {ev.from}{ev.summary ? <Box component="span" sx={{ textTransform: 'none', letterSpacing: 0, color: '#8ab4d8', ml: 0.75 }}>— {ev.summary}</Box> : null}
+                </Box>
+                <MiniMarkdown text={ev.text} />
+              </Box>
+            );
+          }
           return null;
   }), [events]);
 
