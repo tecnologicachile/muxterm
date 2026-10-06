@@ -330,6 +330,30 @@ const TOOL_ICON = {
   WebFetch: WebIcon, WebSearch: SearchIcon, Grep: SearchIcon, Glob: SearchIcon
 };
 
+// What another Claude session sent yours. Usually a long report your
+// session has already digested: closed by default, the gist on one line.
+function PeerCard({ ev }) {
+  const [open, setOpen] = useState(false);
+  const gist = ev.summary || String(ev.text || '').replace(/\s+/g, ' ').slice(0, 160);
+  return (
+    <Box sx={{ mb: 1, mt: 1.5, borderLeft: '3px solid #3b82c4', pl: 1.25, backgroundColor: 'rgba(59,130,196,0.07)', py: 0.75, borderRadius: '0 4px 4px 0' }}>
+      <Box onClick={() => setOpen(o => !o)} sx={{ cursor: 'pointer', '&:hover': { opacity: 0.85 } }}>
+        <Box sx={{ fontSize: '9px', color: '#6a9ac4', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <Box component="span" sx={{ fontSize: '9px', width: 10, display: 'inline-block' }}>{open ? '▾' : '▸'}</Box>
+          Mensaje de otra sesión · {ev.from}
+        </Box>
+        {!open && <Box sx={{ fontSize: '12px', color: '#9fb8d0', pl: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gist}</Box>}
+      </Box>
+      {open && (
+        <Box sx={{ pl: '18px', mt: 0.5 }}>
+          {ev.summary && <Box sx={{ fontSize: '12px', color: '#8ab4d8', mb: 0.5 }}>{ev.summary}</Box>}
+          <MiniMarkdown text={ev.text} />
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 function ToolCard({ ev }) {
   // Edits are the payload — open them by default, keep noisier tools collapsed.
   const [open, setOpen] = useState(ev.result && ev.result.type === 'edit');
@@ -940,14 +964,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             return <Box key={`e${i}`} sx={{ ...pad, my: 0.75, fontSize: '10px', color: '#666', letterSpacing: '0.5px' }}>— {ev.text} —</Box>;
           }
           if (ev.kind === 'peer') {
-            return (
-              <Box key={`e${i}`} sx={{ ...pad, mb: 1, mt: 1.5, borderLeft: '3px solid #3b82c4', pl: 1.25, backgroundColor: 'rgba(59,130,196,0.07)', py: 0.75, borderRadius: '0 4px 4px 0' }}>
-                <Box sx={{ fontSize: '9px', color: '#6a9ac4', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25 }}>
-                  Mensaje de otra sesión · {ev.from}{ev.summary ? <Box component="span" sx={{ textTransform: 'none', letterSpacing: 0, color: '#8ab4d8', ml: 0.75 }}>— {ev.summary}</Box> : null}
-                </Box>
-                <MiniMarkdown text={ev.text} />
-              </Box>
-            );
+            return <Box key={`e${i}`} sx={pad}><PeerCard ev={ev} /></Box>;
           }
           return null;
   }), [events]);
