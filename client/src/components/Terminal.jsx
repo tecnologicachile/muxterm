@@ -38,7 +38,7 @@ function giveFocusBack() {
   } catch (e) {}
 }
 
-function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, onActivityChange, sshConnectionId }) {
+function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, panelId, onActivityChange, sshConnectionId }) {
   const iframeRef = useRef(null);
   const { socket, isReconnected, becameVisible } = useSocket();
   const [localTerminalId, setLocalTerminalId] = useState(terminalId);
@@ -256,6 +256,24 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
         }
       } catch (e) {}
     };
+    // Re-fitting is not enough when another tmux client (the phone) sized
+    // the window meanwhile: xterm only tells ttyd its size when its own
+    // cols/rows change, and here they have not. Shrink by a column and fit
+    // back, so the size goes out again and tmux, on window-size latest,
+    // follows this pane.
+    const resendSize = () => {
+      try {
+        const el = iframeRef.current;
+        if (!el || getComputedStyle(el).visibility === 'hidden') return;
+        const w = el.contentWindow;
+        const t = w && w.term;
+        if (!t || typeof t.resize !== 'function' || !(t.cols > 2)) return;
+        t.resize(t.cols - 1, t.rows);
+        setTimeout(() => {
+          try { if (typeof t.fit === 'function') t.fit(); else w.dispatchEvent(new Event('resize')); } catch (e) {}
+        }, 30);
+      } catch (e) {}
+    };
     let debounceTimer = null;
     const schedule = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -273,10 +291,13 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
     // 2) Staggered dispatch on activate/remount to cover cases where the container
     //    size doesn't change but xterm.js still has a stale column count (tab switch, etc.)
     const timers = [];
-    if (isActive && iframeReady) {
+    if (isActive && iframeReady && !hidden) {
       [100, 350, 800, 1500].forEach(delay => {
         timers.push(setTimeout(dispatchResize, delay));
       });
+      // Once per activation (or per return from modo conversación): make
+      // tmux take this pane's size even if xterm thinks nothing changed.
+      timers.push(setTimeout(resendSize, 500));
     }
 
     return () => {
@@ -284,7 +305,7 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, panelId, o
       if (debounceTimer) clearTimeout(debounceTimer);
       timers.forEach(clearTimeout);
     };
-  }, [iframeReady, isActive]);
+  }, [iframeReady, isActive, hidden]);
 
 
   const getToken = () => {

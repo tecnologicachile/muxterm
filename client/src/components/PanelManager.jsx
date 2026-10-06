@@ -854,6 +854,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               key={`terminal-${panel.id}-${panel._restoreKey || 0}`}
               terminalId={panel.terminalId}
               isActive={isActive}
+              hidden={isChatOn(panel)}
               sshConnectionId={panel.sshConnectionId || null}
               onClose={() => onPanelClose(panel.id)}
               onTerminalCreated={(newTerminalId) => {
