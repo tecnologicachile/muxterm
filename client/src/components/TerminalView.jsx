@@ -233,6 +233,44 @@ function TerminalView() {
   };
   const sidebarTimeoutRef = React.useRef(null);
   const sidebarFilterRef = React.useRef(null);
+  const sidebarBoxRef = React.useRef(null);
+
+  // The sidebar used to close only from its own mouseleave, a click on one of
+  // its items, or Escape. Opened by brushing the edge strip without the
+  // pointer ever entering it, there was no leave to come; and a click on a
+  // terminal lands inside an iframe, which the document never hears about.
+  // While it is open: a press outside closes it, focus moving into an iframe
+  // (the window's blur) closes it, and a pointer that wanders away closes it
+  // after the usual pause — unless you are typing in the filter.
+  useEffect(() => {
+    if (!sidebarOpen || isMobile) return;
+    const typing = () => sidebarFilterRef.current && sidebarFilterRef.current === document.activeElement;
+    const close = () => { clearTimeout(sidebarTimeoutRef.current); setSidebarOpen(false); setSidebarFilter(''); };
+    const onPointerDown = (e) => {
+      if (sidebarBoxRef.current && sidebarBoxRef.current.contains(e.target)) return;
+      close();
+    };
+    const onBlur = () => { if (!typing()) close(); };
+    const onPointerMove = (e) => {
+      const box = sidebarBoxRef.current && sidebarBoxRef.current.getBoundingClientRect();
+      const inside = box && e.clientX <= box.right + 24 && e.clientY >= box.top - 24 && e.clientY <= box.bottom + 24;
+      if (inside) { clearTimeout(sidebarTimeoutRef.current); return; }
+      if (sidebarTimeoutRef.current) return;   // already counting down
+      sidebarTimeoutRef.current = setTimeout(() => {
+        sidebarTimeoutRef.current = null;
+        if (typing()) return;
+        setSidebarOpen(false); setSidebarFilter('');
+      }, 400);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('pointermove', onPointerMove);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('pointermove', onPointerMove);
+    };
+  }, [sidebarOpen, isMobile]);
   const [mobilePanelListOpen, setMobilePanelListOpen] = useState(false);
   const [mobileFilter, setMobileFilter] = useState('');
   const mobileSwipeRef = React.useRef({ startX: 0, startY: 0 });
@@ -1846,8 +1884,10 @@ function TerminalView() {
             {/* Sidebar expandido - altura auto, centrado vertical */}
             {sidebarOpen && (
               <Box
+                ref={sidebarBoxRef}
                 onMouseEnter={() => {
                   clearTimeout(sidebarTimeoutRef.current);
+                  sidebarTimeoutRef.current = null;
                 }}
                 onMouseLeave={() => {
                   // Re-arm instead of giving up: bailing out once meant that
@@ -1855,6 +1895,7 @@ function TerminalView() {
                   // sidebar open with nothing scheduled to close it.
                   const scheduleClose = () => {
                     sidebarTimeoutRef.current = setTimeout(() => {
+                      sidebarTimeoutRef.current = null;
                       if (sidebarFilterRef.current && sidebarFilterRef.current === document.activeElement) {
                         scheduleClose();
                         return;
@@ -1863,6 +1904,7 @@ function TerminalView() {
                       setSidebarFilter('');
                     }, 400);
                   };
+                  clearTimeout(sidebarTimeoutRef.current);
                   scheduleClose();
                 }}
                 sx={{
