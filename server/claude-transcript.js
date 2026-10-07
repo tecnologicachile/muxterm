@@ -93,9 +93,13 @@ function parseLine(line) {
   // tells "Claude is busy" from "Claude finished and is waiting for you".
   // An away_summary is only written once Claude has gone idle, so it ends a
   // turn as surely as turn_duration does.
+  // Claude Code 2.1.289 stopped writing turn_duration for most turns; what
+  // it writes at every Stop is stop_hook_summary. Older files carry both at
+  // the same instant, which the status tracker folds into one.
   if (o.type === 'system') {
-    if (o.subtype === 'turn_duration') return [{ kind: 'turn', ts: o.timestamp }];
-    if (o.subtype === 'away_summary') return [{ kind: 'turn', ts: o.timestamp, reason: 'away' }];
+    if (o.subtype === 'turn_duration') return [{ kind: 'turn', ts: o.timestamp, uuid: o.uuid }];
+    if (o.subtype === 'stop_hook_summary') return [{ kind: 'turn', ts: o.timestamp, uuid: o.uuid, reason: 'stop' }];
+    if (o.subtype === 'away_summary') return [{ kind: 'turn', ts: o.timestamp, uuid: o.uuid, reason: 'away' }];
     return [];
   }
   if (NOISE_TYPES.has(o.type)) return [];

@@ -85,7 +85,16 @@ function apply(st, events, { historical = false } = {}) {
       }
     }
     else if (ev.kind === 'turn') {
+      const wasBusy = st.busy;
       st.busy = false; st.waiting = false; st.waitingTool = null; st.finishedAt = ev.ts || new Date().toISOString();
+      // turn_duration and stop_hook_summary for the same turn land within
+      // a second of each other: one "done" is enough. And a Stop that ends
+      // nothing you asked for (a reply to another session's message) is
+      // not a finished turn of yours.
+      const at = Date.parse(ev.ts || '') || Date.now();
+      if (st.lastTurnAt && Math.abs(at - st.lastTurnAt) < 3000) continue;
+      st.lastTurnAt = at;
+      if (!wasBusy && !historical) continue;
       const interrupted = ev.reason === 'interrupted';
       activity.record({
         terminalId: tid, kind: interrupted ? 'interrupted' : 'done', ts: ev.ts,
