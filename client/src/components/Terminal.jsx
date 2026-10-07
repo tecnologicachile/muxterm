@@ -56,6 +56,9 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
   // it steals the cursor from wherever you were typing.
   const isActiveRef = useRef(isActive);
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
+  // Whether the pane was under the chat view the last time the size effect
+  // ran, so coming back from it counts as a reason to re-fit.
+  const hiddenBeforeRef = useRef(!!hidden);
   const lastPointerRef = useRef(0);
   const TOUCH_DEVICE = typeof navigator !== 'undefined' &&
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -291,14 +294,18 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
     // 2) Staggered dispatch on activate/remount to cover cases where the container
     //    size doesn't change but xterm.js still has a stale column count (tab switch, etc.)
     const timers = [];
-    if (isActive && iframeReady && !hidden) {
+    // On activation, and on coming back from modo conversación whether or
+    // not this is the selected pane (the chat toggle does not select it).
+    // A pane in a hidden window is still skipped: dispatchResize and
+    // resendSize both check the iframe's computed visibility.
+    if (iframeReady && !hidden && (isActive || hiddenBeforeRef.current)) {
       [100, 350, 800, 1500].forEach(delay => {
         timers.push(setTimeout(dispatchResize, delay));
       });
-      // Once per activation (or per return from modo conversación): make
-      // tmux take this pane's size even if xterm thinks nothing changed.
+      // Make tmux take this pane's size even if xterm thinks nothing changed.
       timers.push(setTimeout(resendSize, 500));
     }
+    hiddenBeforeRef.current = !!hidden;
 
     return () => {
       if (ro) ro.disconnect();
