@@ -9,6 +9,7 @@
  * tells the owner's browsers when a session goes busy, done or waiting.
  */
 const fs = require('fs');
+const path = require('path');
 const sessions = require('./claude-sessions');
 const transcript = require('./claude-transcript');
 const activity = require('./claude-activity');
@@ -18,6 +19,37 @@ const RERESOLVE_TICKS = 10;
 const WAITING_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']);
 
 const states = new Map();   // terminalId -> state
+// A pane whose foreground program is one of these is idle at the prompt.
+const SHELLS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'tmux', 'login', 'su', 'sudo']);
+const AGENTS_EVERY_TICKS = 5;
+const AGENT_ALIVE_MS = 45000;
+
+/**
+ * Subagents of a Claude session live in <session>/subagents/agent-*.jsonl
+ * beside its transcript; one still being written to is one still working.
+ * "agent-aboveda-api-5aa3…" names the agent "boveda-api"; an unnamed one
+ * is just a hash.
+ */
+function liveAgents(file) {
+  if (!file) return [];
+  try {
+    const dir = path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents');
+    const now = Date.now();
+    const out = [];
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.jsonl')) continue;
+      const st = fs.statSync(path.join(dir, f));
+      if (now - st.mtimeMs > AGENT_ALIVE_MS) continue;
+      const id = f.replace(/^agent-/, '').replace(/\.jsonl$/, '');
+      const m = id.match(/^a?(.*?)-?([0-9a-f]{16})$/);
+      const name = (m && m[1]) || 'agente';
+      let since = st.birthtimeMs || st.ctimeMs;
+      try { since = fs.statSync(path.join(dir, f.replace(/\.jsonl$/, '.meta.json'))).mtimeMs; } catch (e) {}
+      out.push({ id, name, since: new Date(since).toISOString(), lastAt: new Date(st.mtimeMs).toISOString() });
+    }
+    return out.sort((a, b) => a.since < b.since ? -1 : 1);
+  } catch (e) { return []; }
+}
 let io = null, ttydManager = null, database = null, timer = null;
 
 function ownerOf(terminalId) {
@@ -28,9 +60,11 @@ function ownerOf(terminalId) {
 
 function publicState(st) {
   return {
-    terminalId: st.terminalId, busy: st.busy, waiting: st.waiting || !!st.permission,
+    terminalId: st.terminalId, claude: !!st.claude, busy: st.busy, waiting: st.waiting || !!st.permission,
     permission: st.permission ? st.permission.title : null,
-    lastText: st.lastText, finishedAt: st.finishedAt, since: st.since
+    lastText: st.lastText, finishedAt: st.finishedAt, since: st.since,
+    command: st.command || null, commandSince: st.commandSince || null,
+    agents: st.agents || []
   };
 }
 
@@ -120,18 +154,38 @@ function start(st) {
 
 function tick() {
   try {
-    const panes = sessions.listClaudePanes();
+    const panes = sessions.listPanes();
     const alive = new Set(panes.map(p => p.terminalId));
     for (const id of [...states.keys()]) if (!alive.has(id)) states.delete(id);
     for (const p of panes) {
+      const isClaude = p.cmd === 'claude';
       let st = states.get(p.terminalId);
       if (!st) {
-        st = { terminalId: p.terminalId, busy: false, waiting: false, waitingTool: null, lastText: '', finishedAt: null, since: null, ticks: 0 };
+        st = { terminalId: p.terminalId, claude: isClaude, busy: false, waiting: false, waitingTool: null, lastText: '', finishedAt: null, since: null, ticks: 0, command: null, commandSince: null, agents: [] };
         states.set(p.terminalId, st);
-        start(st);
+        if (isClaude) start(st);
+        emit(st);
         continue;
       }
-      if ((++st.ticks % RERESOLVE_TICKS) === 0) {
+      st.ticks++;
+      // The program in front: a build, an ssh, a tail -f. Not the shell
+      // waiting at its prompt, and not Claude, which has its own signals.
+      const cmd = (isClaude || SHELLS.has(p.cmd)) ? null : p.cmd;
+      let changed = false;
+      if (cmd !== st.command) { st.command = cmd; st.commandSince = cmd ? new Date().toISOString() : null; changed = true; }
+      if (isClaude !== st.claude) {
+        st.claude = isClaude;
+        if (isClaude) start(st); else { st.file = null; st.busy = false; st.waiting = false; st.waitingTool = null; st.agents = []; }
+        changed = true;
+      }
+      if (!isClaude) { if (changed) emit(st); continue; }
+      if ((st.ticks % AGENTS_EVERY_TICKS) === 0) {
+        const agents = liveAgents(st.file);
+        const key = agents.map(a => a.id).join(',');
+        if (key !== st.agentsKey) { st.agentsKey = key; st.agents = agents; changed = true; }
+      }
+      if (changed) emit(st);
+      if ((st.ticks % RERESOLVE_TICKS) === 0) {
         const r = sessions.resolveTranscript(st.terminalId);
         if (r.file && r.file !== st.file) { start(st); continue; }
       }
@@ -174,4 +228,4 @@ function forUser(userId) {
   return out;
 }
 
-module.exports = { init, forUser, _apply: apply };
+module.exports = { init, forUser, _apply: apply, _liveAgents: liveAgents };

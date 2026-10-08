@@ -24,6 +24,15 @@ import ClaudeChatView from './ClaudeChatView';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
+// "9 min", "2 h", "35 s": how long something has been going on.
+function agoShort(ts) {
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(ts || '')) / 1000));
+  if (!isFinite(s)) return '';
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  return `${Math.round(s / 3600)} h`;
+}
+
 function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerminalCreated, onRenamePanel, onMinimizePanel, onReorderPanels, onSftpPathChange, onPanelSettings, onPanelChatView, windowId, onPanelDragStart, onPanelDragEnd, claudeStatus = {}, unseen = {} }) {
   const saveKey = (suffix) => windowId ? `muxterm-${windowId}-${suffix}` : undefined;
   const { socket } = useSocket();
@@ -661,23 +670,35 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 hand, amber when it is waiting on you; otherwise it follows
                 terminal output as before. */}
             {(() => {
+              // One state per pane, from the server (docs/design/estado-panel.md):
+              // waiting › Claude working › agents in the background › a program
+              // running › idle. The tooltip says it in words.
               const cs = panel.terminalId && claudeStatus[panel.terminalId];
-              const busy = cs ? cs.busy : activityStates[panel.id];
+              const agents = (cs && cs.agents) || [];
               const waiting = !!(cs && cs.waiting);
-              const color = waiting ? '#ffa726' : '#00ff00';
+              const busy = !!(cs && cs.busy);
+              const bg = !waiting && !busy && agents.length > 0;
+              const running = !waiting && !busy && !bg && !!(cs && cs.command);
+              const on = waiting || busy || bg || running;
+              const color = waiting ? '#ffa726' : busy ? '#00ff00' : bg ? '#5ec87a' : running ? '#9a9a9a' : '#00ff00';
+              const title = waiting ? (cs.permission ? `Claude pide permiso: ${cs.permission}` : 'Claude te pregunta algo')
+                : busy ? 'Claude está trabajando'
+                : bg ? `${agents.length === 1 ? '1 agente' : agents.length + ' agentes'} en segundo plano · ${agents.map(a => `${a.name} ${agoShort(a.since)}`).join(', ')}`
+                : running ? `Ejecutando ${cs.command} · ${agoShort(cs.commandSince)}`
+                : cs ? (cs.claude ? 'Claude en reposo' : 'En reposo') : '';
               return (
                 <Box
-                  title={waiting ? 'Claude te pregunta algo' : busy ? (cs ? 'Claude está trabajando' : 'Actividad') : cs ? 'Claude en reposo' : ''}
+                  title={title}
                   sx={{
                     width: '14px',
                     height: '14px',
                     borderRadius: '50%',
                     border: `2px solid ${color}`,
                     borderTop: waiting ? `2px solid ${color}` : '2px solid transparent',
-                    opacity: (busy || waiting) ? 1 : 0.3,
+                    opacity: on ? 1 : 0.3,
                     transition: 'opacity 0.3s ease',
-                    animation: busy && !waiting ? 'spin 1s linear infinite' : 'none',
-                    backgroundColor: waiting ? 'rgba(255,167,38,0.25)' : busy ? 'rgba(0, 255, 0, 0.1)' : 'transparent'
+                    animation: on && !waiting ? `spin ${running ? 1.6 : bg ? 1.3 : 1}s linear infinite` : 'none',
+                    backgroundColor: waiting ? 'rgba(255,167,38,0.25)' : busy ? 'rgba(0, 255, 0, 0.1)' : bg ? 'rgba(94,200,122,0.12)' : 'transparent'
                   }}
                 />
               );

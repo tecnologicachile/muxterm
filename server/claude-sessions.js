@@ -37,28 +37,33 @@ function terminalIdFromTmuxSession(name) {
 let paneCache = { at: 0, panes: [] };
 const PANE_CACHE_MS = 5000;
 
-/** Panes currently running Claude Code, keyed by terminalId. */
-function listClaudePanes() {
-  if (Date.now() - paneCache.at < PANE_CACHE_MS) return paneCache.panes;
+/** Every muxterm pane, with the program in its foreground, keyed by terminalId. */
+function listPanes() {
+  if (Date.now() - paneCache.at < PANE_CACHE_MS) return paneCache.all;
   try {
     const out = execSync(
       "tmux -L muxterm list-panes -a -F '#{session_name}\t#{pane_current_command}\t#{pane_current_path}'",
       { encoding: 'utf8', timeout: 3000 }
     );
-    const found = [];
+    const all = [];
     for (const line of out.split('\n')) {
       if (!line.trim()) continue;
       const [session, cmd, cwd] = line.split('\t');
-      if (cmd !== 'claude') continue;
       const terminalId = terminalIdFromTmuxSession(session);
-      if (terminalId) found.push({ terminalId, cwd, tmuxSession: session });
+      if (terminalId) all.push({ terminalId, cwd, tmuxSession: session, cmd });
     }
-    paneCache = { at: Date.now(), panes: found };
-    return found;
+    paneCache = { at: Date.now(), all, panes: all.filter(p => p.cmd === 'claude') };
+    return all;
   } catch (e) {
-    paneCache = { at: Date.now(), panes: [] };
+    paneCache = { at: Date.now(), all: [], panes: [] };
     return [];
   }
+}
+
+/** Panes currently running Claude Code. */
+function listClaudePanes() {
+  listPanes();
+  return paneCache.panes;
 }
 
 function registerFromHook({ terminalId, transcriptPath, sessionId, cwd }) {
@@ -343,7 +348,7 @@ function describeWatchers() {
   return out;
 }
 
-module.exports = { readSuggestion, readPermission, readStatusLine,
+module.exports = { listPanes, readSuggestion, readPermission, readStatusLine,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };

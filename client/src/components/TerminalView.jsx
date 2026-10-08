@@ -1236,7 +1236,7 @@ function TerminalView() {
               const isDropTarget = dragOverWindowTab === win.id && draggingPanelForWindow;
               // Has recent activity (within 2s) on any panel of this window?
               const now = Date.now();
-              const hasActivity = winPanels.some(p => p.terminalId && activityMap[p.terminalId] && (now - activityMap[p.terminalId] < 2000));
+              const hasActivity = winPanels.some(p => { const cs = p.terminalId && claudeStatus[p.terminalId]; return cs && (cs.command || (cs.agents && cs.agents.length)); });
               const winBusy = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].busy);
               const winWaiting = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].waiting);
               const winUnseen = winPanels.filter(p => p.terminalId && unseen[p.terminalId]);
@@ -1371,7 +1371,7 @@ function TerminalView() {
                         <span style={{
                           width: 6, height: 6, borderRadius: '50%', backgroundColor: '#00ff00',
                           animation: 'muxpulse 1s ease-in-out infinite', marginRight: 2
-                        }} title={winBusy ? 'Claude está trabajando' : 'Activity in this window'} />
+                        }} title={winBusy ? 'Claude está trabajando' : 'Agentes en segundo plano o un programa en ejecución'} />
                       )}
                       <style>{`@keyframes muxpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
                       <span style={winUnseen.length > 0 && !isActive ? { color: '#ffa726' } : undefined}>{win.name}</span>
