@@ -243,40 +243,42 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
   // Watch container size changes + periodic re-measure on activation/mount.
   // Fixes distorted rendering when xterm.js gets out of sync with actual container size
   // (tab switches, panel activations, resize handle drags, etc.)
+  // Helpers shared by the size effects below. Both leave a hidden pane alone.
+  const dispatchResize = () => {
+    try {
+      // A hidden pane must stay quiet: tmux sizes a session to whichever
+      // client spoke last, and a hidden pane on the desktop re-fitting
+      // itself was overriding the size the phone had just asked for.
+      const el = iframeRef.current;
+      if (!el || getComputedStyle(el).visibility === 'hidden') return;
+      const w = el.contentWindow;
+      if (w) {
+        w.dispatchEvent(new Event('resize'));
+        if (w.term && typeof w.term.fit === 'function') w.term.fit();
+      }
+    } catch (e) {}
+  };
+  // Re-fitting is not enough when another tmux client (the phone) sized
+  // the window meanwhile: xterm only tells ttyd its size when its own
+  // cols/rows change, and here they have not. Shrink by a column and fit
+  // back, so the size goes out again and tmux, on window-size latest,
+  // follows this pane.
+  const resendSize = () => {
+    try {
+      const el = iframeRef.current;
+      if (!el || getComputedStyle(el).visibility === 'hidden') return;
+      const w = el.contentWindow;
+      const t = w && w.term;
+      if (!t || typeof t.resize !== 'function' || !(t.cols > 2)) return;
+      t.resize(t.cols - 1, t.rows);
+      setTimeout(() => {
+        try { if (typeof t.fit === 'function') t.fit(); else w.dispatchEvent(new Event('resize')); } catch (e) {}
+      }, 30);
+    } catch (e) {}
+  };
+
   useEffect(() => {
     if (!iframeRef.current) return;
-    const dispatchResize = () => {
-      try {
-        // A hidden pane must stay quiet: tmux sizes a session to whichever
-        // client spoke last, and a hidden pane on the desktop re-fitting
-        // itself was overriding the size the phone had just asked for.
-        const el = iframeRef.current;
-        if (!el || getComputedStyle(el).visibility === 'hidden') return;
-        const w = el.contentWindow;
-        if (w) {
-          w.dispatchEvent(new Event('resize'));
-          if (w.term && typeof w.term.fit === 'function') w.term.fit();
-        }
-      } catch (e) {}
-    };
-    // Re-fitting is not enough when another tmux client (the phone) sized
-    // the window meanwhile: xterm only tells ttyd its size when its own
-    // cols/rows change, and here they have not. Shrink by a column and fit
-    // back, so the size goes out again and tmux, on window-size latest,
-    // follows this pane.
-    const resendSize = () => {
-      try {
-        const el = iframeRef.current;
-        if (!el || getComputedStyle(el).visibility === 'hidden') return;
-        const w = el.contentWindow;
-        const t = w && w.term;
-        if (!t || typeof t.resize !== 'function' || !(t.cols > 2)) return;
-        t.resize(t.cols - 1, t.rows);
-        setTimeout(() => {
-          try { if (typeof t.fit === 'function') t.fit(); else w.dispatchEvent(new Event('resize')); } catch (e) {}
-        }, 30);
-      } catch (e) {}
-    };
     let debounceTimer = null;
     const schedule = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -314,6 +316,17 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
     };
   }, [iframeReady, isActive, hidden]);
 
+
+  // Waking the notebook: every ttyd iframe reconnects, the browser window
+  // may still be regaining its geometry (an external display coming back),
+  // and nothing above fires for a pane that was neither activated nor
+  // under the chat. Two passes, late enough for ttyd to be back, on every
+  // visible pane.
+  useEffect(() => {
+    if (!iframeReady || hidden) return;
+    const timers = [1500, 4000].map(d => setTimeout(() => { dispatchResize(); setTimeout(resendSize, 200); }, d));
+    return () => timers.forEach(clearTimeout);
+  }, [becameVisible, isReconnected]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const getToken = () => {
     try { return localStorage.getItem('token') || ''; } catch (e) { return ''; }
