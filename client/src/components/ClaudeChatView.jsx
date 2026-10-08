@@ -72,7 +72,9 @@ import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpe
 function inline(text, keyBase) {
   // Code first so emphasis inside a span of code is left alone.
   const out = [];
-  const re = /(`[^`]+`|\[[^\]]+\]\([^)\s]+\)|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*\n]+\*)/g;
+  // A bare https:// address is a link too: the terminal makes those
+  // clickable, and a reply that cites a page should not lose that here.
+  const re = /(`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>"'`\]\)]+|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*\n]+\*)/g;
   let last = 0, m, i = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
@@ -80,6 +82,11 @@ function inline(text, keyBase) {
     const k = `${keyBase}-i${i++}`;
     if (t.startsWith('`')) {
       out.push(<code key={k} style={{ background: '#222', padding: '1px 4px', borderRadius: 3, fontFamily: '"Fira Code", monospace', fontSize: '0.92em', color: '#7ddc7d' }}>{t.slice(1, -1)}</code>);
+    } else if (/^https?:\/\//.test(t)) {
+      // Trailing punctuation belongs to the sentence, not the address.
+      const mm = t.match(/^(.*?)([.,;:!?]*)$/);
+      out.push(<a key={k} href={mm[1]} target="_blank" rel="noreferrer" style={{ color: '#4da6ff', wordBreak: 'break-all' }}>{mm[1]}</a>);
+      if (mm[2]) out.push(mm[2]);
     } else if (t.startsWith('[')) {
       const cut = t.indexOf('](');
       const label = t.slice(1, cut), href = t.slice(cut + 2, -1);
