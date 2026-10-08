@@ -419,8 +419,8 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
     return () => clearTimeout(t);
   }, [isActive, waiting]);
 
-  const send = async () => {
-    const text = draft.trim();
+  const send = async (given) => {
+    const text = (typeof given === 'string' ? given : draft).trim();
     if (!text || sending || waiting) return;
     setSending(true);
     setSendError('');
@@ -433,7 +433,7 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.status !== 'ok') setSendError(d.message || 'No se pudo enviar');
-      else { setDraft(''); if (onSent) onSent(); }
+      else { if (typeof given !== 'string') setDraft(''); if (onSent) onSent(); }
     } catch (e) {
       setSendError('Error de red al enviar');
     }
@@ -445,10 +445,11 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
       {sendError && <Box sx={{ color: '#ff8080', fontSize: '11px', mb: 0.5 }}>{sendError}</Box>}
       {suggestion && !draft && !waiting && (
         // The same suggestion Claude Code shows dimmed in the terminal. Tab or
-        // a click puts it in the box to edit or send.
+        // a click puts it in the box to edit; the button at the end sends it
+        // as it is, in one step.
         <Box
           onClick={useSuggestion}
-          title="Sugerencia de Claude Code · Tab para usarla"
+          title="Sugerencia de Claude Code · Tab para editarla"
           sx={{
             mb: 0.75, px: 1, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '12px',
             color: '#9a9a9a', backgroundColor: 'rgba(255,255,255,0.04)', border: '1px dashed #3a3a3a',
@@ -457,7 +458,18 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
           }}
         >
           <Box component="span" sx={{ fontSize: '9px', color: '#666', border: '1px solid #444', borderRadius: '3px', px: '4px', flexShrink: 0 }}>Tab</Box>
-          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{suggestion}</Box>
+          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{suggestion}</Box>
+          <Box
+            component="button"
+            onClick={(e) => { e.stopPropagation(); send(suggestion); }}
+            disabled={sending}
+            title="Enviar la sugerencia tal cual"
+            sx={{
+              flexShrink: 0, fontSize: '11px', px: 1, py: '2px', borderRadius: '3px', cursor: 'pointer',
+              color: '#0a0', backgroundColor: 'rgba(0,170,85,0.12)', border: '1px solid #2e6b45', fontFamily: 'inherit',
+              '&:hover': { backgroundColor: 'rgba(0,170,85,0.25)', color: '#9f9' }, '&:disabled': { opacity: 0.5, cursor: 'default' }
+            }}
+          >Enviar ▶</Box>
         </Box>
       )}
       <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
