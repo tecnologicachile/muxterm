@@ -42,7 +42,16 @@ case "$1" in
             print_color "Error: MuxTerm installation not found" "$RED"
             exit 1
         fi
-        
+
+        # A packaged install (releases/ + current) updates itself from the
+        # signed manifest; there is no update.sh to run.
+        if [ -L "$MUXTERM_DIR/current" ]; then
+            print_color "Packaged install: MuxTerm checks for signed updates on its own." "$GREEN"
+            print_color "To apply one now, use Settings in the web interface (admin), or wait for the next check." "$YELLOW"
+            print_color "Current: $(readlink "$MUXTERM_DIR/current" | sed 's|releases/||')" "$BLUE"
+            exit 0
+        fi
+
         if [ -f "$MUXTERM_DIR/update.sh" ]; then
             cd "$MUXTERM_DIR"
             

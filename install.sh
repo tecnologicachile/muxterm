@@ -17,6 +17,13 @@ IS_ROOT=false
 USE_SUDO=""
 NON_INTERACTIVE=false
 MINIMAL_INSTALL=false
+# Packaged install (releases/<version> + current) when a signed package is
+# published; a git checkout otherwise. See docs/design/actualizaciones.md.
+PKG_MODE=false
+INSTALL_HOME=""
+SERVICE_USER=""
+RELEASE_PUBKEY='release@muxterm ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFuJHaCdZjoUDZm+YcDH45YpvGrEVhtuY1b1LktyjIHx'
+MANIFEST_URL=${MUXTERM_UPDATE_URL:-https://github.com/tecnologicachile/muxterm/releases/latest/download/stable.json}
 AUTO_DETECTED_MINIMAL=false
 IS_DOCKER=false
 IS_LXC=false
@@ -359,29 +366,81 @@ install_nodejs() {
     esac
 }
 
+# Where MuxTerm lives: /opt/muxterm for root, ~/muxterm for a user,
+# MUXTERM_DIR to override. The same for a packaged install and a checkout.
+resolve_install_home() {
+    if [ -n "$MUXTERM_DIR" ]; then INSTALL_HOME=$MUXTERM_DIR
+    elif [ "$EUID" -eq 0 ] || [ "$USER" = "root" ]; then INSTALL_HOME=/opt/muxterm
+    else INSTALL_HOME="$HOME/muxterm"; fi
+    [[ "$INSTALL_HOME" == /mnt/* ]] && INSTALL_HOME="$HOME/muxterm"   # WSL: not the Windows filesystem
+    $USE_SUDO mkdir -p "$INSTALL_HOME"
+    cd "$INSTALL_HOME"
+    echo -e "${GREEN}Install directory: $INSTALL_HOME${NC}"
+}
+
+# The account the service runs as. A user installing for themselves gets
+# their own shells; root gets a dedicated \`muxterm\` account (MUXTERM_USER
+# to choose another, MUXTERM_USER=root to keep root shells, as before).
+create_service_user() {
+    if [ "$EUID" -ne 0 ] && [ "$USER" != "root" ]; then SERVICE_USER=$(whoami); return; fi
+    SERVICE_USER=${MUXTERM_USER:-muxterm}
+    if [ "$SERVICE_USER" != "root" ] && ! id "$SERVICE_USER" >/dev/null 2>&1; then
+        useradd --create-home --shell /bin/bash --comment "MuxTerm service" "$SERVICE_USER"
+        echo -e "${GREEN}Created service account '$SERVICE_USER' (shells in the browser run as this user)${NC}"
+    fi
+}
+
+# The latest signed package for this machine, from the channel manifest.
+# Returns 1 when there is none (no release yet, no package for this
+# architecture or Node), and the installer falls back to a git checkout.
+fetch_release_package() {
+    echo -e "${BLUE}Looking for a published package...${NC}"
+    local TMP; TMP=$(mktemp -d)
+    local ARCH; case "$(uname -m)" in x86_64) ARCH=linux-x64;; aarch64|arm64) ARCH=linux-arm64;; *) rm -rf "$TMP"; return 1;; esac
+    if ! curl -fsSL --max-time 30 "$MANIFEST_URL" -o "$TMP/manifest.json" || ! curl -fsSL --max-time 30 "$MANIFEST_URL.sig" -o "$TMP/manifest.json.sig"; then
+        echo -e "${YELLOW}No package manifest reachable; installing from source${NC}"; rm -rf "$TMP"; return 1
+    fi
+    printf '%s\n' "$RELEASE_PUBKEY" > "$TMP/allowed_signers"
+    if ! ssh-keygen -Y verify -f "$TMP/allowed_signers" -I release@muxterm -n muxterm-release -s "$TMP/manifest.json.sig" < "$TMP/manifest.json" >/dev/null 2>&1; then
+        echo -e "${RED}The package manifest's signature does not verify; installing from source${NC}"; rm -rf "$TMP"; return 1
+    fi
+    local V URL SHA SIG NODE_WANT
+    V=$(node -p "require('$TMP/manifest.json').version")
+    URL=$(node -p "(require('$TMP/manifest.json').assets['$ARCH']||{}).url||''")
+    SHA=$(node -p "(require('$TMP/manifest.json').assets['$ARCH']||{}).sha256||''")
+    SIG=$(node -p "(require('$TMP/manifest.json').assets['$ARCH']||{}).sig||''")
+    NODE_WANT=$(node -p "String(require('$TMP/manifest.json').node||'')")
+    if [ -z "$URL" ]; then echo -e "${YELLOW}No package for $ARCH in release $V; installing from source${NC}"; rm -rf "$TMP"; return 1; fi
+    if [ -n "$NODE_WANT" ] && [ "$NODE_WANT" != "$(node -p 'process.versions.node.split(".")[0]')" ]; then
+        echo -e "${YELLOW}Package built for Node $NODE_WANT, this machine has Node $(node --version); installing from source${NC}"; rm -rf "$TMP"; return 1
+    fi
+    echo -e "${BLUE}Downloading MuxTerm $V ($ARCH)...${NC}"
+    if ! curl -fsSL --max-time 900 "$URL" -o "$TMP/pkg.tar.gz" || ! curl -fsSL --max-time 60 "$SIG" -o "$TMP/pkg.tar.gz.sig"; then
+        echo -e "${RED}Download failed${NC}"; rm -rf "$TMP"; return 1
+    fi
+    if [ "$(sha256sum "$TMP/pkg.tar.gz" | cut -d' ' -f1)" != "$SHA" ]; then echo -e "${RED}Package checksum mismatch${NC}"; rm -rf "$TMP"; return 1; fi
+    if ! ssh-keygen -Y verify -f "$TMP/allowed_signers" -I release@muxterm -n muxterm-release -s "$TMP/pkg.tar.gz.sig" < "$TMP/pkg.tar.gz" >/dev/null 2>&1; then
+        echo -e "${RED}Package signature does not verify${NC}"; rm -rf "$TMP"; return 1
+    fi
+    mkdir -p "$INSTALL_HOME/releases/$V.tmp" "$INSTALL_HOME/bin"
+    tar -xzf "$TMP/pkg.tar.gz" -C "$INSTALL_HOME/releases/$V.tmp" --strip-components=1
+    rm -rf "$INSTALL_HOME/releases/$V"; mv "$INSTALL_HOME/releases/$V.tmp" "$INSTALL_HOME/releases/$V"
+    ln -sfn "releases/$V" "$INSTALL_HOME/current.new" && mv -Tf "$INSTALL_HOME/current.new" "$INSTALL_HOME/current"
+    cp "$INSTALL_HOME/releases/$V/scripts/boot-guard.sh" "$INSTALL_HOME/bin/boot-guard.sh" && chmod +x "$INSTALL_HOME/bin/boot-guard.sh"
+    mkdir -p "$INSTALL_HOME/data" "$INSTALL_HOME/logs"
+    rm -rf "$TMP"
+    PKG_MODE=true
+    echo -e "${GREEN}✓ MuxTerm $V installed in $INSTALL_HOME/releases/$V (verified signature)${NC}"
+}
+
 clone_repository() {
     echo -e "${BLUE}Cloning MuxTerm repository...${NC}"
-
-    # Where MuxTerm lives. It used to be wherever the installer was run from,
-    # which for `curl | bash` as root meant /root/muxterm. Root installs go
-    # to /opt/muxterm (what the update scripts expect); a user's install to
-    # their home. MUXTERM_DIR overrides both.
-    local BASE
-    if [ -n "$MUXTERM_DIR" ]; then
-        BASE=$(dirname "$MUXTERM_DIR")
-    elif [ "$EUID" -eq 0 ] || [ "$USER" = "root" ]; then
-        BASE=/opt
-    else
-        BASE="$HOME"
-    fi
-    # Windows filesystem under WSL has permission issues
-    [[ "$BASE" == /mnt/* ]] && BASE="$HOME"
-    $USE_SUDO mkdir -p "$BASE"
+    local BASE NAME
+    BASE=$(dirname "$INSTALL_HOME"); NAME=$(basename "$INSTALL_HOME")
     cd "$BASE"
-    echo -e "${GREEN}Install directory: $BASE/muxterm${NC}"
 
-    if [ -d "muxterm" ]; then
-        echo -e "${YELLOW}Directory 'muxterm' already exists${NC}"
+    if [ -d "$NAME/.git" ]; then
+        echo -e "${YELLOW}Checkout '$INSTALL_HOME' already exists${NC}"
         REPLY="n"
         # Only ask when a person is there to answer; piped in, keep and update.
         if [ -t 0 ] || [ -r /dev/tty ]; then
@@ -389,13 +448,15 @@ clone_repository() {
             echo
         fi
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            rm -rf muxterm
+            rm -rf "$NAME"
         else
-            cd muxterm
+            cd "$NAME"
             git pull
             return
         fi
     fi
+    # resolve_install_home created the (empty) directory; git wants it absent
+    [ -d "$NAME" ] && [ -z "$(ls -A "$NAME")" ] && rmdir "$NAME"
 
     # Check if git is available
     if ! command -v git &> /dev/null; then
@@ -405,8 +466,8 @@ clone_repository() {
     fi
     
     # Clone with filemode disabled for WSL compatibility
-    git clone -c core.filemode=false https://github.com/tecnologicachile/muxterm.git
-    cd muxterm
+    git clone -c core.filemode=false https://github.com/tecnologicachile/muxterm.git "$NAME"
+    cd "$NAME"
     
     # Ensure git config is set correctly for WSL
     git config core.filemode false 2>/dev/null || true
@@ -417,6 +478,7 @@ clone_repository() {
 # addresses; browsers warn once, and mkcert can replace it with a trusted one
 # (see README, "HTTPS Setup"). Skipped when a certificate is already there.
 ensure_certificate() {
+    cd "$INSTALL_HOME" 2>/dev/null || true
     if ls certs/*.pem >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Certificate already present in certs/${NC}"
         return
@@ -672,7 +734,7 @@ create_systemd_service() {
     fi
     
     # Get the actual installation directory
-    INSTALL_DIR=$(pwd)
+    INSTALL_DIR=${INSTALL_HOME:-$(pwd)}
     
     # Verify we're not in Windows filesystem
     if [[ "$INSTALL_DIR" == /mnt/* ]]; then
@@ -693,14 +755,25 @@ create_systemd_service() {
             $USE_SUDO systemctl disable muxterm 2>/dev/null || true
             $USE_SUDO rm -f /etc/systemd/system/muxterm.service
             $USE_SUDO systemctl daemon-reload
+        elif [ "$PKG_MODE" = true ] && ! grep -q "MUXTERM_HOME=" /etc/systemd/system/muxterm.service; then
+            echo -e "${YELLOW}Existing service points at a checkout; rewriting it for the packaged layout${NC}"
+            $USE_SUDO systemctl stop muxterm 2>/dev/null || true
         else
             echo -e "${YELLOW}Service already exists${NC}"
             return
         fi
     fi
     
-    USER=$(whoami)
-    
+    local SVC_USER=${SERVICE_USER:-$(whoami)}
+    local WORKDIR=$INSTALL_DIR EXTRA=""
+    if [ "$PKG_MODE" = true ]; then
+        WORKDIR="$INSTALL_DIR/current"
+        EXTRA="Environment=MUXTERM_HOME=$INSTALL_DIR
+ExecStartPre=-$INSTALL_DIR/bin/boot-guard.sh $INSTALL_DIR"
+    fi
+    $USE_SUDO mkdir -p "$INSTALL_DIR/logs" "$INSTALL_DIR/data"
+    [ "$SVC_USER" != "$(whoami)" ] && $USE_SUDO chown -R "$SVC_USER" "$INSTALL_DIR"
+
     $USE_SUDO tee /etc/systemd/system/muxterm.service > /dev/null << EOF
 [Unit]
 Description=MuxTerm - Web-based Terminal Multiplexer
@@ -708,8 +781,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=$USER
-WorkingDirectory=$INSTALL_DIR
+User=$SVC_USER
+WorkingDirectory=$WORKDIR
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+$EXTRA
 ExecStart=/usr/bin/node server/index.js
 Restart=always
 RestartSec=3
@@ -880,7 +956,9 @@ start_service() {
     # Start manually if systemd failed
     if [ "$STARTED_WITH_SYSTEMD" = false ]; then
         echo -e "${BLUE}Starting MuxTerm in background...${NC}"
-        nohup npm start > logs/muxterm.log 2>&1 &
+        cd "$INSTALL_DIR"
+        if [ "$PKG_MODE" = true ]; then MUXTERM_HOME=$INSTALL_DIR NODE_ENV=production nohup node current/server/index.js > logs/muxterm.log 2>&1 &
+        else nohup npm start > logs/muxterm.log 2>&1 & fi
         MUXTERM_PID=$!
         sleep 3
         
@@ -1065,8 +1143,12 @@ main() {
     install_ttyd
     install_guacd
     install_bitwarden_cli
-    clone_repository
-    setup_muxterm
+    resolve_install_home
+    create_service_user
+    if ! fetch_release_package; then
+        clone_repository
+        setup_muxterm
+    fi
     ensure_certificate
     create_guacd_service
     create_systemd_service
