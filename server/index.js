@@ -1347,8 +1347,10 @@ server.listen(PORT, async () => {
     const hashedPassword = bcrypt.hashSync('admin', 10);
     const user = database.createUser('admin', hashedPassword);
     if (user) {
-      // Mark as must change password on first login
-      try { database.db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(user.id); } catch (e) {}
+      // Mark as must change password on first login. The "first user is
+      // admin" rule in database.js ran before this user existed, so grant
+      // it here or a fresh install has no administrator.
+      try { database.db.prepare('UPDATE users SET must_change_password = 1, is_admin = 1 WHERE id = ?').run(user.id); } catch (e) {}
       logger.info('Default admin user created: username=admin, password=admin');
       logger.info('⚠️  Password change required on first login');
     }

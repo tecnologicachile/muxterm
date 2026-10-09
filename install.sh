@@ -258,8 +258,8 @@ Description=Guacamole proxy daemon (guacd)
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=/usr/local/sbin/guacd -b 127.0.0.1 -l 4822 -L info
+Type=simple
+ExecStart=/usr/local/sbin/guacd -f -b 127.0.0.1 -l 4822 -L info
 Restart=on-failure
 RestartSec=5
 
@@ -891,9 +891,9 @@ print_success() {
     fi
     
     echo
-    echo "Default credentials:"
-    echo -e "  Username: ${YELLOW}test${NC}"
-    echo -e "  Password: ${YELLOW}test123${NC}"
+    echo "Default credentials (you will be asked to change the password on first login):"
+    echo -e "  Username: ${YELLOW}admin${NC}"
+    echo -e "  Password: ${YELLOW}admin${NC}"
     echo
     echo "Useful commands:"
     if [ "$MUXTERM_RUNNING" = true ]; then
