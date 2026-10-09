@@ -164,7 +164,7 @@ install_dependencies() {
     case $OS in
         ubuntu|debian)
             $USE_SUDO apt-get update
-            $USE_SUDO apt-get install -y curl git tmux build-essential python3 locales sshpass unzip \
+            $USE_SUDO apt-get install -y curl git tmux build-essential python3 locales sshpass unzip openssl \
                 libcairo2-dev libpng-dev libpango1.0-dev libssh2-1-dev libwebsockets-dev libwebp-dev \
                 libvncserver-dev libpulse-dev libavcodec-dev libswscale-dev libavutil-dev \
                 autoconf automake libtool pkg-config
@@ -361,19 +361,33 @@ install_nodejs() {
 
 clone_repository() {
     echo -e "${BLUE}Cloning MuxTerm repository...${NC}"
-    
-    # Check if we're in Windows filesystem (WSL)
-    if [[ "$PWD" == /mnt/* ]]; then
-        echo -e "${YELLOW}Warning: You're in Windows filesystem (/mnt/*)${NC}"
-        echo -e "${YELLOW}WSL has permission issues here. Moving to Linux home directory...${NC}"
-        cd ~
-        echo -e "${GREEN}Changed to: $PWD${NC}"
+
+    # Where MuxTerm lives. It used to be wherever the installer was run from,
+    # which for `curl | bash` as root meant /root/muxterm. Root installs go
+    # to /opt/muxterm (what the update scripts expect); a user's install to
+    # their home. MUXTERM_DIR overrides both.
+    local BASE
+    if [ -n "$MUXTERM_DIR" ]; then
+        BASE=$(dirname "$MUXTERM_DIR")
+    elif [ "$EUID" -eq 0 ] || [ "$USER" = "root" ]; then
+        BASE=/opt
+    else
+        BASE="$HOME"
     fi
-    
+    # Windows filesystem under WSL has permission issues
+    [[ "$BASE" == /mnt/* ]] && BASE="$HOME"
+    $USE_SUDO mkdir -p "$BASE"
+    cd "$BASE"
+    echo -e "${GREEN}Install directory: $BASE/muxterm${NC}"
+
     if [ -d "muxterm" ]; then
         echo -e "${YELLOW}Directory 'muxterm' already exists${NC}"
-        read -p "Remove and re-clone? (y/N) " -n 1 -r
-        echo
+        REPLY="n"
+        # Only ask when a person is there to answer; piped in, keep and update.
+        if [ -t 0 ] || [ -r /dev/tty ]; then
+            read -p "Remove and re-clone? (y/N) " -n 1 -r < /dev/tty || REPLY="n"
+            echo
+        fi
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             rm -rf muxterm
         else
@@ -382,7 +396,7 @@ clone_repository() {
             return
         fi
     fi
-    
+
     # Check if git is available
     if ! command -v git &> /dev/null; then
         echo -e "${RED}Error: git is not installed${NC}"
@@ -396,6 +410,36 @@ clone_repository() {
     
     # Ensure git config is set correctly for WSL
     git config core.filemode false 2>/dev/null || true
+}
+
+# HTTPS from the first run: the phone, the PWA and clipboard access all need
+# a secure context. A self-signed certificate covering this host's names and
+# addresses; browsers warn once, and mkcert can replace it with a trusted one
+# (see README, "HTTPS Setup"). Skipped when a certificate is already there.
+ensure_certificate() {
+    if ls certs/*.pem >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Certificate already present in certs/${NC}"
+        return
+    fi
+    if ! command -v openssl >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ openssl not found: MuxTerm will run over plain HTTP${NC}"
+        return
+    fi
+    echo -e "${BLUE}Generating a self-signed HTTPS certificate...${NC}"
+    local HOST SAN
+    HOST=$(hostname -s 2>/dev/null || echo muxterm)
+    SAN="DNS:localhost,DNS:$HOST,IP:127.0.0.1"
+    for ip in $(hostname -I 2>/dev/null); do SAN="$SAN,IP:$ip"; done
+    mkdir -p certs
+    if openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=$HOST" \
+        -addext "subjectAltName=$SAN" \
+        -keyout certs/muxterm-key.pem -out certs/muxterm.pem >/dev/null 2>&1; then
+        chmod 600 certs/muxterm-key.pem
+        echo -e "${GREEN}✓ Certificate created (self-signed; browsers will ask you to trust it once)${NC}"
+    else
+        rm -rf certs
+        echo -e "${YELLOW}⚠ Could not create a certificate: MuxTerm will run over plain HTTP${NC}"
+    fi
 }
 
 print_status() {
@@ -876,16 +920,19 @@ print_success() {
     if [ "$MUXTERM_RUNNING" = true ]; then
         echo -e "${BLUE}▶ MuxTerm is running!${NC}"
         echo
+        SCHEME=http
+        ls certs/*.pem >/dev/null 2>&1 && SCHEME=https
         echo "Access MuxTerm at:"
-        echo -e "  ${GREEN}http://localhost:3002${NC}"
+        echo -e "  ${GREEN}$SCHEME://localhost:3002${NC}"
         if [ "$LOCAL_IP" != "localhost" ]; then
-            echo -e "  ${GREEN}http://$LOCAL_IP:3002${NC}"
+            echo -e "  ${GREEN}$SCHEME://$LOCAL_IP:3002${NC}"
         fi
+        [ "$SCHEME" = https ] && echo -e "  ${YELLOW}(self-signed certificate: accept the browser warning once)${NC}"
     else
         echo -e "${YELLOW}⚠ MuxTerm is installed but NOT running${NC}"
         echo
         echo "To start MuxTerm:"
-        echo -e "  ${GREEN}cd ~/muxterm && npm start${NC}"
+        echo -e "  ${GREEN}cd $INSTALL_DIR && npm start${NC}"
         echo "  OR"
         echo -e "  ${GREEN}sudo systemctl start muxterm${NC}"
     fi
@@ -903,7 +950,7 @@ print_success() {
         echo "  Logs:    journalctl -u muxterm -f"
         echo "  Disable: sudo systemctl disable muxterm"
     else
-        echo "  Start:   cd ~/muxterm && npm start"
+        echo "  Start:   cd $INSTALL_DIR && npm start"
         echo "  Service: sudo systemctl start muxterm"
     fi
     # Check if muxterm is in PATH
@@ -1009,6 +1056,7 @@ main() {
     install_bitwarden_cli
     clone_repository
     setup_muxterm
+    ensure_certificate
     create_guacd_service
     create_systemd_service
     
