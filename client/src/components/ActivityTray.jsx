@@ -48,7 +48,7 @@ const dayLabel = (ts) => {
 
 const TOUCH = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(hover: none)').matches;
 
-function Entry({ e, name, where, onGo, onSeen, highlight }) {
+function Entry({ e, name, where, onGo, onSeen, highlight, compact }) {
   const unseen = isUnseen(e);
   return (
     <Box
@@ -81,9 +81,9 @@ function Entry({ e, name, where, onGo, onSeen, highlight }) {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'baseline' }}>
           <Typography sx={{ fontSize: 12, color: unseen ? '#eee' : '#aaa', fontWeight: unseen ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {name}
-            {where && <Box component="span" sx={{ color: '#666', fontWeight: 400, ml: 0.5, fontSize: 11 }}>· {where}</Box>}
-            <Box component="span" sx={{ color: KIND_COLOR[e.kind] || '#777', fontWeight: 400, ml: 0.75, fontSize: 11 }}>{label(e)}</Box>
+            {!compact && name}
+            {!compact && where && <Box component="span" sx={{ color: '#666', fontWeight: 400, ml: 0.5, fontSize: 11 }}>· {where}</Box>}
+            <Box component="span" sx={{ color: KIND_COLOR[e.kind] || '#777', fontWeight: compact && unseen ? 600 : 400, ml: compact ? 0 : 0.75, fontSize: compact ? 12 : 11 }}>{label(e)}</Box>
           </Typography>
           <Typography sx={{ fontSize: 11, color: '#666', flexShrink: 0 }} title={new Date(e.ts).toLocaleString()}>
             {highlight ? ago(e.ts) : hhmm(e.ts)}
@@ -100,8 +100,59 @@ function Entry({ e, name, where, onGo, onSeen, highlight }) {
   );
 }
 
+/**
+ * One session's recent events. Unseen ones are listed; a run of unseen
+ * "done" shows the latest in full and folds the rest, since the last reply
+ * usually carries the real state; seen ones hide behind "anteriores".
+ */
+function SessionCard({ id, items, name, where, onGo, onSeen, onGoSession }) {
+  const [showSeen, setShowSeen] = useState(false);
+  const [showRun, setShowRun] = useState(false);
+  const unseen = items.filter(isUnseen);
+  const seen = items.filter(e => !isUnseen(e));
+  const latest = items[0];
+  // Fold a run of unseen "done": the first (newest) stays, the rest collapse.
+  let head = unseen, folded = [];
+  if (unseen.length > 2 && unseen.every(e => e.kind === 'done')) { head = unseen.slice(0, 1); folded = unseen.slice(1); }
+  return (
+    <Box sx={{ borderBottom: '1px solid #262626' }}>
+      <Box
+        onClick={() => onGoSession(id)}
+        sx={{ display: 'flex', alignItems: 'baseline', gap: 1, px: 1.5, pt: 1, pb: 0.5, cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(255,255,255,0.04)' } }}
+        title="Ir al panel y marcar la sesión como vista"
+      >
+        <Typography sx={{ fontSize: 13, fontWeight: 600, color: unseen.length ? '#eee' : '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+          {name}{where ? <Box component="span" sx={{ color: '#666', fontWeight: 400, ml: 0.5, fontSize: 11 }}>· {where}</Box> : null}
+        </Typography>
+        {unseen.length > 0 && <Box sx={{ fontSize: 10, color: '#000', backgroundColor: '#ffa726', borderRadius: 8, px: '6px', lineHeight: '16px', fontWeight: 700, flexShrink: 0 }}>{unseen.length}</Box>}
+        <Typography sx={{ fontSize: 11, color: '#666', flexShrink: 0 }} title={new Date(latest.ts).toLocaleString()}>{ago(latest.ts)}</Typography>
+      </Box>
+      {head.map(e => <Entry key={e.id} e={e} compact onGo={onGo} onSeen={onSeen} />)}
+      {folded.length > 0 && (
+        <Box>
+          <Box onClick={() => setShowRun(v => !v)} sx={{ fontSize: 11, color: '#8ab4d8', px: 1.5, py: 0.5, cursor: 'pointer', '&:hover': { color: '#cde' } }}>
+            {showRun ? '▾' : '▸'} {folded.length} {folded.length === 1 ? 'turno anterior' : 'turnos anteriores'} sin ver
+          </Box>
+          {showRun && folded.map(e => <Entry key={e.id} e={e} compact onGo={onGo} onSeen={onSeen} />)}
+        </Box>
+      )}
+      {seen.length > 0 && (
+        <Box>
+          <Box onClick={() => setShowSeen(v => !v)} sx={{ fontSize: 11, color: '#666', px: 1.5, py: 0.5, cursor: 'pointer', '&:hover': { color: '#aaa' } }}>
+            {showSeen ? '▾' : '▸'} {seen.length} {seen.length === 1 ? 'anterior' : 'anteriores'}
+          </Box>
+          {showSeen && seen.slice(0, 20).map(e => <Entry key={e.id} e={e} compact onGo={onGo} onSeen={onSeen} />)}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 export default function ActivityTray({ open, onClose, events, pending, unseenCount, nameOf, whereOf, onGoTo, markSeen, markAllSeen, isMobile }) {
   const [onlyPending, setOnlyPending] = useState(false);
+  // "Por sesión" (one card per session) or "por hora" (the flat chronology).
+  const [view, setView] = useState(() => { try { return localStorage.getItem('muxterm-tray-view') || 'session'; } catch (e) { return 'session'; } });
+  const switchView = (v) => { setView(v); try { localStorage.setItem('muxterm-tray-view', v); } catch (e) {} };
   // One chip per session that has events, newest activity first.
   const [session, setSession] = useState(null);
   const sessions = useMemo(() => {
@@ -126,6 +177,15 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
     }
     return out;
   }, [events, onlyPending, session]);
+  const cards = useMemo(() => {
+    const list = events.filter(e => !isOpen(e) && sessionOk(e) && e.kind !== 'prompt');
+    const by = new Map();
+    for (const e of list) { if (!by.has(e.terminal_id)) by.set(e.terminal_id, []); by.get(e.terminal_id).push(e); }
+    // Sessions with something unseen first, then by most recent event.
+    return [...by.entries()].map(([id, items]) => ({ id, items, unseen: items.filter(isUnseen).length }))
+      .filter(c => !onlyPending || c.unseen > 0)
+      .sort((a, b) => (b.unseen > 0) - (a.unseen > 0) || (b.items[0].ts < a.items[0].ts ? -1 : 1));
+  }, [events, onlyPending, session]);
 
   if (!open) return null;
 
@@ -136,6 +196,7 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
     onClose();
   };
   const seenOne = (e) => markSeen({ ids: [e.id] });
+  const goSession = (terminalId) => { markSeen({ terminalId }); onGoTo(terminalId); onClose(); };
 
   return (
     <Box sx={{
@@ -148,6 +209,11 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
         <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#ddd', flex: 1 }}>
           Actividad {unseenCount ? <Box component="span" sx={{ color: '#ffa726' }}>· {unseenCount} sin ver</Box> : null}
         </Typography>
+        <Box sx={{ display: 'flex', border: '1px solid #444', borderRadius: 1, overflow: 'hidden', fontSize: 11 }}>
+          {[['session', 'por sesión'], ['time', 'por hora']].map(([v, t]) => (
+            <Box key={v} onClick={() => switchView(v)} sx={{ px: 1, py: 0.25, cursor: 'pointer', color: view === v ? '#ddd' : '#777', backgroundColor: view === v ? 'rgba(255,255,255,0.1)' : 'transparent' }}>{t}</Box>
+          ))}
+        </Box>
         <Box onClick={() => setOnlyPending(v => !v)} sx={{
           fontSize: 11, px: 1, py: 0.25, borderRadius: 1, cursor: 'pointer', border: '1px solid',
           borderColor: onlyPending ? '#ffa726' : '#444', color: onlyPending ? '#ffa726' : '#888'
@@ -187,12 +253,15 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
             {shownPending.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} onSeen={seenOne} highlight />)}
           </Box>
         )}
-        {groups.length === 0 && (
+        {(view === 'session' ? cards.length === 0 : groups.length === 0) && (
           <Typography sx={{ fontSize: 12, color: '#666', px: 1.5, py: 3, textAlign: 'center' }}>
             {onlyPending ? 'Nada sin ver.' : session ? 'Sin actividad de esta sesión.' : 'Sin actividad todavía.'}
           </Typography>
         )}
-        {groups.map(g => (
+        {view === 'session' && cards.map(c => (
+          <SessionCard key={c.id} id={c.id} items={c.items} name={nameOf(c.id)} where={whereOf && whereOf(c.id)} onGo={go} onSeen={seenOne} onGoSession={goSession} />
+        ))}
+        {view === 'time' && groups.map(g => (
           <Box key={g.label}>
             <Typography sx={{ fontSize: 10, color: '#666', letterSpacing: 1, textTransform: 'uppercase', px: 1.5, pt: 1.25, pb: 0.5 }}>{g.label}</Typography>
             {g.items.map(e => <Entry key={e.id} e={e} name={nameOf(e.terminal_id)} where={whereOf && whereOf(e.terminal_id)} onGo={go} onSeen={seenOne} />)}
