@@ -57,6 +57,18 @@ Or with Docker Compose:
 docker-compose up -d
 ```
 
+Inside an **unprivileged LXC** (Proxmox's default) recent Docker fails to start any container with `open sysctl net.ipv4.ip_unprivileged_port_start … permission denied`. Run MuxTerm on the host's network instead, which also saves mapping its ports:
+
+```yaml
+# docker-compose.override.yml
+services:
+  muxterm:
+    network_mode: host
+    ports: !reset []
+```
+
+Put a certificate in `./certs` (see [HTTPS Setup](#https-setup)) before starting, or the container serves plain HTTP.
+
 ### Manual Installation
 
 ```bash
