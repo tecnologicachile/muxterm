@@ -35,6 +35,9 @@ jobs:
         run: cd client && npm ci --no-audit --no-fund && npm run build
       - name: Package
         run: bash scripts/package-release.sh "${GITHUB_REF_NAME#v}" dist-release
+      - name: Client bundle on its own (what releases used to ship)
+        if: matrix.arch == 'x64'
+        run: tar -czf dist-release/client-dist.tar.gz -C client dist
       - uses: actions/upload-artifact@v4
         with:
           name: pkg-${{ matrix.arch }}
@@ -72,6 +75,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" --title "MuxTerm ${GITHUB_REF_NAME#v}" --generate-notes \
+          # Create the release unless it exists (a re-run, or someone made it by hand), then
+          # upload everything, replacing what is already there.
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --title "MuxTerm ${GITHUB_REF_NAME#v}" --generate-notes
+          gh release upload "${GITHUB_REF_NAME}" --clobber \
             dist-release/muxterm-*.tar.gz dist-release/muxterm-*.tar.gz.sig dist-release/muxterm-*.tar.gz.sha256 \
-            dist-release/stable.json dist-release/stable.json.sig dist-release/SHA256SUMS
+            dist-release/stable.json dist-release/stable.json.sig dist-release/SHA256SUMS dist-release/client-dist.tar.gz
