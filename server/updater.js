@@ -36,6 +36,39 @@ let status = { mode: 'git', state: 'idle' };
 let busy = false;
 
 const stateFile = () => path.join(paths.home, 'updater.json');
+// What the boot guard (home/bin/boot-guard.sh, see scripts/boot-guard.sh)
+// reads before every start: plain lines, no JSON, no node.
+const pendingFile = () => path.join(paths.home, 'pending');
+const failedFile = () => path.join(paths.home, 'failed');
+function writePending(p) { fs.writeFileSync(pendingFile(), `version=${p.version}\nprevious=${p.previous || ''}\nstarts=${p.starts || 0}\n`); }
+function readPending() {
+  try {
+    const out = {};
+    for (const line of fs.readFileSync(pendingFile(), 'utf8').split('\n')) { const i = line.indexOf('='); if (i > 0) out[line.slice(0, i)] = line.slice(i + 1); }
+    return out.version ? { version: out.version, previous: out.previous || null, starts: parseInt(out.starts, 10) || 0 } : null;
+  } catch (e) { return null; }
+}
+function clearPending() { fs.rmSync(pendingFile(), { force: true }); }
+// Keep the guard script in the install root, from the release about to run.
+function installGuard(releaseDir) {
+  const src = path.join(releaseDir, 'scripts', 'boot-guard.sh');
+  if (!fs.existsSync(src)) return;
+  const binDir = path.join(paths.home, 'bin');
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.copyFileSync(src, path.join(binDir, 'boot-guard.sh'));
+  fs.chmodSync(path.join(binDir, 'boot-guard.sh'), 0o755);
+}
+// Failures the guard recorded while no node was running, folded into the JSON state.
+function absorbGuardFailures() {
+  try {
+    const lines = fs.readFileSync(failedFile(), 'utf8').split('\n').filter(Boolean);
+    if (!lines.length) return;
+    const failed = { ...(readState().failed || {}) };
+    for (const l of lines) { const [v, ...rest] = l.split(' '); failed[v] = rest.join(' '); }
+    writeState({ failed, lastRollback: { version: lines[lines.length - 1].split(' ')[0], reason: 'boot guard', at: new Date().toISOString() } });
+    fs.rmSync(failedFile(), { force: true });
+  } catch (e) { /* none */ }
+}
 const readState = () => { try { return JSON.parse(fs.readFileSync(stateFile(), 'utf8')); } catch (e) { return {}; } };
 const writeState = (patch) => { const s = { ...readState(), ...patch }; fs.writeFileSync(stateFile(), JSON.stringify(s, null, 2)); return s; };
 
@@ -170,11 +203,13 @@ async function apply(m) {
     // Switch: a new symlink renamed over the old one, so there is never a
     // moment without `current`.
     const previous = fs.existsSync(paths.currentLink) ? path.basename(fs.readlinkSync(paths.currentLink)) : null;
+    installGuard(dir);
+    writePending({ version: v, previous, starts: 0 });
     const tmpLink = paths.currentLink + '.new';
     fs.rmSync(tmpLink, { force: true });
     fs.symlinkSync(path.join('releases', v), tmpLink);
     fs.renameSync(tmpLink, paths.currentLink);
-    writeState({ pending: { version: v, previous, since: new Date().toISOString(), starts: 0 } });
+    writeState({ pending: { version: v, previous, since: new Date().toISOString() } });
     status = { ...status, state: 'restarting' };
     emit('update-progress', { version: v, state: 'restarting' });
     logger.info(`[updater] ${v} in place (previous ${previous || 'none'}); restarting`);
@@ -212,6 +247,7 @@ function rollback(pending, reason) {
     fs.renameSync(tmpLink, paths.currentLink);
   }
   writeState({ pending: null, failed, lastRollback: { version: pending.version, reason, at: new Date().toISOString() } });
+  clearPending();
   restart();
 }
 
@@ -240,6 +276,7 @@ function confirmStart(port, isHttps) {
   if (pending.version !== current.version) {
     // We are the previous version, started after a rollback: nothing pending any more.
     writeState({ pending: null });
+    clearPending();
     return;
   }
   setTimeout(async () => {
@@ -253,6 +290,7 @@ function confirmStart(port, isHttps) {
       });
       if (!ok) return rollback(pending, 'health check failed');
       writeState({ pending: null, lastGood: current.version, appliedAt: new Date().toISOString() });
+      clearPending();
       logger.info(`[updater] ${current.version} is up and healthy`);
       emit('update-applied', { version: current.version, previous: pending.previous });
       prune();
@@ -284,13 +322,13 @@ function init(deps) {
     return;
   }
   status = { mode: 'package', state: 'idle' };
-  // A version that crashed before confirming health twice is not coming back.
+  absorbGuardFailures();
+  installGuard(paths.appRoot);
+  // Crashes before this point are the boot guard's business (it counts
+  // starts and switches back). From here: if health never gets confirmed,
+  // fall back ourselves.
   const st = readState();
   if (st.pending && st.pending.version === current.version) {
-    const starts = (st.pending.starts || 0) + 1;
-    if (starts > 2) return rollback(st.pending, `crashed ${starts - 1} times at start`);
-    writeState({ pending: { ...st.pending, starts } });
-    // If health never gets confirmed (the server hangs before listening), fall back.
     setTimeout(() => { const s = readState(); if (s.pending && s.pending.version === current.version) rollback(s.pending, 'no health within a minute'); }, HEALTH_GRACE_MS).unref();
   }
   const first = FIRST_CHECK_MS + Math.random() * 4 * FIRST_CHECK_MS;
