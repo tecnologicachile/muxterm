@@ -6,12 +6,20 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # A dry run: build, sign and verify exactly as for a tag, publish nothing.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (must match package.json)'
+        required: true
 
 permissions:
   contents: write
 
 env:
   NODE_VERSION: '24'
+  # The version under build: from the tag, or from the dry run's input.
+  VERSION: ${{ github.event_name == 'push' && github.ref_name || format('v{0}', inputs.version) }}
 
 jobs:
   build:
@@ -30,11 +38,11 @@ jobs:
       - name: Tag must match package.json
         run: |
           V=$(node -p "require('./package.json').version")
-          [ "v$V" = "${GITHUB_REF_NAME}" ] || { echo "package.json says $V, tag is ${GITHUB_REF_NAME}"; exit 1; }
+          [ "v$V" = "${VERSION}" ] || { echo "package.json says $V, building ${VERSION}"; exit 1; }
       - name: Build client
         run: cd client && npm ci --no-audit --no-fund && npm run build
       - name: Package
-        run: bash scripts/package-release.sh "${GITHUB_REF_NAME#v}" dist-release
+        run: bash scripts/package-release.sh "${VERSION#v}" dist-release
       - name: Client bundle on its own (what releases used to ship)
         if: matrix.arch == 'x64'
         run: tar -czf dist-release/client-dist.tar.gz -C client dist
@@ -63,7 +71,7 @@ jobs:
         run: |
           [ -n "$RELEASE_SIGNING_KEY" ] || { echo "RELEASE_SIGNING_KEY secret is not set"; exit 1; }
           umask 077; printf '%s\n' "$RELEASE_SIGNING_KEY" > /tmp/release_key
-          V="${GITHUB_REF_NAME#v}"
+          V="${VERSION#v}"
           bash scripts/sign-release.sh sign /tmp/release_key dist-release/muxterm-"$V"-linux-*.tar.gz
           bash scripts/make-manifest.sh "$V" dist-release stable
           bash scripts/sign-release.sh sign /tmp/release_key dist-release/stable.json
@@ -71,14 +79,20 @@ jobs:
           rm -f /tmp/release_key
       - name: Verify what we are about to publish
         run: bash scripts/sign-release.sh verify dist-release/muxterm-*.tar.gz dist-release/stable.json
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'push'
+        with:
+          name: release-dry-run
+          path: dist-release/*
       - name: Publish release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Create the release unless it exists (a re-run, or someone made it by hand), then
           # upload everything, replacing what is already there.
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
-            || gh release create "${GITHUB_REF_NAME}" --title "MuxTerm ${GITHUB_REF_NAME#v}" --generate-notes
-          gh release upload "${GITHUB_REF_NAME}" --clobber \
+          gh release view "${VERSION}" >/dev/null 2>&1 \
+            || gh release create "${VERSION}" --title "MuxTerm ${VERSION#v}" --generate-notes
+          gh release upload "${VERSION}" --clobber \
             dist-release/muxterm-*.tar.gz dist-release/muxterm-*.tar.gz.sig dist-release/muxterm-*.tar.gz.sha256 \
             dist-release/stable.json dist-release/stable.json.sig dist-release/SHA256SUMS dist-release/client-dist.tar.gz
