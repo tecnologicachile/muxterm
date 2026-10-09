@@ -253,10 +253,15 @@ function rollback(pending, reason) {
 
 function prune() {
   try {
-    const keep = new Set([current.version, readState().lastGood].filter(Boolean));
+    const st = readState();
+    const keep = new Set([current.version, st.lastGood].filter(Boolean));
+    const failed = st.failed || {};
     const all = fs.readdirSync(paths.releasesDir).filter(d => /^\d+\.\d+\.\d+/.test(d))
       .sort((a, b) => cmpVer(b, a));
-    for (const d of all.slice(KEEP_RELEASES)) {
+    // Failed versions go regardless of age: their record in the state is what
+    // stops them from coming back, not the directory.
+    const old = all.filter(d => failed[d]).concat(all.filter(d => !failed[d]).slice(KEEP_RELEASES));
+    for (const d of old) {
       if (keep.has(d)) continue;
       fs.rmSync(path.join(paths.releasesDir, d), { recursive: true, force: true });
       logger.info(`[updater] removed old release ${d}`);
