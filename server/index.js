@@ -222,7 +222,9 @@ app.post('/api/updater/check', authenticateToken, async (req, res) => {
   catch (e) { res.status(502).json({ status: 'error', message: e.message }); }
 });
 app.post('/api/updater/apply', authenticateToken, async (req, res) => {
-  if (!req.user.is_admin) return res.status(403).json({ status: 'error', message: 'admin only' });
+  // req.user carries only id and username; the role is in the database.
+  const who = database.findUserById(req.user.id);
+  if (!who || !who.is_admin) return res.status(403).json({ status: 'error', message: 'admin only' });
   try {
     const d = await updater.check();
     if (!d.apply && !req.body?.force) return res.json({ status: 'ok', applied: false, reason: d.reason });

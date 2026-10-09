@@ -21,9 +21,10 @@ const paths = require('./paths');
 const logger = require('./utils/logger');
 
 const DEFAULT_MANIFEST = 'https://github.com/tecnologicachile/muxterm/releases/latest/download/stable.json';
-const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
-const JITTER_MS = 60 * 60 * 1000;
-const FIRST_CHECK_MS = 60 * 1000;
+// Overridable for tests (MUXTERM_UPDATE_CHECK_MS): seconds instead of hours.
+const CHECK_EVERY_MS = parseInt(process.env.MUXTERM_UPDATE_CHECK_MS, 10) || 6 * 60 * 60 * 1000;
+const JITTER_MS = Math.min(60 * 60 * 1000, Math.round(CHECK_EVERY_MS / 6));
+const FIRST_CHECK_MS = Math.min(60 * 1000, CHECK_EVERY_MS);
 const HEALTH_GRACE_MS = 60 * 1000;
 const KEEP_RELEASES = 2;
 const NS = 'muxterm-release';
