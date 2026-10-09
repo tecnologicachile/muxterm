@@ -837,6 +837,17 @@ EOF
 
 start_service() {
     echo -e "${BLUE}Starting MuxTerm service...${NC}"
+
+    # A previous MuxTerm (or anything else) still holding the port is the
+    # one failure that looks like "the service won't start" and is not.
+    # Seen on a reinstall over a system where the old process was still up.
+    local PORT_IN_USE
+    PORT_IN_USE=$(ss -ltnp 2>/dev/null | awk '$4 ~ /:3002$/ {print $NF}' | head -1)
+    if [ -n "$PORT_IN_USE" ]; then
+        echo -e "${RED}Port 3002 is already in use: $PORT_IN_USE${NC}"
+        echo -e "${YELLOW}Stop that process (or set PORT in $INSTALL_DIR/.env) and run: sudo systemctl restart muxterm${NC}"
+        return 1
+    fi
     
     # Try to start with systemd
     if command -v systemctl &> /dev/null && [ -f /etc/systemd/system/muxterm.service ]; then
