@@ -88,6 +88,17 @@ app.use(cors({
 
 app.use(express.json());
 // Session configuration without Redis for testing
+// A package started with no .env has no session secret yet: mint one and
+// keep it, as auth.js does for JWT_SECRET, so sessions survive restarts.
+if (!process.env.SESSION_SECRET) {
+  const secret = require('crypto').randomBytes(32).toString('base64');
+  process.env.SESSION_SECRET = secret;
+  try {
+    const envPath = path.join(__dirname, '..', '.env');
+    const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+    if (!envContent.includes('SESSION_SECRET=')) fs.appendFileSync(envPath, `\nSESSION_SECRET=${secret}\n`);
+  } catch (e) { /* in-memory only this run */ }
+}
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
