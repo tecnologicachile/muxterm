@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const SETTINGS_PATH = path.join(__dirname, '..', 'data', 'system-settings.json');
+const SETTINGS_PATH = path.join(require('./paths').dataDir, 'system-settings.json');
 
 const DEFAULTS = {
   autoUpdateEnabled: true,

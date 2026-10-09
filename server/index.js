@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('./paths').envFile });
 const express = require('express');
 const http = require('http');
 const https = require('https');
@@ -7,6 +7,7 @@ const cors = require('cors');
 const session = require('express-session');
 const path = require('path');
 const fs = require('fs');
+const paths = require('./paths');
 
 const authRoutes = require('./auth');
 const ttydManager = require('./ttyd-manager');
@@ -44,7 +45,7 @@ const app = express();
 // Try HTTPS first, fallback to HTTP
 let server;
 try {
-  const certsDir = path.join(__dirname, '..', 'certs');
+  const certsDir = paths.certsDir;
   if (fs.existsSync(certsDir)) {
     const files = fs.readdirSync(certsDir);
     // rootCA.pem also ends in .pem and carries no -key, so without excluding it
@@ -94,7 +95,7 @@ if (!process.env.SESSION_SECRET) {
   const secret = require('crypto').randomBytes(32).toString('base64');
   process.env.SESSION_SECRET = secret;
   try {
-    const envPath = path.join(__dirname, '..', '.env');
+    const envPath = paths.envFile;
     const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
     if (!envContent.includes('SESSION_SECRET=')) fs.appendFileSync(envPath, `\nSESSION_SECRET=${secret}\n`);
   } catch (e) { /* in-memory only this run */ }
@@ -126,7 +127,7 @@ app.get('/app.apk', (req, res) => {
 });
 
 app.get(['/ca.pem', '/ca.crt'], (req, res) => {
-  const caPath = path.join(__dirname, '..', 'certs', 'rootCA.pem');
+  const caPath = path.join(paths.certsDir, 'rootCA.pem');
   if (!fs.existsSync(caPath)) return res.status(404).send('CA certificate not available');
   // Android's certificate installer rejects a .pem name, so offer .crt too —
   // same bytes, and it saves renaming the file on the phone.
@@ -211,6 +212,23 @@ app.use('/api/voice', authenticateToken, (req, res, next) => {
 // Claude Code chat view: which terminals are currently running Claude Code
 app.get('/api/claude/panels', authenticateToken, (req, res) => {
   res.json({ status: 'ok', panels: claudeSessions.listClaudePanes() });
+});
+
+// The packaged-install updater (docs/design/actualizaciones.md). In a git
+// checkout it reports mode "git" and does nothing; update.sh applies there.
+app.get('/api/updater/status', authenticateToken, (req, res) => res.json({ status: 'ok', ...updater.status() }));
+app.post('/api/updater/check', authenticateToken, async (req, res) => {
+  try { const d = await updater.check(); res.json({ status: 'ok', version: d.version, apply: d.apply, reason: d.reason }); }
+  catch (e) { res.status(502).json({ status: 'error', message: e.message }); }
+});
+app.post('/api/updater/apply', authenticateToken, async (req, res) => {
+  if (!req.user.is_admin) return res.status(403).json({ status: 'error', message: 'admin only' });
+  try {
+    const d = await updater.check();
+    if (!d.apply && !req.body?.force) return res.json({ status: 'ok', applied: false, reason: d.reason });
+    const r = await updater.apply(d.manifest);
+    res.json({ status: 'ok', applied: true, ...r });
+  } catch (e) { res.status(500).json({ status: 'error', message: e.message }); }
 });
 
 // Busy / done / waiting per Claude session, for the indicators and the
@@ -388,7 +406,7 @@ app.get('/api/update-debug', authenticateToken, async (req, res) => {
 // Get update logs endpoint
 app.get('/api/update-logs', authenticateToken, async (req, res) => {
   try {
-    const logsDir = path.join(__dirname, '..', 'logs');
+    const logsDir = paths.logsDir;
     const mainLogFile = path.join(logsDir, 'muxterm.log');
     const updateLogsDir = path.join(logsDir, 'updates');
     
@@ -688,6 +706,8 @@ ttydManager.onAuthFailed = (terminalId, userId) => {
 // tmux's foreground command, the transcript, and the subagent files.
 
 require('./push').init({ database });
+const updater = require('./updater');
+updater.init({ io, settings: systemSettings });
 require('./claude-activity').init({ io, ttydManager, database, sessions: claudeSessions });
 require('./claude-status').init({ io, ttydManager, database });
 setInterval(() => require('./claude-activity').prune(), 60 * 60 * 1000);
@@ -1295,6 +1315,7 @@ const PORT = process.env.PORT || 3002;
 guacamoleManager.init();
 
 server.listen(PORT, async () => {
+  updater.confirmStart(PORT, server instanceof https.Server);
   logger.info(`Server running on port ${PORT}`);
   
   // Initialize tmux

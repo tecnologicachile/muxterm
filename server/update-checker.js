@@ -8,7 +8,7 @@ const REPO_URL = 'https://github.com/tecnologicachile/muxterm.git';
 
 class UpdateChecker {
   constructor() {
-    this.lastCheckFile = path.join(__dirname, '..', 'data', '.last-update-check');
+    this.lastCheckFile = path.join(require('./paths').dataDir, '.last-update-check');
     this.checkInterval = 24 * 60 * 60 * 1000; // 24 hours
     this.currentVersion = require('../package.json').version;
   }

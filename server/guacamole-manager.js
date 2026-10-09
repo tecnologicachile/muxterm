@@ -10,7 +10,7 @@ const CIPHER = 'aes-256-cbc';
 if (!process.env.GUAC_SECRET) {
   const secret = crypto.randomBytes(16).toString('hex'); // 32 chars for aes-256
   process.env.GUAC_SECRET = secret;
-  const envPath = path.join(__dirname, '..', '.env');
+  const envPath = require('./paths').envFile;
   const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
   if (!envContent.includes('GUAC_SECRET=')) {
     fs.appendFileSync(envPath, `\nGUAC_SECRET=${secret}\n`);
@@ -36,7 +36,7 @@ class GuacamoleManager {
       this.guacPort = parseInt(process.env.GUAC_WS_PORT, 10) || 4823;
 
       // Load SSL certs if available (same certs as main server)
-      const certsDir = path.join(__dirname, '..', 'certs');
+      const certsDir = require('./paths').certsDir;
       let wsOptions = { port: this.guacPort };
       if (fs.existsSync(certsDir)) {
         const files = fs.readdirSync(certsDir);

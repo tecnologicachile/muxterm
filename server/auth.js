@@ -13,7 +13,7 @@ if (!process.env.JWT_SECRET) {
   const path = require('path');
   const secret = crypto.randomBytes(32).toString('base64');
   process.env.JWT_SECRET = secret;
-  const envPath = path.join(__dirname, '..', '.env');
+  const envPath = require('./paths').envFile;
   const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
   if (!envContent.includes('JWT_SECRET=')) {
     fs.appendFileSync(envPath, `\nJWT_SECRET=${secret}\n`);

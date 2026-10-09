@@ -22,7 +22,7 @@ function ensureKeys() {
     const keys = webpush.generateVAPIDKeys();
     process.env.VAPID_PUBLIC_KEY = keys.publicKey;
     process.env.VAPID_PRIVATE_KEY = keys.privateKey;
-    const envPath = path.join(__dirname, '..', '.env');
+    const envPath = require('./paths').envFile;
     const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
     if (!envContent.includes('VAPID_PUBLIC_KEY=')) {
       fs.appendFileSync(envPath, `\nVAPID_PUBLIC_KEY=${keys.publicKey}\nVAPID_PRIVATE_KEY=${keys.privateKey}\n`);

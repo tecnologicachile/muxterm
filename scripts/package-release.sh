@@ -31,7 +31,7 @@ PKG="$STAGE/muxterm"
 mkdir -p "$PKG/client"
 
 # What the server needs at runtime, and nothing else.
-cp -r "$ROOT/server" "$ROOT/db" "$ROOT/utils" "$ROOT/scripts" "$PKG/"
+cp -r "$ROOT/server" "$ROOT/db" "$ROOT/utils" "$ROOT/scripts" "$ROOT/release" "$PKG/"
 cp -r "$ROOT/client/dist" "$PKG/client/dist"
 [ -d "$ROOT/public" ] && cp -r "$ROOT/public" "$PKG/public"
 cp "$ROOT/package.json" "$ROOT/package-lock.json" "$ROOT/LICENSE" "$ROOT/README.md" "$ROOT/.tmux.webssh.conf" "$PKG/"

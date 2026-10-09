@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Ensure data directory exists
-const dataDir = path.join(__dirname, '../data');
+const dataDir = require('../server/paths').dataDir;
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
