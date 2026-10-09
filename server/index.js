@@ -285,6 +285,20 @@ app.post('/api/claude/send', authenticateToken, (req, res) => {
 });
 
 // Guacd health check — test if guacd is accepting connections
+// Liveness for the updater and for anyone watching: version, uptime, and
+// whether guacd answers. Unauthenticated on purpose: it reveals nothing
+// that the login page does not.
+app.get('/api/health', (req, res) => {
+  const net = require('net');
+  const sock = new net.Socket();
+  let done = false;
+  const reply = (guacd) => { if (done) return; done = true; sock.destroy(); res.json({ status: 'ok', version: require('../package.json').version, uptime: Math.round(process.uptime()), guacd }); };
+  sock.setTimeout(1500);
+  sock.connect(4822, '127.0.0.1', () => reply(true));
+  sock.on('error', () => reply(false));
+  sock.on('timeout', () => reply(false));
+});
+
 app.get('/api/guacd-health', (req, res) => {
   const net = require('net');
   const client = new net.Socket();

@@ -1,0 +1,77 @@
+# Release: on every vX.Y.Z tag, build one package per architecture, sign
+# everything with the release key, and publish the GitHub release with the
+# update manifest. See docs/design/actualizaciones.md.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  build:
+    name: package (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, arch: x64 }
+          - { runner: ubuntu-24.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Tag must match package.json
+        run: |
+          V=$(node -p "require('./package.json').version")
+          [ "v$V" = "${GITHUB_REF_NAME}" ] || { echo "package.json says $V, tag is ${GITHUB_REF_NAME}"; exit 1; }
+      - name: Build client
+        run: cd client && npm ci --no-audit --no-fund && npm run build
+      - name: Package
+        run: bash scripts/package-release.sh "${GITHUB_REF_NAME#v}" dist-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.arch }}
+          path: dist-release/*
+          if-no-files-found: error
+
+  release:
+    name: sign and publish
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+          merge-multiple: true
+      - name: Sign packages and manifest
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          [ -n "$RELEASE_SIGNING_KEY" ] || { echo "RELEASE_SIGNING_KEY secret is not set"; exit 1; }
+          umask 077; printf '%s\n' "$RELEASE_SIGNING_KEY" > /tmp/release_key
+          V="${GITHUB_REF_NAME#v}"
+          bash scripts/sign-release.sh sign /tmp/release_key dist-release/muxterm-"$V"-linux-*.tar.gz
+          bash scripts/make-manifest.sh "$V" dist-release stable
+          bash scripts/sign-release.sh sign /tmp/release_key dist-release/stable.json
+          ( cd dist-release && sha256sum muxterm-*.tar.gz stable.json > SHA256SUMS )
+          rm -f /tmp/release_key
+      - name: Verify what we are about to publish
+        run: bash scripts/sign-release.sh verify dist-release/muxterm-*.tar.gz dist-release/stable.json
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --title "MuxTerm ${GITHUB_REF_NAME#v}" --generate-notes \
+            dist-release/muxterm-*.tar.gz dist-release/muxterm-*.tar.gz.sig dist-release/muxterm-*.tar.gz.sha256 \
+            dist-release/stable.json dist-release/stable.json.sig dist-release/SHA256SUMS

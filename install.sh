@@ -341,9 +341,9 @@ install_nodejs() {
     
     # Install Node.js via NodeSource
     if [ "$IS_ROOT" = true ]; then
-        curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+        curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
     else
-        curl -fsSL https://deb.nodesource.com/setup_lts.x | $USE_SUDO -E bash -
+        curl -fsSL https://deb.nodesource.com/setup_24.x | $USE_SUDO -E bash -
     fi
     
     case $OS in

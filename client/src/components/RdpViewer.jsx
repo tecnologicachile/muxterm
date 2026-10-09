@@ -52,6 +52,8 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
   const tokenRequestedRef = useRef(false);
   const isActiveRef = useRef(isActive);
   const retryTimerRef = useRef(null);
+  // Port of the Guacamole websocket, as the server announces it with the token.
+  const wsPortRef = useRef(4823);
   const [reconnecting, setReconnecting] = useState(false);
   // The state handler below is created once per connection, so it would read
   // a stale `connected`; the ref is what it checks.
@@ -196,6 +198,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
 
     const handleToken = (data) => {
       socket.off(tokenEvent, handleToken);
+      if (data.wsPort) wsPortRef.current = data.wsPort;
       connectRdp(data.token);
     };
 
@@ -231,6 +234,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
       : { rdpConnectionId: connId, keyboardLayout, requestId };
     const handleToken = (data) => {
       socket.off(tokenEvent, handleToken);
+      if (data.wsPort) wsPortRef.current = data.wsPort;
       connectRdp(data.token);
     };
     socket.on(tokenEvent, handleToken);
@@ -294,7 +298,7 @@ function RdpViewer({ rdpConnectionId, vncConnectionId, connectionType = 'rdp', i
 
     try {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.hostname}:4823/`;
+      const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPortRef.current || 4823}/`;
 
       const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
       const client = new Guacamole.Client(tunnel);

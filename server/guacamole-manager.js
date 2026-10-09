@@ -31,7 +31,9 @@ class GuacamoleManager {
         fs.mkdirSync(driveRoot, { recursive: true, mode: 0o777 });
       }
 
-      this.guacPort = 4823;
+      // The websocket the browser opens for RDP/VNC. Configurable so two
+      // instances (or a package under test) can share a host.
+      this.guacPort = parseInt(process.env.GUAC_WS_PORT, 10) || 4823;
 
       // Load SSL certs if available (same certs as main server)
       const certsDir = path.join(__dirname, '..', 'certs');

@@ -76,3 +76,4 @@ hide-tmux-bar.sh
 certs/
 after-*.yml
 .playwright-cli/
+dist-release
