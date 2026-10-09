@@ -28,7 +28,9 @@ MuxTerm is a web-based workspace that combines local terminals, SSH, RDP, VNC, a
 curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
 ```
 
-MuxTerm starts automatically at `https://localhost:3002`
+MuxTerm starts automatically at `https://localhost:3002` with a self-signed certificate (accept the browser warning once; see [HTTPS Setup](#https-setup) for a trusted one).
+
+Installs to `/opt/muxterm` when run as root, `~/muxterm` as a regular user; set `MUXTERM_DIR` to choose. Tested from scratch on Debian 12 and Ubuntu 24.04 (about 4–5 minutes, most of it compiling guacd).
 
 Default credentials: `admin` / `admin` (password change required on first login)
 
@@ -128,12 +130,13 @@ Emergency CLI: `node scripts/reset-password.js <username> <password>`
 
 ## HTTPS Setup
 
-MuxTerm auto-detects SSL certificates in the `certs/` directory:
+The installer creates a self-signed certificate in `certs/` so MuxTerm serves HTTPS from the first run. To replace it with one your devices trust, use mkcert (the key file must end in `-key.pem`; the certificate is any other `.pem`):
 
 ```bash
-# Install mkcert
+# Install mkcert, then trust its CA on each device (mkcert -CAROOT)
 mkcert -install
-mkcert -cert-file certs/cert.pem -key-file certs/key.pem localhost 127.0.0.1 YOUR_IP
+mkcert -cert-file certs/muxterm.pem -key-file certs/muxterm-key.pem localhost 127.0.0.1 YOUR_IP
+sudo systemctl restart muxterm
 ```
 
 ## Configuration
