@@ -138,6 +138,24 @@ y comprueba que arrancó**.
   documentación ofrece el paquete `.deb`/`.rpm` (CI puede generarlos con
   `nfpm`) para quien no quiere ejecutar scripts remotos.
 
+## Estado (10-oct-2026)
+
+- Entrega 1 hecha: `.github/workflows/release.yml`, `scripts/package-release.sh`,
+  `sign-release.sh`, `make-manifest.sh`, `release/allowed_signers`.
+- Entrega 2 hecha: `server/updater.js` + `server/paths.js` + `scripts/boot-guard.sh`.
+  Probada en un LXC con el esquema `home/releases/<v>` + `home/current`:
+  actualización automática y manual 1.1.61 → 1.1.62 con confirmación de
+  salud; una 1.1.63 rota a propósito cae dos veces y el guardián de arranque
+  devuelve `current` a 1.1.62 en segundos y la marca como fallida; el
+  siguiente chequeo la rechaza aunque el manifiesto la anuncie.
+- Un detalle que el diseño original no contemplaba y las pruebas sí: la
+  vuelta atrás no puede depender del código de la versión nueva (si muere en
+  la primera línea, su actualizador nunca corre). De ahí el guardián en
+  `home/bin`, ejecutado por `ExecStartPre` desde fuera de `releases/`.
+- Pendiente: entrega 3 (instalador como envoltorio, unidad con
+  `Restart=always` + `ExecStartPre`, usuario de servicio, migración de las
+  instalaciones git actuales al esquema empaquetado) y entrega 4.
+
 ## Entregas
 
 1. **Artefactos firmados en CI** (sin cambiar aún el cliente): workflow que
