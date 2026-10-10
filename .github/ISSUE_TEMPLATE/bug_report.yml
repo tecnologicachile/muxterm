@@ -1,0 +1,61 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Screenshots help, especially for layout issues.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MuxTerm version
+      description: Settings → "Versión y actualizaciones", or `curl -k https://localhost:3002/api/health`
+      placeholder: 1.1.63
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed
+      options:
+        - install.sh (package)
+        - install.sh (source fallback) or manual checkout
+        - Docker
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Server OS
+      placeholder: Debian 12 in an unprivileged Proxmox LXC
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Chrome 130 on Android 14 / Firefox on Ubuntu desktop
+  - type: dropdown
+    id: panel
+    attributes:
+      label: Panel type involved
+      multiple: true
+      options:
+        - Local terminal
+        - SSH
+        - RDP
+        - VNC
+        - SFTP
+        - Claude Code conversation view / activity tray
+        - Updater / installer
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`journalctl -u muxterm -n 100 --no-pager`, browser console, or installer output. Remove passwords and tokens."
+      render: shell

@@ -1,0 +1,36 @@
+name: Feature request
+description: Something MuxTerm should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that is hard or impossible today? Describe the situation, not the solution yet.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How you imagine it working. Mockups or examples from other tools welcome.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Terminals / tmux
+        - SSH / SFTP
+        - RDP / VNC
+        - Mobile / responsive
+        - Claude Code integration
+        - Installer / updater / Docker
+        - Users / security
+        - Other
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you work on it?
+      options:
+        - label: I would be willing to open a pull request for this

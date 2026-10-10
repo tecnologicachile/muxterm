@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/tecnologicachile
+    about: Please report vulnerabilities privately through the contact on the organisation page, not as a public issue.
