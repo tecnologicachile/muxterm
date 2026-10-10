@@ -1,0 +1,13 @@
+{
+  "channel": "stable",
+  "version": "1.1.63",
+  "published": "2026-10-10T00:40:31Z",
+  "node": "24",
+  "minVersion": "1.1.50",
+  "rollout": 100,
+  "notes": "https://github.com/tecnologicachile/muxterm/releases/tag/v1.1.63",
+  "assets": {
+    "linux-arm64": { "url": "https://github.com/tecnologicachile/muxterm/releases/download/v1.1.63/muxterm-1.1.63-linux-arm64.tar.gz", "sha256": "4d558bd7bf831acd3e6e24267fa1e877af619dec43b5317671bcfdc43329dc8c", "sig": "https://github.com/tecnologicachile/muxterm/releases/download/v1.1.63/muxterm-1.1.63-linux-arm64.tar.gz.sig" },
+    "linux-x64": { "url": "https://github.com/tecnologicachile/muxterm/releases/download/v1.1.63/muxterm-1.1.63-linux-x64.tar.gz", "sha256": "ea7c251805c2f161b7e0e90140502d5e2d1be75d612ab6fc0e15b32d176ec28c", "sig": "https://github.com/tecnologicachile/muxterm/releases/download/v1.1.63/muxterm-1.1.63-linux-x64.tar.gz.sig" }
+  }
+}
