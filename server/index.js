@@ -1290,6 +1290,9 @@ setInterval(() => {
 const AUTO_UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
 const checkAutoUpdate = async () => {
   try {
+    // A packaged install is updated by server/updater.js (signed packages);
+    // the checkout path below would run the git-based script inside releases/.
+    if (require('./paths').packaged) return;
     const settings = systemSettings.read();
     if (!settings.autoUpdateEnabled) return;
     systemSettings.write({ lastAutoUpdateCheck: Date.now() });

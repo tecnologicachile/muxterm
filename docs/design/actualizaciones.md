@@ -173,9 +173,18 @@ y comprueba que arrancó**.
   en el CT 135: con un navegador conectado programó 1.1.63 a dos minutos,
   posponer devolvió +1 h, al reiniciar sin clientes la aplicó al instante y
   el guardián la devolvió a 1.1.62.
-- Pendiente: primera etiqueta real (`v1.1.62`) que cree la rama `channels`;
-  hasta entonces el instalador cae al clon y el panel muestra el 404 del
-  manifiesto. Producción (Node 22) sigue en modo checkout a propósito.
+- Primera release real: `v1.1.63` (10-oct-2026; 1.1.62 se saltó porque la
+  usaron los paquetes de prueba). CI creó la rama `channels` con
+  `stable.json` firmado y los paquetes x64/arm64. Los CT 130 y 133 (migrados
+  con `migrate-to-packages.sh`) y el 136 (instalación limpia) se actualizaron
+  solos de 1.1.62 a 1.1.63 desde GitHub en su primera comprobación, con
+  confirmación de salud. Producción (Node 22) sigue en modo checkout a
+  propósito.
+- Lección: los paquetes anteriores a la rama `channels` leen
+  `releases/latest/download/stable.json`, y GitHub resolvía "latest" a la
+  release vieja v1.1.61 sin manifiesto. Por eso el workflow marca cada
+  release como latest. Y el temporizador antiguo de auto-update de
+  `index.js` no debe correr en modo paquete (ahora sale si `paths.packaged`).
 
 ## Entregas
 

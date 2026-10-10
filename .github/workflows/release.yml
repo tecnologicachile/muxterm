@@ -99,7 +99,7 @@ jobs:
           # Create the release unless it exists (a re-run, or someone made it by hand), then
           # upload everything, replacing what is already there.
           gh release view "${VERSION}" >/dev/null 2>&1 \
-            || gh release create "${VERSION}" --title "MuxTerm ${VERSION#v}" --generate-notes
+            || gh release create "${VERSION}" --title "MuxTerm ${VERSION#v}" --generate-notes --latest
           gh release upload "${VERSION}" --clobber \
             dist-release/muxterm-*.tar.gz dist-release/muxterm-*.tar.gz.sig dist-release/muxterm-*.tar.gz.sha256 \
             "dist-release/$CHANNEL.json" "dist-release/$CHANNEL.json.sig" dist-release/SHA256SUMS dist-release/client-dist.tar.gz
