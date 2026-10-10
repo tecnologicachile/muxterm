@@ -45,6 +45,8 @@ cp "$HOME_DIR/releases/$V/scripts/boot-guard.sh" "$HOME_DIR/bin/boot-guard.sh"; 
 
 SVC_USER=$(sed -n 's/^User=//p' "$UNIT" | head -1); SVC_USER=${SVC_USER:-root}
 chown -R "$SVC_USER" "$HOME_DIR/releases" "$HOME_DIR/bin" "$HOME_DIR/logs" "$HOME_DIR/data" "$HOME_DIR/current" 2>/dev/null || true
+# A mirror or test manifest given here stays in force for the updater.
+EXTRA_ENV=""; case "$MANIFEST" in https://raw.githubusercontent.com/tecnologicachile/muxterm/channels/*) ;; *) EXTRA_ENV="Environment=MUXTERM_UPDATE_URL=$MANIFEST";; esac
 cp "$UNIT" "$UNIT.before-packages"
 cat > "$UNIT" <<EOF
 [Unit]
@@ -58,6 +60,7 @@ WorkingDirectory=$HOME_DIR/current
 Environment=NODE_ENV=production
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=MUXTERM_HOME=$HOME_DIR
+$EXTRA_ENV
 ExecStartPre=-$HOME_DIR/bin/boot-guard.sh $HOME_DIR
 ExecStart=/usr/bin/node server/index.js
 Restart=always
