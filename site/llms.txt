@@ -1,0 +1,26 @@
+# MuxTerm
+
+> Self-hosted web workspace that puts tmux-backed terminals, SSH, RDP, VNC and SFTP side by side in one responsive browser page, recognises Claude Code sessions (conversation view, per-panel state, activity tray, push notifications) and updates itself with signed packages and automatic rollback. Open source, MIT, by Tecnológica Chile.
+
+Install on a fresh Debian 12 or Ubuntu 24.04:
+
+    curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/install.sh | bash
+
+Then open https://<host>:3002 and log in as admin / admin (password change required). Docker: `docker compose up -d` in the repository; guacd is bundled.
+
+## Links
+
+- [Source code, issues and releases](https://github.com/tecnologicachile/muxterm): GitHub repository (MIT).
+- [README](https://github.com/tecnologicachile/muxterm/blob/main/README.md): features, installation, configuration, architecture.
+- [Contributing guide](https://github.com/tecnologicachile/muxterm/blob/main/CONTRIBUTING.md): run from source, code layout, what kind of change lands fastest.
+- [Update system design](https://github.com/tecnologicachile/muxterm/blob/main/docs/design/actualizaciones.md): signed packages, channels, rollout, boot guard (Spanish).
+- [Releases](https://github.com/tecnologicachile/muxterm/releases): signed linux-x64 and linux-arm64 packages.
+
+## Facts
+
+- Components: Node.js + Express + Socket.IO server, React client, tmux + ttyd for terminals, guacd + guacamole-lite for RDP/VNC, ssh2-sftp-client for SFTP, SQLite for data, Bitwarden CLI for credentials.
+- Requirements: Linux with systemd (or Docker), Node.js 24 (installed by the installer), 1 GB RAM.
+- Ports: 3002 (HTTPS web), 4822 (guacd, internal), 4823 (Guacamole WebSocket).
+- Updates: manifest on the `channels` branch (stable.json, beta.json), ed25519 signatures verified with ssh-keygen, releases/<version> directories with a `current` symlink, health check and rollback.
+- Claude Code integration: parses the session transcript (JSONL) to render a conversation view, computes panel state from tmux and the transcript, logs questions and completions to an activity tray, sends Web Push notifications.
+- Comparison: Apache Guacamole (RDP/VNC, heavy Java stack, no persistent terminals), ttyd/Wetty (one shell per tab, no remote desktop), tmux over SSH (no RDP, hard on a phone).

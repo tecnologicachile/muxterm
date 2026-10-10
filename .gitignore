@@ -57,6 +57,7 @@ run-*.js
 *.jpg
 *.jpeg
 *.gif
+!site/img/*
 # but PWA icons must ship with the repo
 !client/public/icon-192.png
 !client/public/icon-512.png
