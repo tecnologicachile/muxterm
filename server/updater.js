@@ -20,7 +20,13 @@ const { spawn, execFile } = require('child_process');
 const paths = require('./paths');
 const logger = require('./utils/logger');
 
-const DEFAULT_MANIFEST = 'https://github.com/tecnologicachile/muxterm/releases/latest/download/stable.json';
+// One manifest per channel on the `channels` branch, written by CI on every
+// release (the GitHub "latest" asset would skip prereleases).
+const CHANNELS_BASE = 'https://raw.githubusercontent.com/tecnologicachile/muxterm/channels';
+// Clients connected when an update is found get this long to save their work.
+const GRACE_MS = 2 * 60 * 1000;
+const POSTPONE_MS = 60 * 60 * 1000;
+let scheduled = null;   // { version, manifest, at, timer }
 // Overridable for tests (MUXTERM_UPDATE_CHECK_MS): seconds instead of hours.
 const CHECK_EVERY_MS = parseInt(process.env.MUXTERM_UPDATE_CHECK_MS, 10) || 6 * 60 * 60 * 1000;
 const JITTER_MS = Math.min(60 * 60 * 1000, Math.round(CHECK_EVERY_MS / 6));
@@ -85,9 +91,13 @@ function installId() {
 // Which percent of the rollout this install sits at: stable per install, uniform across installs.
 function rolloutSlot() { return parseInt(crypto.createHash('sha256').update(installId()).digest('hex').slice(0, 8), 16) % 100; }
 
+function channel() {
+  const s = settings ? settings.read() : {};
+  return s.updateChannel === 'beta' ? 'beta' : 'stable';
+}
 function manifestUrl() {
   const s = settings ? settings.read() : {};
-  return process.env.MUXTERM_UPDATE_URL || s.updateUrl || DEFAULT_MANIFEST;
+  return process.env.MUXTERM_UPDATE_URL || s.updateUrl || `${CHANNELS_BASE}/${channel()}.json`;
 }
 
 function fetch(url, { to, maxRedirects = 5, timeoutMs = 30000 } = {}) {
@@ -137,7 +147,14 @@ function run(cmd, args) {
 }
 
 function publicStatus() {
-  return { ...status, mode: paths.packaged ? 'package' : 'git', current: current ? current.version : require('../package.json').version, installId: paths.packaged ? installId() : undefined, slot: paths.packaged ? rolloutSlot() : undefined, state: status.state };
+  const st = paths.packaged ? readState() : {};
+  return {
+    ...status, mode: paths.packaged ? 'package' : 'git', channel: channel(),
+    current: current ? current.version : require('../package.json').version,
+    installId: paths.packaged ? installId() : undefined, slot: paths.packaged ? rolloutSlot() : undefined,
+    scheduledAt: scheduled ? new Date(scheduled.at).toISOString() : null,
+    lastGood: st.lastGood, lastRollback: st.lastRollback, failed: st.failed
+  };
 }
 
 function emit(name, payload) { if (io) io.emit(name, payload); }
@@ -303,14 +320,46 @@ function confirmStart(port, isHttps) {
   }, 5000);
 }
 
+// Apply now when nobody is connected; otherwise announce it and wait a
+// couple of minutes so open sessions can be saved (and let them postpone).
+function scheduleApply(d) {
+  if (scheduled || busy) return;
+  const clients = io ? io.engine.clientsCount : 0;
+  const wait = clients > 0 ? GRACE_MS : 0;
+  scheduled = { version: d.version, manifest: d.manifest, at: Date.now() + wait, timer: null };
+  status = { ...status, state: 'scheduled', target: d.version };
+  emit('update-available', { version: d.version, scheduledAt: new Date(scheduled.at).toISOString() });
+  const fire = async () => {
+    const s = scheduled; scheduled = null;
+    if (!s) return;
+    try { await apply(s.manifest); } catch (e) { /* status carries the error */ }
+  };
+  scheduled.timer = setTimeout(fire, wait);
+  scheduled.timer.unref();
+  logger.info(`[updater] ${d.version} scheduled in ${Math.round(wait / 1000)} s (${clients} client(s) connected)`);
+}
+
+function postpone() {
+  if (!scheduled) return null;
+  clearTimeout(scheduled.timer);
+  scheduled.at = Date.now() + POSTPONE_MS;
+  scheduled.timer = setTimeout(async () => { const s = scheduled; scheduled = null; if (s) { try { await apply(s.manifest); } catch (e) {} } }, POSTPONE_MS);
+  scheduled.timer.unref();
+  emit('update-available', { version: scheduled.version, scheduledAt: new Date(scheduled.at).toISOString(), postponed: true });
+  return new Date(scheduled.at).toISOString();
+}
+
+function setChannel(ch) {
+  if (!settings) return channel();
+  settings.write({ updateChannel: ch === 'beta' ? 'beta' : 'stable' });
+  return channel();
+}
+
 async function tick(force = false) {
   try {
     if (!force && settings && settings.read().autoUpdateEnabled === false) return null;
     const d = await check();
-    if (d.apply) {
-      emit('update-available', { version: d.version });
-      await apply(d.manifest);
-    }
+    if (d.apply) scheduleApply(d);
     return d;
   } catch (e) {
     status = { ...status, state: 'idle', error: e.message, lastCheck: new Date().toISOString() };
@@ -329,6 +378,9 @@ function init(deps) {
   status = { mode: 'package', state: 'idle' };
   absorbGuardFailures();
   installGuard(paths.appRoot);
+  // A version the guard turned back leaves its directory behind: drop it now,
+  // not at the next successful update.
+  prune();
   // Crashes before this point are the boot guard's business (it counts
   // starts and switches back). From here: if health never gets confirmed,
   // fall back ourselves.
@@ -347,4 +399,4 @@ function schedule() {
   timer.unref();
 }
 
-module.exports = { init, check, apply, tick, confirmStart, status: publicStatus, cmpVer };
+module.exports = { init, check, apply, tick, confirmStart, status: publicStatus, cmpVer, postpone, setChannel, channel };

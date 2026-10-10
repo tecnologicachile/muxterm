@@ -152,9 +152,30 @@ y comprueba que arrancó**.
   vuelta atrás no puede depender del código de la versión nueva (si muere en
   la primera línea, su actualizador nunca corre). De ahí el guardián en
   `home/bin`, ejecutado por `ExecStartPre` desde fuera de `releases/`.
-- Pendiente: entrega 3 (instalador como envoltorio, unidad con
-  `Restart=always` + `ExecStartPre`, usuario de servicio, migración de las
-  instalaciones git actuales al esquema empaquetado) y entrega 4.
+- Entrega 3 hecha: `install.sh` descarga y verifica el paquete firmado con la
+  clave pública embebida y lo deja en `releases/<v>` + `current` (si no hay
+  paquete publicado cae al clon de siempre); como root crea el usuario de
+  servicio `muxterm`; la unidad lleva `MUXTERM_HOME` y `ExecStartPre` al
+  guardián. `scripts/migrate-to-packages.sh` pasa una instalación clonada al
+  esquema nuevo y vuelve atrás si la salud no responde. Probado en un Debian
+  12 limpio (CT 136): servicio activo como `muxterm`, `current` →
+  `releases/1.1.62`, login correcto.
+- Entrega 4 hecha: el manifiesto vive en la rama `channels` (`stable.json`,
+  `beta.json`, con `.sig`), escrita por CI en cada etiqueta; una etiqueta con
+  guion (`v1.2.0-beta.1`) va al canal beta. El actualizador lee el canal de
+  `updateChannel`; con clientes conectados anuncia la versión y espera dos
+  minutos (`update-available` con `scheduledAt`), con `POST
+  /api/updater/postpone` se aplaza una hora; sin clientes aplica de
+  inmediato. `scripts/set-rollout.sh <canal> <porcentaje> <clave>` cambia el
+  porcentaje del manifiesto publicado. En Settings, el panel "Versión y
+  actualizaciones" muestra versión, canal, última comprobación, disponible,
+  última vuelta atrás, y los botones Buscar / Actualizar / Posponer. Probado
+  en el CT 135: con un navegador conectado programó 1.1.63 a dos minutos,
+  posponer devolvió +1 h, al reiniciar sin clientes la aplicó al instante y
+  el guardián la devolvió a 1.1.62.
+- Pendiente: primera etiqueta real (`v1.1.62`) que cree la rama `channels`;
+  hasta entonces el instalador cae al clon y el panel muestra el 404 del
+  manifiesto. Producción (Node 22) sigue en modo checkout a propósito.
 
 ## Entregas
 

@@ -23,7 +23,7 @@ PKG_MODE=false
 INSTALL_HOME=""
 SERVICE_USER=""
 RELEASE_PUBKEY='release@muxterm ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFuJHaCdZjoUDZm+YcDH45YpvGrEVhtuY1b1LktyjIHx'
-MANIFEST_URL=${MUXTERM_UPDATE_URL:-https://github.com/tecnologicachile/muxterm/releases/latest/download/stable.json}
+MANIFEST_URL=${MUXTERM_UPDATE_URL:-https://raw.githubusercontent.com/tecnologicachile/muxterm/channels/stable.json}
 AUTO_DETECTED_MINIMAL=false
 IS_DOCKER=false
 IS_LXC=false
@@ -770,6 +770,9 @@ create_systemd_service() {
         WORKDIR="$INSTALL_DIR/current"
         EXTRA="Environment=MUXTERM_HOME=$INSTALL_DIR
 ExecStartPre=-$INSTALL_DIR/bin/boot-guard.sh $INSTALL_DIR"
+        # A mirror or a test manifest stays in force for the updater too.
+        [ -n "${MUXTERM_UPDATE_URL:-}" ] && EXTRA="$EXTRA
+Environment=MUXTERM_UPDATE_URL=$MUXTERM_UPDATE_URL"
     fi
     $USE_SUDO mkdir -p "$INSTALL_DIR/logs" "$INSTALL_DIR/data"
     [ "$SVC_USER" != "$(whoami)" ] && $USE_SUDO chown -R "$SVC_USER" "$INSTALL_DIR"

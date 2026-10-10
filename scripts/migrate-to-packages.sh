@@ -11,7 +11,7 @@
 # you remove them; nothing reads them any more.
 set -euo pipefail
 HOME_DIR=${1:-/opt/muxterm}
-MANIFEST=${2:-${MUXTERM_UPDATE_URL:-https://github.com/tecnologicachile/muxterm/releases/latest/download/stable.json}}
+MANIFEST=${2:-${MUXTERM_UPDATE_URL:-https://raw.githubusercontent.com/tecnologicachile/muxterm/channels/stable.json}}
 UNIT=/etc/systemd/system/muxterm.service
 PUBKEY='release@muxterm ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFuJHaCdZjoUDZm+YcDH45YpvGrEVhtuY1b1LktyjIHx'
 

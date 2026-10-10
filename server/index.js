@@ -221,6 +221,16 @@ app.post('/api/updater/check', authenticateToken, async (req, res) => {
   try { const d = await updater.check(); res.json({ status: 'ok', version: d.version, apply: d.apply, reason: d.reason }); }
   catch (e) { res.status(502).json({ status: 'error', message: e.message }); }
 });
+app.post('/api/updater/postpone', authenticateToken, (req, res) => {
+  const until = updater.postpone();
+  if (!until) return res.json({ status: 'ok', postponed: false, message: 'nothing scheduled' });
+  res.json({ status: 'ok', postponed: true, until });
+});
+app.post('/api/updater/channel', authenticateToken, (req, res) => {
+  const who = database.findUserById(req.user.id);
+  if (!who || !who.is_admin) return res.status(403).json({ status: 'error', message: 'admin only' });
+  res.json({ status: 'ok', channel: updater.setChannel((req.body || {}).channel) });
+});
 app.post('/api/updater/apply', authenticateToken, async (req, res) => {
   // req.user carries only id and username; the role is in the database.
   const who = database.findUserById(req.user.id);

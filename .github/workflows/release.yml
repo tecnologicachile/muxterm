@@ -73,12 +73,19 @@ jobs:
           umask 077; printf '%s\n' "$RELEASE_SIGNING_KEY" > /tmp/release_key
           V="${VERSION#v}"
           bash scripts/sign-release.sh sign /tmp/release_key dist-release/muxterm-"$V"-linux-*.tar.gz
-          bash scripts/make-manifest.sh "$V" dist-release stable
-          bash scripts/sign-release.sh sign /tmp/release_key dist-release/stable.json
-          ( cd dist-release && sha256sum muxterm-*.tar.gz stable.json > SHA256SUMS )
+          # A tag with a hyphen (v1.2.0-beta.1) is a beta; anything else is stable.
+          case "$V" in *-*) CH=beta;; *) CH=stable;; esac
+          echo "CHANNEL=$CH" >> "$GITHUB_ENV"
+          bash scripts/make-manifest.sh "$V" dist-release "$CH"
+          bash scripts/sign-release.sh sign /tmp/release_key "dist-release/$CH.json"
+          ( cd dist-release && sha256sum muxterm-*.tar.gz "$CH.json" > SHA256SUMS )
+          # The branch installations poll: one signed manifest per channel.
+          git fetch -q origin channels 2>/dev/null && git worktree add -q /tmp/channels origin/channels \
+            || { git worktree add -q --detach /tmp/channels && ( cd /tmp/channels && git checkout -q --orphan channels && git rm -rfq . >/dev/null 2>&1 || true ); }
+          cp "dist-release/$CH.json" "dist-release/$CH.json.sig" /tmp/channels/
           rm -f /tmp/release_key
       - name: Verify what we are about to publish
-        run: bash scripts/sign-release.sh verify dist-release/muxterm-*.tar.gz dist-release/stable.json
+        run: bash scripts/sign-release.sh verify dist-release/muxterm-*.tar.gz "dist-release/$CHANNEL.json"
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'push'
         with:
@@ -95,4 +102,11 @@ jobs:
             || gh release create "${VERSION}" --title "MuxTerm ${VERSION#v}" --generate-notes
           gh release upload "${VERSION}" --clobber \
             dist-release/muxterm-*.tar.gz dist-release/muxterm-*.tar.gz.sig dist-release/muxterm-*.tar.gz.sha256 \
-            dist-release/stable.json dist-release/stable.json.sig dist-release/SHA256SUMS dist-release/client-dist.tar.gz
+            "dist-release/$CHANNEL.json" "dist-release/$CHANNEL.json.sig" dist-release/SHA256SUMS dist-release/client-dist.tar.gz
+      - name: Publish the channel manifest
+        if: github.event_name == 'push'
+        run: |
+          cd /tmp/channels
+          git -c user.name=muxterm-release -c user.email=release@muxterm add "$CHANNEL.json" "$CHANNEL.json.sig"
+          git -c user.name=muxterm-release -c user.email=release@muxterm commit -q -m "$CHANNEL: ${VERSION}" || echo "manifest unchanged"
+          git push -q origin HEAD:channels

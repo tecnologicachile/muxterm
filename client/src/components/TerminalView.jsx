@@ -27,6 +27,7 @@ import {
   Inbox as InboxIcon
 } from '@mui/icons-material';
 import ActivityTray from './ActivityTray';
+import UpdaterPanel from './UpdaterPanel';
 import useActivity from '../utils/useActivity';
 import { toneUri } from '../utils/speech';
 import PanelManager from './PanelManager';
@@ -2685,6 +2686,9 @@ function TerminalView() {
               </Box>
             </Box>
           )}
+
+          {/* Version, channel, available update (docs/design/actualizaciones.md) */}
+          <UpdaterPanel getToken={getToken} isAdmin={isAdmin} socket={socket} />
 
           {/* OpenAI API key for voice transcription */}
           {isAdmin && (
