@@ -53,6 +53,7 @@ run-*.js
 
 # Screenshots and images
 *.png
+!docs/screenshots/*.png
 *.jpg
 *.jpeg
 *.gif
