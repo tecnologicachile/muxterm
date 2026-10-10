@@ -21,7 +21,27 @@ curl -fsSL https://raw.githubusercontent.com/tecnologicachile/muxterm/main/insta
 
 One command on a fresh Debian or Ubuntu. Five minutes later you have HTTPS, a systemd service, RDP/VNC support and signed automatic updates. Default login `admin` / `admin`, changed on first use.
 
-> **Screenshots and a short demo are coming to this section.** If you already use MuxTerm and want to share yours, open a PR with a PNG in `docs/screenshots/`.
+![MuxTerm workspace: a Claude Code session asking for approval, htop, neofetch and a Windows Server over RDP, side by side](docs/screenshots/workspace.png)
+
+<p align="center"><em>One workspace: Claude Code waiting for approval, htop, neofetch and a Windows Server over RDP.</em></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/conversation-view.png" alt="Conversation view of a Claude Code session with the permission question and suggested replies"></td>
+    <td width="50%"><img src="docs/screenshots/activity-tray.png" alt="Activity tray listing questions and completions from Claude sessions, grouped by session"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Conversation view: the transcript rendered, with one-tap replies</em></td>
+    <td align="center"><em>Activity tray: every question and completion, grouped by session</em></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/phone-conversation.png" alt="MuxTerm on a phone in conversation view" width="30%">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/phone-terminal.png" alt="MuxTerm on a phone in terminal view with the special keys toolbar" width="30%">
+</p>
+<p align="center"><em>The same workspace on a phone: conversation view and terminal view with the special-keys toolbar.</em></p>
 
 ## Why this project
 
@@ -204,7 +224,7 @@ Found a vulnerability? Please email the maintainers through the address on the [
 
 ## Contributing
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run MuxTerm from source, where things live and what kind of changes land fastest. Good first contributions: distro coverage for the installer, translations of the UI, screenshots for this README.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run MuxTerm from source, where things live and what kind of changes land fastest. Good first contributions: distro coverage for the installer, translations of the UI, a short demo video for this README.
 
 If MuxTerm saves you time, a star helps other people find it.
 
