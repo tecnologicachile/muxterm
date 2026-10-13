@@ -123,6 +123,14 @@ function parseLine(line) {
     // Pressing Esc lands as a user line "[Request interrupted by user…]":
     // not a prompt, and the turn is over with no turn_duration to say so.
     if (typeof c === 'string' && /^\[Request interrupted/.test(c)) return [{ ...base, kind: 'turn', reason: 'interrupted' }];
+    // When the context fills up, Claude Code replaces the history with a
+    // summary and logs it as a user line ("This session is being continued
+    // from a previous conversation…", isCompactSummary). Nobody typed those
+    // 15-30 KB and Claude was told not to react to them: a marker is all the
+    // thread needs. It must not start a turn either, so it is not a prompt.
+    if (o.isCompactSummary || (typeof c === 'string' && /^This session is being continued from a previous conversation/.test(c))) {
+      return [{ ...base, kind: 'note', text: 'Contexto resumido: la conversación sigue desde un resumen de lo anterior' }];
+    }
     // A slash command run locally (/advisor, /clear…) is logged as user
     // lines wrapped in <command-name>, <local-command-stdout> and a caveat.
     // Claude never sees them, so they start no turn; keep only the command
