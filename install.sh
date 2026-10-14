@@ -793,6 +793,9 @@ ExecStart=/usr/bin/node server/index.js
 Restart=always
 RestartSec=3
 KillMode=process
+# Everything launched from a terminal lives in this cgroup: if the kernel
+# OOM-kills one of those, keep the server up instead of restarting everyone.
+OOMPolicy=continue
 StandardOutput=append:$INSTALL_DIR/logs/muxterm.log
 StandardError=append:$INSTALL_DIR/logs/muxterm-error.log
 
