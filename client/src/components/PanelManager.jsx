@@ -1008,9 +1008,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   // 4 panels: 2x2 grid
   if (panels.length === 4) {
     return (
-    <PanelGroup direction="horizontal" style={{ height: '100%' }}>
+    <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
       <Panel id="panel-left-group" minSize={5}>
-        <PanelGroup direction="vertical" style={{ height: '100%' }}>
+        <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
           <Panel id="panel-0" minSize={5}>
             {renderTerminal(panels[0])}
           </Panel>
@@ -1022,7 +1022,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
       </Panel>
       <PanelResizeHandle style={hStyle('h')} />
       <Panel id="panel-right-group" minSize={5}>
-        <PanelGroup direction="vertical" style={{ height: '100%' }}>
+        <PanelGroup key={`v-${windowId}-${panels.length}-b`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}-b`)} style={{ height: '100%' }}>
           <Panel id="panel-1" minSize={5}>
             {renderTerminal(panels[1])}
           </Panel>
@@ -1049,7 +1049,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
-          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}-b`)} style={{ height: '100%' }}>
             <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
@@ -1076,7 +1076,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
-          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}-b`)} style={{ height: '100%' }}>
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
@@ -1101,7 +1101,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-center" minSize={5}>
-          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}-b`)} style={{ height: '100%' }}>
             <Panel id="panel-2" minSize={5}>{renderTerminal(panels[2])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-3" minSize={5}>{renderTerminal(panels[3])}</Panel>
@@ -1109,7 +1109,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         </Panel>
         <PanelResizeHandle style={hStyle('h')} />
         <Panel id="panel-right" minSize={5}>
-          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
+          <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}-c`)} style={{ height: '100%' }}>
             <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
             <PanelResizeHandle style={hStyle('v')} />
             <Panel id="panel-5" minSize={5}>{renderTerminal(panels[5])}</Panel>
@@ -1123,9 +1123,9 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   
   // 8 paneles: 2x4 grid
   return (
-    <PanelGroup direction="horizontal" style={{ height: '100%' }}>
+    <PanelGroup key={`h-${windowId}-${panels.length}`} direction="horizontal" autoSaveId={saveKey(`h-${panels.length}`)} style={{ height: '100%' }}>
       <Panel id="panel-left" minSize={5}>
-        <PanelGroup direction="vertical" style={{ height: '100%' }}>
+        <PanelGroup key={`v-${windowId}-${panels.length}`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}`)} style={{ height: '100%' }}>
           <Panel id="panel-0" minSize={5}>{renderTerminal(panels[0])}</Panel>
           <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-1" minSize={5}>{renderTerminal(panels[1])}</Panel>
@@ -1137,7 +1137,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
       </Panel>
       <PanelResizeHandle style={hStyle('h')} />
       <Panel id="panel-right" minSize={5}>
-        <PanelGroup direction="vertical" style={{ height: '100%' }}>
+        <PanelGroup key={`v-${windowId}-${panels.length}-b`} direction="vertical" autoSaveId={saveKey(`v-${panels.length}-b`)} style={{ height: '100%' }}>
           <Panel id="panel-4" minSize={5}>{renderTerminal(panels[4])}</Panel>
           <PanelResizeHandle style={hStyle('v')} />
           <Panel id="panel-5" minSize={5}>{renderTerminal(panels[5])}</Panel>
