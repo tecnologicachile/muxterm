@@ -379,7 +379,9 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
               onLoad={() => {
                 // A fresh ttyd connection sends its own size, which tmux no
                 // longer follows: ask explicitly once xterm has measured.
-                [400, 1500].forEach(delay => setTimeout(adoptSize, delay));
+                // The late pass covers a slow load, where xterm's final
+                // fit lands after the first ones.
+                [400, 1500, 4000].forEach(delay => setTimeout(adoptSize, delay));
                 if (refocusRef.current) {
                   refocusRef.current = false;
                   // xterm's textarea appears once ttyd has connected; try a few times.
