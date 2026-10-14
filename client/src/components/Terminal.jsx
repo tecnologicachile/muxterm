@@ -268,6 +268,9 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
   const adoptSize = () => {
     try {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      // Two notebooks can both have the tab visible; the one whose browser
+      // window has the keyboard focus is the one being worked on.
+      if (typeof document !== 'undefined' && typeof document.hasFocus === 'function' && !document.hasFocus()) return;
       const el = iframeRef.current;
       if (!el || getComputedStyle(el).visibility === 'hidden') return;
       const t = el.contentWindow && el.contentWindow.term;
@@ -311,6 +314,10 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
       ro = new ResizeObserver(schedule);
       ro.observe(target);
     }
+    // Moving to this notebook and clicking into its browser: the selected
+    // pane takes the tmux window back from the other one.
+    const onFocus = () => { if (isActive && !hidden) schedule(); };
+    window.addEventListener('focus', onFocus);
 
     // 2) Staggered dispatch on activate/remount to cover cases where the container
     //    size doesn't change but xterm.js still has a stale column count (tab switch, etc.)
@@ -330,6 +337,7 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
 
     return () => {
       if (ro) ro.disconnect();
+      window.removeEventListener('focus', onFocus);
       if (debounceTimer) clearTimeout(debounceTimer);
       timers.forEach(clearTimeout);
     };
