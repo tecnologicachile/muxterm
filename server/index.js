@@ -994,6 +994,28 @@ io.on('connection', (socket) => {
     }
   });
 
+  // The pane the person is looking at decides the size of the tmux window.
+  // Every ttyd client keeps sending its own size and, on `window-size
+  // latest`, tmux followed whichever spoke last: a second notebook left
+  // open on the same workspace re-sent its size on any reconnect and the
+  // terminal you had just switched to came out the wrong size. A visible
+  // pane asks here instead; resize-window switches that window to
+  // `window-size manual`, so the other clients' sizes are ignored until
+  // another visible pane asks.
+  socket.on('adopt-terminal-size', (data) => {
+    try {
+      const t = data && ttydManager.getTerminal(data.terminalId);
+      if (!t || t.userId !== socket.userId || !t.tmuxSessionName) return;
+      const cols = Math.round(Number(data.cols)), rows = Math.round(Number(data.rows));
+      if (!(cols >= 10 && cols <= 500 && rows >= 3 && rows <= 300)) return;
+      const want = `${cols}x${rows}`;
+      if (t._adoptedSize === want) return;
+      t._adoptedSize = want;
+      require('child_process').execFile('tmux', ['-L', 'muxterm', 'resize-window', '-t', t.tmuxSessionName, '-x', String(cols), '-y', String(rows)],
+        { timeout: 2000 }, (err) => { if (err) { t._adoptedSize = null; } });
+    } catch (e) {}
+  });
+
   socket.on('restore-terminal', async (data) => {
     try {
       const sessionId = data.sessionId || `ws_${socket.userId}`;

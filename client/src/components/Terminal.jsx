@@ -256,6 +256,24 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
         w.dispatchEvent(new Event('resize'));
         if (w.term && typeof w.term.fit === 'function') w.term.fit();
       }
+      setTimeout(adoptSize, 60);
+    } catch (e) {}
+  };
+  // The tmux window takes the size of the pane the person is looking at,
+  // and only that one. ttyd clients keep sending their sizes, but once a
+  // visible pane has asked the server to fix the window (tmux switches it
+  // to window-size manual) those are ignored until another visible pane
+  // asks. A browser in a background tab, or a hidden pane, never asks:
+  // that is what stops a second notebook left open from winning.
+  const adoptSize = () => {
+    try {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const el = iframeRef.current;
+      if (!el || getComputedStyle(el).visibility === 'hidden') return;
+      const t = el.contentWindow && el.contentWindow.term;
+      const tid = localTerminalId || terminalId;
+      if (!t || !socket || !tid || !(t.cols > 1) || !(t.rows > 1)) return;
+      socket.emit('adopt-terminal-size', { terminalId: tid, cols: t.cols, rows: t.rows });
     } catch (e) {}
   };
   // Re-fitting is not enough when another tmux client (the phone) sized
@@ -273,6 +291,7 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
       t.resize(t.cols - 1, t.rows);
       setTimeout(() => {
         try { if (typeof t.fit === 'function') t.fit(); else w.dispatchEvent(new Event('resize')); } catch (e) {}
+        setTimeout(adoptSize, 60);
       }, 30);
     } catch (e) {}
   };
@@ -358,6 +377,9 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
               ref={iframeRef}
               src={ttydUrl}
               onLoad={() => {
+                // A fresh ttyd connection sends its own size, which tmux no
+                // longer follows: ask explicitly once xterm has measured.
+                [400, 1500].forEach(delay => setTimeout(adoptSize, delay));
                 if (refocusRef.current) {
                   refocusRef.current = false;
                   // xterm's textarea appears once ttyd has connected; try a few times.
