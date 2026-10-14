@@ -3,6 +3,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
 
+// When the person last touched this browser: a click, a key, a resize, or
+// the page load itself. A browser left open on another notebook keeps its
+// tab visible and its window "focused" for its own desktop, so neither
+// tells the two apart; recent interaction does. Clicks inside a terminal's
+// iframe are recorded from the iframe document (see onLoad).
+window.__muxtermLastTouch = Date.now();
+const touch = () => { window.__muxtermLastTouch = Date.now(); };
+const TOUCH_FRESH_MS = 20000;
+const touchedRecently = () => (Date.now() - (window.__muxtermLastTouch || 0)) < TOUCH_FRESH_MS;
+if (typeof document !== 'undefined' && !window.__muxtermTouchTracked) {
+  window.__muxtermTouchTracked = true;
+  ['pointerdown', 'keydown', 'wheel'].forEach(ev => document.addEventListener(ev, touch, true));
+  window.addEventListener('resize', touch);
+  window.addEventListener('focus', touch);
+}
+
 // The last thing on the page that legitimately held the keyboard: a visible
 // terminal's iframe, the chat composer, a text field. Hidden iframes are not
 // recorded, so focus can be handed back when one of them grabs it.
@@ -271,6 +287,9 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
       // Two notebooks can both have the tab visible; the one whose browser
       // window has the keyboard focus is the one being worked on.
       if (typeof document !== 'undefined' && typeof document.hasFocus === 'function' && !document.hasFocus()) return;
+      // Each notebook's browser window is "focused" for its own desktop;
+      // only the one the person touched lately gets to ask.
+      if (!touchedRecently()) return;
       const el = iframeRef.current;
       if (!el || getComputedStyle(el).visibility === 'hidden') return;
       const t = el.contentWindow && el.contentWindow.term;
@@ -390,6 +409,12 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
                 // The late pass covers a slow load, where xterm's final
                 // fit lands after the first ones.
                 [400, 1500, 4000].forEach(delay => setTimeout(adoptSize, delay));
+                // Typing or clicking in the terminal happens inside the
+                // iframe, where the page's listeners do not see it.
+                try {
+                  const d = iframeRef.current?.contentDocument;
+                  if (d) ['pointerdown', 'keydown', 'wheel'].forEach(ev => d.addEventListener(ev, touch, true));
+                } catch (e) {}
                 if (refocusRef.current) {
                   refocusRef.current = false;
                   // xterm's textarea appears once ttyd has connected; try a few times.
