@@ -169,6 +169,26 @@ function readStatusLine(tmuxSession) {
   } catch (e) { return null; }
 }
 
+/**
+ * Whether Claude Code is busy with a prompt. While it works it shows a
+ * spinner line above its input box, a word with an ellipsis and the elapsed
+ * time: "✻ Skedaddling… (52s · ↓ 2.8k tokens)". Once done the line turns
+ * into "✻ Worked for 1m 3s", with no ellipsis.
+ */
+function readWorking(tmuxSession) {
+  try {
+    const plain = readScreen(tmuxSession).split('\n').map(l => l.replace(/\x1b\[[0-9;]*m/g, ''));
+    const seps = [];
+    plain.forEach((l, i) => { if (l.trim().startsWith('────')) seps.push(i); });
+    if (seps.length < 2) return false;
+    const boxTop = seps[seps.length - 2];
+    for (let i = boxTop - 1; i >= 0 && i >= boxTop - 8; i--) {
+      if (/^\s*\S\s+[^\s(]+…\s*\((?:\d+[hm]\s*)*\d+s\b/.test(plain[i])) return true;
+    }
+    return false;
+  } catch (e) { return false; }
+}
+
 function readSuggestion(tmuxSession) {
   try {
     const out = readScreen(tmuxSession);
@@ -245,7 +265,7 @@ function watch(terminalId, onEvents) {
     const tail = transcript.readTail(w.file);
     // A joining listener gets the current suggestion too; it is otherwise
     // only sent when it changes.
-    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null, status: w.statusKey ? JSON.parse(w.statusKey) : null });
+    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null, status: w.statusKey ? JSON.parse(w.statusKey) : null, working: !!w.working });
     return;
   }
 
@@ -259,9 +279,9 @@ function watch(terminalId, onEvents) {
   const pane0 = listClaudePanes().find(p => p.terminalId === terminalId);
   const perm0 = pane0 ? readPermission(pane0.tmuxSession) : null;
   const status0 = pane0 ? readStatusLine(pane0.tmuxSession) : null;
-  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0), statusKey: JSON.stringify(status0) };
+  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0), statusKey: JSON.stringify(status0), working: pane0 ? readWorking(pane0.tmuxSession) : false };
   watchers.set(terminalId, w);
-  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0, status: status0 });
+  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0, status: status0, working: w.working });
 
   // Poll the size: the file is appended by another process, and polling stat is
   // more dependable than fs.watch for that across filesystems.
@@ -296,9 +316,10 @@ function watch(terminalId, onEvents) {
         const permKey = JSON.stringify(permission);
         const status = pane ? readStatusLine(pane.tmuxSession) : null;
         const statusKey = JSON.stringify(status);
-        if (suggestion !== w.suggestion || permKey !== w.permKey || statusKey !== w.statusKey) {
-          w.suggestion = suggestion; w.permKey = permKey; w.statusKey = statusKey;
-          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission, status });
+        const working = pane ? readWorking(pane.tmuxSession) : false;
+        if (suggestion !== w.suggestion || permKey !== w.permKey || statusKey !== w.statusKey || working !== w.working) {
+          w.suggestion = suggestion; w.permKey = permKey; w.statusKey = statusKey; w.working = working;
+          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission, status, working });
         }
       }
       if (w.reset) { w.reset = false; w.offset = 0; }

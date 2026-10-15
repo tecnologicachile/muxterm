@@ -395,7 +395,7 @@ function ToolCard({ ev }) {
  * Its own component on purpose: the draft lives here, so typing re-renders this
  * box alone instead of the whole conversation on every keystroke.
  */
-function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceToggle, suggestion }) {
+function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceToggle, suggestion, working, onInterrupt }) {
   const [draft, setDraft] = useState('');
   const useSuggestion = () => {
     if (!suggestion) return;
@@ -482,6 +482,8 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+            // Esc stops Claude mid-answer, as it does in the terminal.
+            if (e.key === 'Escape' && working) { e.preventDefault(); onInterrupt(); }
             if (e.key === 'Tab' && !e.shiftKey && suggestion && !draft) { e.preventDefault(); useSuggestion(); }
           }}
           InputProps={{ sx: { color: '#ddd', fontSize: '13px', backgroundColor: '#0d0d0d' } }}
@@ -522,6 +524,15 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
               <StopIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </>
+        )}
+        {working && (
+          <IconButton
+            onClick={onInterrupt}
+            sx={{ color: '#ff3b3b', backgroundColor: 'rgba(255,59,59,0.12)', '&:hover': { color: '#ff6b6b' } }}
+            title="Detener a Claude (Esc)"
+          >
+            <StopIcon sx={{ fontSize: 18 }} />
+          </IconButton>
         )}
         <IconButton
           onClick={send}
@@ -565,6 +576,14 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const [permission, setPermission] = useState(null);
   // Claude Code's own status line (model, context used…), read off the pane.
   const [statusLine, setStatusLine] = useState(null);
+  // Claude Code busy with a prompt (spinner line on screen). Esc or the stop
+  // button sends it Escape, which is how the terminal interrupts it.
+  const [working, setWorking] = useState(false);
+  const interrupt = () => {
+    if (!socket) return;
+    socket.emit('send-keys', { terminalId, keys: '\x1b' });
+    setWorking(false);
+  };
   const answerPermission = (n) => {
     if (!socket) return;
     socket.emit('send-keys', { terminalId, keys: String(n) });
@@ -657,6 +676,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (typeof payload.suggestion === 'string') setSuggestion(payload.suggestion);
       if ('permission' in payload) setPermission(payload.permission || null);
       if ('status' in payload) setStatusLine(payload.status || null);
+      if ('working' in payload) setWorking(!!payload.working);
       // A reconnect re-sends the whole backlog. Clearing it made the
       // conversation blank and redraw, which is the flicker you see on coming
       // back to the tab. The merge dedupes by uuid, so only wipe when the
@@ -1221,6 +1241,8 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         terminalId={terminalId}
         waiting={waiting}
         suggestion={suggestion}
+        working={working}
+        onInterrupt={interrupt}
         isActive={isActive}
         recording={recording}
         onVoiceToggle={onVoiceToggle}
