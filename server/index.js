@@ -1012,7 +1012,7 @@ io.on('connection', (socket) => {
       if (t._adoptedSize === want) return;
       t._adoptedSize = want;
       const ip = (socket.handshake && (socket.handshake.headers['x-forwarded-for'] || socket.handshake.address)) || '?';
-      logger.info(`[SIZE] ${String(data.terminalId).slice(0, 8)} <- ${want} from ${ip} ua=${String(socket.handshake && socket.handshake.headers['user-agent'] || '').slice(0, 60)}`);
+      console.log(`[SIZE] ${String(data.terminalId).slice(0, 8)} <- ${want} from ${ip} ua=${String(socket.handshake && socket.handshake.headers['user-agent'] || '').slice(0, 60)}`);
       require('child_process').execFile('tmux', ['-L', 'muxterm', 'resize-window', '-t', t.tmuxSessionName, '-x', String(cols), '-y', String(rows)],
         { timeout: 2000 }, (err) => { if (err) { t._adoptedSize = null; } });
     } catch (e) {}
@@ -1020,6 +1020,7 @@ io.on('connection', (socket) => {
 
   socket.on('restore-terminal', async (data) => {
     try {
+      console.log(`[RESTORE] ${String(data && data.terminalId).slice(0, 8)} from ${(socket.handshake && (socket.handshake.headers['x-forwarded-for'] || socket.handshake.address)) || '?'} ua=${String(socket.handshake && socket.handshake.headers['user-agent'] || '').slice(0, 60)}`);
       const sessionId = data.sessionId || `ws_${socket.userId}`;
 
       // Get SSH config if this was an SSH terminal

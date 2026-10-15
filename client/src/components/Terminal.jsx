@@ -375,9 +375,6 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
       });
       // Make tmux take this pane's size even if xterm thinks nothing changed.
       timers.push(setTimeout(resendSize, 500));
-      // Coming out from under the chat: measure the font again before the
-      // late fits, so the cell width matches the glyphs.
-      if (hiddenBeforeRef.current) timers.push(setTimeout(remeasureFont, 250));
     }
     hiddenBeforeRef.current = !!hidden;
 
@@ -397,7 +394,7 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
   // visible pane.
   useEffect(() => {
     if (!iframeReady || hidden) return;
-    const timers = [1500, 4000].map(d => setTimeout(() => { remeasureFont(); dispatchResize(); setTimeout(resendSize, 200); }, d));
+    const timers = [1500, 4000].map(d => setTimeout(() => { dispatchResize(); setTimeout(resendSize, 200); }, d));
     return () => timers.forEach(clearTimeout);
   }, [becameVisible, isReconnected]);   // eslint-disable-line react-hooks/exhaustive-deps
 
