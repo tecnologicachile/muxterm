@@ -1380,7 +1380,7 @@ server.listen(PORT, async () => {
     const opts = [
       'window-size latest',
       'aggressive-resize off',
-      'mode-style "bg=black,fg=black"',
+      'mode-style "bg=#666666,fg=#ffffff"',
       'message-style "bg=black,fg=black"',
       'alternate-screen on',
     ];

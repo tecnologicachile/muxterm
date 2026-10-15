@@ -593,6 +593,75 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
                       if (attempt < 20) setTimeout(() => __wireOsc52(attempt + 1), 250);
                     };
                     __wireOsc52(0);
+
+                    // Clickable links that span rows. tmux redraws every row
+                    // on its own, so xterm never marks a long URL's rows as
+                    // wrapped and ttyd's web-links addon only sees the first
+                    // row (and would open it cut). Rebuild the logical line
+                    // from consecutive full rows, find whole URLs, and open
+                    // them in a new tab. Registered ahead of ttyd's provider
+                    // so the cut first-row link never wins.
+                    const __wireLinks = (attempt) => {
+                      try {
+                        const w = iframeRef.current && iframeRef.current.contentWindow;
+                        const term = w && w.term;
+                        if (term && term.registerLinkProvider && term.buffer) {
+                          const MAX_ROWS = 30;
+                          const rowStr = (i) => {
+                            const l = term.buffer.active.getLine(i);
+                            return l ? l.translateToString(true) : '';
+                          };
+                          const full = (i) => {
+                            const next = term.buffer.active.getLine(i + 1);
+                            return rowStr(i).length >= term.cols || !!(next && next.isWrapped);
+                          };
+                          const provider = {
+                            provideLinks: (y, callback) => {
+                              try {
+                                const cols = term.cols;
+                                let first = y - 1;
+                                while (first > 0 && (y - 1 - first) < MAX_ROWS && full(first - 1)) first--;
+                                let last = first;
+                                let text = rowStr(first).padEnd(full(first) ? cols : 0);
+                                while (full(last) && (last - first) < MAX_ROWS) {
+                                  last++;
+                                  const r = rowStr(last);
+                                  text += full(last) ? r.padEnd(cols) : r;
+                                }
+                                if ((y - 1) < first || (y - 1) > last) { callback(undefined); return; }
+                                const links = [];
+                                const re = /https?:\/\/[^\s"'<>`]+/g;
+                                let m;
+                                while ((m = re.exec(text))) {
+                                  const url = m[0].replace(/[.,;:!?)\]}'"]+$/, '');
+                                  const a = m.index, b = m.index + url.length - 1;
+                                  const sRow = first + Math.floor(a / cols), eRow = first + Math.floor(b / cols);
+                                  if ((y - 1) < sRow || (y - 1) > eRow) continue;
+                                  links.push({
+                                    text: url,
+                                    range: { start: { x: (a % cols) + 1, y: sRow + 1 }, end: { x: (b % cols) + 1, y: eRow + 1 } },
+                                    decorations: { underline: true, pointerCursor: true },
+                                    activate: (_e, u) => { window.open(u, '_blank', 'noopener,noreferrer'); },
+                                  });
+                                }
+                                callback(links.length ? links : undefined);
+                              } catch (_) { callback(undefined); }
+                            },
+                          };
+                          term.registerLinkProvider(provider);
+                          // Move ahead of ttyd's single-row web-links provider
+                          // (index 0 stays xterm's own OSC 8 hyperlinks).
+                          try {
+                            const list = term._core.linkifier2._linkProviders;
+                            const i = list.indexOf(provider);
+                            if (i > 1) { list.splice(i, 1); list.splice(1, 0, provider); }
+                          } catch (_) {}
+                          return;
+                        }
+                      } catch (_) {}
+                      if (attempt < 20) setTimeout(() => __wireLinks(attempt + 1), 250);
+                    };
+                    __wireLinks(0);
                   }
                 } catch(e) {}
               }}
