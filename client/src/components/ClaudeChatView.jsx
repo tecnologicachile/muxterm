@@ -69,6 +69,25 @@ import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpe
 
 /* ---------- tiny markdown renderer (builds React nodes, never raw HTML) ---------- */
 
+// Addresses inside code stay clickable: Claude often fences a link it wants
+// you to open (a login URL, a dashboard), and the terminal makes those
+// clickable too. Everything else in the code is left as plain text.
+function linkifyCode(text, keyBase) {
+  const out = [];
+  const re = /https?:\/\/[^\s<>"'`]+/g;
+  let last = 0, m, i = 0;
+  while ((m = re.exec(text)) !== null) {
+    const url = m[0].replace(/[.,;:!?)\]]+$/, '');
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(<a key={`${keyBase}-u${i++}`} href={url} target="_blank" rel="noreferrer" style={{ color: '#4da6ff', wordBreak: 'break-all' }}>{url}</a>);
+    last = m.index + url.length;
+    re.lastIndex = last;
+  }
+  if (!out.length) return text;
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function inline(text, keyBase) {
   // Code first so emphasis inside a span of code is left alone.
   const out = [];
@@ -81,7 +100,7 @@ function inline(text, keyBase) {
     const t = m[0];
     const k = `${keyBase}-i${i++}`;
     if (t.startsWith('`')) {
-      out.push(<code key={k} style={{ background: '#222', padding: '1px 4px', borderRadius: 3, fontFamily: '"Fira Code", monospace', fontSize: '0.92em', color: '#7ddc7d' }}>{t.slice(1, -1)}</code>);
+      out.push(<code key={k} style={{ background: '#222', padding: '1px 4px', borderRadius: 3, fontFamily: '"Fira Code", monospace', fontSize: '0.92em', color: '#7ddc7d' }}>{linkifyCode(t.slice(1, -1), k)}</code>);
     } else if (/^https?:\/\//.test(t)) {
       // Trailing punctuation belongs to the sentence, not the address.
       const mm = t.match(/^(.*?)([.,;:!?]*)$/);
@@ -164,7 +183,7 @@ function MiniMarkdown({ text }) {
             fontFamily: '"Fira Code", monospace', color: '#d4d4d4', ...darkScroll
           }}>
             {lang && <Box component="span" sx={{ color: '#666', fontSize: '10px', display: 'block', mb: 0.5 }}>{lang}</Box>}
-            {code}
+            {linkifyCode(code, `c${key}`)}
           </Box>
           <CopyButton text={code} title="Copiar código" sx={{
             position: 'absolute', top: 4, right: 4, opacity: TOUCH ? 1 : 0, transition: 'opacity 0.1s',
