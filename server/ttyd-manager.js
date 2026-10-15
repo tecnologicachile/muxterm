@@ -136,6 +136,11 @@ class TtydProcessManager {
       '-t', 'fontFamily=Fira Code, monospace',
       '-t', `theme=${themeJson}`,
       '-t', 'scrollback=0',
+      // Canvas, not ttyd's default WebGL: Chrome keeps ~16 WebGL contexts per
+      // page and MuxTerm mounts every pane of every window. Past that, Chrome
+      // drops the oldest contexts a few seconds after load, ttyd falls back to
+      // the DOM renderer, and the text comes out with letters spaced apart.
+      '-t', 'rendererType=canvas',
       // Disable ttyd's "leave site?" confirmation: muxterm persists every
       // terminal in tmux, so leaving the page never loses anything — the
       // native beforeunload prompt is a misleading false alarm here.
