@@ -555,7 +555,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
         >
           <Typography
             variant="caption"
-            draggable={panels.length > 1}
+            draggable
             onDragStart={(e) => {
               setDragPanelId(panel.id);
               e.dataTransfer.effectAllowed = 'move';
@@ -583,11 +583,11 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               color: isActive ? '#00ff00' : (panel.terminalId && unseen[panel.terminalId]) ? '#ffa726' : '#c8c8c8',
               fontSize: '12px',
               fontWeight: isActive ? 'bold' : 'normal',
-              cursor: panels.length > 1 ? 'grab' : 'pointer',
-              '&:active': { cursor: panels.length > 1 ? 'grabbing' : 'pointer' },
+              cursor: 'grab',
+              '&:active': { cursor: 'grabbing' },
               '&:hover': { textDecoration: 'underline' }
             }}
-            title={panels.length > 1 ? 'Click to rename · Drag to reorder' : 'Click to rename'}
+            title="Click to rename · drag to reorder, or onto a window tab (or +) to move it there"
           >
             {panel.name || `Terminal ${panels.indexOf(panel) + 1}`}
           </Typography>

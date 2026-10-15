@@ -62,6 +62,29 @@ function TerminalView() {
   const [renamingWindowId, setRenamingWindowId] = useState(null);
   const [renameWindowValue, setRenameWindowValue] = useState('');
   const [draggingPanelForWindow, setDraggingPanelForWindow] = useState(null);
+  const [dragOverNewWindow, setDragOverNewWindow] = useState(false);
+  // A panel dropped on a window tab (or on "+", which makes the window first)
+  // moves there. A minimized one is restored into it.
+  const movePanelToWindow = (panelId, winId) => {
+    const minPanel = minimizedPanels.find(p => p.id === panelId);
+    if (minPanel) {
+      setMinimizedPanels(prev => prev.filter(p => p.id !== panelId));
+      setPanels(prev => prev.some(p => p.id === panelId)
+        ? prev
+        : [...prev, { ...minPanel, windowId: winId, _restoreKey: Date.now() }]);
+      if (minPanel.terminalId && socket) {
+        socket.emit('restore-terminal', { terminalId: minPanel.terminalId, sshConnectionId: minPanel.sshConnectionId || null });
+      }
+      setActiveWindowId(winId);
+      setActivePanel(panelId);
+      return;
+    }
+    const sourcePanel = panels.find(p => p.id === panelId);
+    if (!sourcePanel || (sourcePanel.windowId || 'w1') === winId) return;
+    setPanels(prev => prev.map(p => p.id === panelId ? { ...p, windowId: winId } : p));
+    setActiveWindowId(winId);
+    setActivePanel(panelId);
+  };
   const [dragOverWindowTab, setDragOverWindowTab] = useState(null);
   const [draggingTabId, setDraggingTabId] = useState(null);
   const [dragOverTabId, setDragOverTabId] = useState(null);
@@ -1298,32 +1321,7 @@ function TerminalView() {
                       setDragOverTabId(null);
                       return;
                     }
-                    if (draggingPanelForWindow) {
-                      // Minimized → restore to target window
-                      const minPanel = minimizedPanels.find(p => p.id === draggingPanelForWindow);
-                      if (minPanel) {
-                        setMinimizedPanels(prev => prev.filter(p => p.id !== draggingPanelForWindow));
-                        setPanels(prev => prev.some(p => p.id === draggingPanelForWindow)
-                          ? prev
-                          : [...prev, { ...minPanel, windowId: win.id, _restoreKey: Date.now() }]);
-                        if (minPanel.terminalId && socket) {
-                          socket.emit('restore-terminal', { terminalId: minPanel.terminalId, sshConnectionId: minPanel.sshConnectionId || null });
-                        }
-                        setActiveWindowId(win.id);
-                        setActivePanel(draggingPanelForWindow);
-                      } else {
-                        // Active panel: move to target window if it isn't already there
-                        const sourcePanel = panels.find(p => p.id === draggingPanelForWindow);
-                        const currentWin = sourcePanel?.windowId || 'w1';
-                        if (currentWin !== win.id) {
-                          setPanels(prev => prev.map(p =>
-                            p.id === draggingPanelForWindow ? { ...p, windowId: win.id } : p
-                          ));
-                          setActiveWindowId(win.id);
-                          setActivePanel(draggingPanelForWindow);
-                        }
-                      }
-                    }
+                    if (draggingPanelForWindow) movePanelToWindow(draggingPanelForWindow, win.id);
                     setDraggingPanelForWindow(null);
                     setDragOverWindowTab(null);
                   }}
@@ -1411,11 +1409,33 @@ function TerminalView() {
             setWindows(ws => [...ws, { id: newId, name: `Window ${ws.length + 1}` }]);
             setActiveWindowId(newId);
           }}
-          title="New window"
+          onDragOver={(e) => {
+            if (!draggingPanelForWindow) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (!dragOverNewWindow) setDragOverNewWindow(true);
+          }}
+          onDragLeave={() => setDragOverNewWindow(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOverNewWindow(false);
+            const panelId = draggingPanelForWindow;
+            setDraggingPanelForWindow(null);
+            setDragOverWindowTab(null);
+            if (!panelId) return;
+            const moving = panels.find(p => p.id === panelId) || minimizedPanels.find(p => p.id === panelId);
+            const newId = 'w' + Date.now();
+            setWindows(ws => [...ws, { id: newId, name: (moving && moving.name) || `Window ${ws.length + 1}` }]);
+            movePanelToWindow(panelId, newId);
+          }}
+          title={draggingPanelForWindow ? 'Drop here to move the panel to a new window' : 'New window · drop a panel here to move it to a new window'}
           sx={{
             flexShrink: 0,
-            padding: '2px 10px', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '14px',
-            borderRadius: '4px', '&:hover': { color: '#00ff00', backgroundColor: 'rgba(0,255,0,0.08)' }
+            padding: '2px 10px', cursor: 'pointer', fontSize: '14px', borderRadius: '4px',
+            color: dragOverNewWindow ? '#00ff00' : 'rgba(255,255,255,0.5)',
+            backgroundColor: dragOverNewWindow ? 'rgba(0,255,0,0.3)' : 'transparent',
+            border: dragOverNewWindow ? '1px solid #00ff00' : draggingPanelForWindow ? '1px dashed rgba(0,255,0,0.5)' : '1px solid transparent',
+            '&:hover': { color: '#00ff00', backgroundColor: 'rgba(0,255,0,0.08)' }
           }}
           >+</Box>
           </Box>
