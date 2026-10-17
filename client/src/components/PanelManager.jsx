@@ -304,14 +304,26 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     if (heldMs < 2000) return 20;
     return 10;
   };
+  // In modo conversación the header buttons move the conversation, not the
+  // tmux pane hidden behind it.
+  const chatScroller = (terminalId) => {
+    const p = panels.find(x => x.terminalId === terminalId);
+    return p && isChatOn(p) ? document.querySelector(`[data-chat-scroll="${terminalId}"]`) : null;
+  };
+  const CHAT_STEP_PX = 60;
+  const scrollStep = (terminalId, direction) => {
+    const el = chatScroller(terminalId);
+    if (el) el.scrollTop += direction === 'up' ? -CHAT_STEP_PX : CHAT_STEP_PX;
+    else if (socket) socket.emit('terminal-scroll', { terminalId, direction, step: 'line' });
+  };
   const startHoldScroll = (terminalId, direction) => {
-    if (socket) socket.emit('terminal-scroll', { terminalId, direction, step: 'line' });
+    scrollStep(terminalId, direction);
     _lastScrollTs = Date.now();
     const holdStart = Date.now();
     const scheduleNext = () => {
       const delay = getLineIntervalMs(Date.now() - holdStart);
       const id = setTimeout(() => {
-        if (socket) socket.emit('terminal-scroll', { terminalId, direction, step: 'line' });
+        scrollStep(terminalId, direction);
         _lastScrollTs = Date.now();
         scheduleNext();
       }, delay);
@@ -653,7 +665,11 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                 <Box
                   onClick={(e) => {
                     e.stopPropagation();
-                    emitScroll(panel.terminalId, 'exit');
+                    // Out of tmux's scroll mode, or back to the latest
+                    // message in the conversation.
+                    const el = chatScroller(panel.terminalId);
+                    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+                    else emitScroll(panel.terminalId, 'exit');
                   }}
                   sx={{
                     width: '22px', height: '18px',

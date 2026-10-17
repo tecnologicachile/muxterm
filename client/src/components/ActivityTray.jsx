@@ -244,7 +244,7 @@ export default function ActivityTray({ open, onClose, events, pending, unseenCou
         </Box>
       )}
 
-      <Box sx={{ flex: 1, overflowY: 'auto', '&::-webkit-scrollbar': { width: 6 }, '&::-webkit-scrollbar-thumb': { backgroundColor: '#333' } }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', '&::-webkit-scrollbar': { width: 10 }, '&::-webkit-scrollbar-thumb': { backgroundColor: '#333' } }}>
         {shownPending.length > 0 && (
           <Box sx={{ borderBottom: '1px solid #2a2a2a', pb: 0.5 }}>
             <Typography sx={{ fontSize: 10, color: '#ffa726', letterSpacing: 1, textTransform: 'uppercase', px: 1.5, pt: 1, pb: 0.5 }}>

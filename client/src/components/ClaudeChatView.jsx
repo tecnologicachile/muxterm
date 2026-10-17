@@ -129,12 +129,12 @@ function inline(text, keyBase) {
 // The browser default scrollbar is light and breaks the dark UI, and muxterm
 // styles them per component rather than globally.
 const darkScroll = {
-  scrollbarWidth: 'thin',
+  scrollbarWidth: 'auto',
   scrollbarColor: '#3a3a3a transparent',
-  '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+  '&::-webkit-scrollbar': { width: '12px', height: '12px' },
   '&::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
   '&::-webkit-scrollbar-thumb': {
-    backgroundColor: '#3a3a3a', borderRadius: '4px',
+    backgroundColor: '#3a3a3a', borderRadius: '6px',
     '&:hover': { backgroundColor: '#4d4d4d' }
   },
   '&::-webkit-scrollbar-corner': { backgroundColor: 'transparent' }
@@ -1149,7 +1149,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           </Box>
         )}
       </Box>
-      <Box ref={scrollRef} onScroll={onScroll} sx={{ flex: 1, overflow: 'auto', px: 1.5, py: 1, ...darkScroll }}>
+      <Box ref={scrollRef} onScroll={onScroll} data-chat-scroll={terminalId} sx={{ flex: 1, overflow: 'auto', px: 1.5, py: 1, ...darkScroll }}>
         {error && <Box sx={{ color: '#ffa726', fontSize: '12px', p: 2, textAlign: 'center' }}>{error}</Box>}
         {!error && events.length === 0 && (
           <Box sx={{ color: '#666', fontSize: '12px', p: 2, textAlign: 'center' }}>Esperando actividad de Claude…</Box>
