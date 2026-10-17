@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { Box, Typography, IconButton, TextField, CircularProgress } from '@mui/material';
+import { eventFiles, carriesFiles, uploadFiles } from '../utils/pasteFiles';
 import {
   ExpandMore as ExpandMoreIcon,
   ChevronRight as ChevronRightIcon,
@@ -424,6 +425,22 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(0);
+
+  // A pasted or dropped file (a screenshot, a PDF) goes up to the server and
+  // its path lands in the draft, which is how Claude Code takes it.
+  const attachFiles = async (files) => {
+    setSendError('');
+    setUploading(files.length);
+    try {
+      const paths = await uploadFiles(terminalId, files);
+      setDraft(d => (d && !/\s$/.test(d) ? d + ' ' : d) + paths);
+      setTimeout(() => { try { inputRef.current?.focus(); } catch (e) {} }, 0);
+    } catch (e) {
+      setSendError(e.message);
+    }
+    setUploading(0);
+  };
 
   // Focusing here when the panel is selected saves a click before typing.
   // Desktop only: on a phone it would pop the on-screen keyboard every time
@@ -460,7 +477,17 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
   };
 
   return (
-    <Box sx={{ flexShrink: 0, borderTop: '1px solid #222', p: 1, backgroundColor: '#111' }}>
+    <Box
+      sx={{ flexShrink: 0, borderTop: '1px solid #222', p: 1, backgroundColor: '#111' }}
+      onDragOver={(e) => { if (carriesFiles(e.dataTransfer)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
+      onDrop={(e) => {
+        const files = eventFiles(e.dataTransfer);
+        if (!files.length) return;
+        e.preventDefault();
+        attachFiles(files);
+      }}
+    >
+      {uploading > 0 && <Box sx={{ color: '#9f9', fontSize: '11px', mb: 0.5 }}>{uploading > 1 ? `Subiendo ${uploading} archivos…` : 'Subiendo archivo…'}</Box>}
       {sendError && <Box sx={{ color: '#ff8080', fontSize: '11px', mb: 0.5 }}>{sendError}</Box>}
       {suggestion && !draft && !waiting && (
         // The same suggestion Claude Code shows dimmed in the terminal. Tab or
@@ -494,11 +521,17 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
       <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
         <TextField
           multiline maxRows={6} fullWidth size="small"
-          placeholder={waiting ? 'Responde primero en el terminal…' : 'Escribe un prompt… (Enter envía, Shift+Enter nueva línea)'}
+          placeholder={waiting ? 'Responde primero en el terminal…' : 'Escribe un prompt… (Enter envía, Shift+Enter nueva línea, Ctrl+V pega imágenes)'}
           value={draft}
           inputRef={inputRef}
           disabled={sending || !!waiting}
           onChange={(e) => setDraft(e.target.value)}
+          onPaste={(e) => {
+            const files = eventFiles(e.clipboardData);
+            if (!files.length) return;
+            e.preventDefault();
+            attachFiles(files);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
             // Esc stops Claude mid-answer, as it does in the terminal.

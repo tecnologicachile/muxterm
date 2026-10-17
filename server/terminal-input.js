@@ -31,6 +31,32 @@ function findTmuxSession(terminalId) {
 }
 
 /**
+ * The tmux session behind a terminal the user owns.
+ * @returns {{session:string, terminal:object}|{error:{status:number, body:object}}}
+ */
+function resolveSession({ terminalId, userId }) {
+  // Ownership, from the live terminal when we have it and the DB otherwise.
+  const terminal = ttydManager.terminals.get(terminalId);
+  if (terminal) {
+    if (terminal.userId && userId && terminal.userId !== userId) {
+      return { error: { status: 403, body: { status: 'error', message: 'Not your terminal' } } };
+    }
+  } else {
+    const row = database.findTerminalById(terminalId);
+    if (!row) return { error: { status: 404, body: { status: 'error', message: 'Terminal not found' } } };
+    if (userId && row.user_id !== userId) {
+      return { error: { status: 403, body: { status: 'error', message: 'Not your terminal' } } };
+    }
+  }
+
+  const session = (terminal && terminal.tmuxSessionName) || findTmuxSession(terminalId);
+  if (!session) {
+    return { error: { status: 409, body: { status: 'error', message: 'La sesión de este terminal ya no existe' } } };
+  }
+  return { session, terminal };
+}
+
+/**
  * @returns {{status:number, body:object}} ready to send as an HTTP response
  */
 function injectText({ terminalId, text, userId }) {
@@ -38,24 +64,9 @@ function injectText({ terminalId, text, userId }) {
     return { status: 400, body: { status: 'error', message: 'terminalId and non-empty text are required' } };
   }
 
-  // Ownership, from the live terminal when we have it and the DB otherwise.
-  const terminal = ttydManager.terminals.get(terminalId);
-  if (terminal) {
-    if (terminal.userId && userId && terminal.userId !== userId) {
-      return { status: 403, body: { status: 'error', message: 'Not your terminal' } };
-    }
-  } else {
-    const row = database.findTerminalById(terminalId);
-    if (!row) return { status: 404, body: { status: 'error', message: 'Terminal not found' } };
-    if (userId && row.user_id !== userId) {
-      return { status: 403, body: { status: 'error', message: 'Not your terminal' } };
-    }
-  }
-
-  const session = (terminal && terminal.tmuxSessionName) || findTmuxSession(terminalId);
-  if (!session) {
-    return { status: 409, body: { status: 'error', message: 'La sesión de este terminal ya no existe' } };
-  }
+  const r = resolveSession({ terminalId, userId });
+  if (r.error) return r.error;
+  const { session, terminal } = r;
 
   // A newline inside the literal text would submit early in Claude Code's TUI,
   // so line breaks collapse into spaces and Enter is a separate keystroke (the
@@ -99,4 +110,4 @@ function injectText({ terminalId, text, userId }) {
   return { status: 200, body: { status: 'ok', sent: oneLine, reattached: !terminal } };
 }
 
-module.exports = { injectText, findTmuxSession };
+module.exports = { injectText, findTmuxSession, resolveSession };

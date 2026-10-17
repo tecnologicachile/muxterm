@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { eventFiles, carriesFiles, uploadFiles, clipboardFiles } from '../utils/pasteFiles';
 import { v4 as uuidv4 } from 'uuid';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
@@ -61,6 +62,10 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
   const [iframeReady, setIframeReady] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
+  // "Subiendo…" or an error while a pasted or dropped file goes up.
+  const [pasteNote, setPasteNote] = useState(null);
+  const pasteIdRef = useRef(null);
+  pasteIdRef.current = localTerminalId || terminalId;
   // Set while a restore was requested only because the tab came back into
   // view; the reply then decides whether the iframe needs reloading at all.
   const visibilityRestoreRef = useRef(false);
@@ -662,6 +667,60 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
                       if (attempt < 20) setTimeout(() => __wireLinks(attempt + 1), 250);
                     };
                     __wireLinks(0);
+
+                    // Pasted or dropped files: Ctrl+V reaches the browser, not
+                    // Claude Code, so a screenshot in the clipboard would be
+                    // lost. Upload it and paste the saved path instead, which
+                    // Claude Code takes as an attached image (or a file to
+                    // read). Text pastes go on to xterm untouched.
+                    const __sendFiles = (files) => {
+                      const tid = pasteIdRef.current;
+                      if (!tid) return;
+                      setPasteNote({ text: files.length > 1 ? `Subiendo ${files.length} archivos…` : 'Subiendo archivo…' });
+                      uploadFiles(tid, files).then((paths) => {
+                        setPasteNote(null);
+                        const w = iframeRef.current && iframeRef.current.contentWindow;
+                        if (w && w.term) { w.term.paste(paths); w.term.focus(); }
+                      }).catch((err) => {
+                        setPasteNote({ text: err.message, error: true });
+                        setTimeout(() => setPasteNote(null), 5000);
+                      });
+                    };
+                    // Ctrl+V never fires a paste event here: xterm sends it as
+                    // ^V, which Claude Code answers by reading the clipboard of
+                    // this server, not yours. Hold the key, look at the
+                    // browser's clipboard, and send ^V on as before unless it
+                    // holds an image.
+                    doc.addEventListener('keydown', (e) => {
+                      if (!(e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === 'v' || e.key === 'V'))) return;
+                      const w = iframeRef.current && iframeRef.current.contentWindow;
+                      if (!w || !w.term) return;
+                      e.preventDefault();
+                      e.stopImmediatePropagation();
+                      clipboardFiles(w.navigator).then((files) => {
+                        if (files && files.length) { __sendFiles(files); return; }
+                        try { w.term._core.coreService.triggerDataEvent('\x16', true); } catch (_) {}
+                      });
+                    }, true);
+                    doc.addEventListener('paste', (e) => {
+                      const files = eventFiles(e.clipboardData);
+                      if (!files.length) return;
+                      e.preventDefault();
+                      e.stopImmediatePropagation();
+                      __sendFiles(files);
+                    }, true);
+                    doc.addEventListener('dragover', (e) => {
+                      if (!carriesFiles(e.dataTransfer)) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'copy';
+                    }, true);
+                    doc.addEventListener('drop', (e) => {
+                      const files = eventFiles(e.dataTransfer);
+                      if (!files.length) return;
+                      e.preventDefault();
+                      e.stopImmediatePropagation();
+                      __sendFiles(files);
+                    }, true);
                   }
                 } catch(e) {}
               }}
@@ -688,6 +747,14 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
           </div>
         )}
       </div>
+      {pasteNote && (
+        <div style={{
+          position: 'absolute', right: 8, bottom: 8, zIndex: 11, pointerEvents: 'none',
+          padding: '4px 10px', borderRadius: 4, fontSize: '12px',
+          backgroundColor: pasteNote.error ? 'rgba(80,0,0,0.9)' : 'rgba(20,20,20,0.9)',
+          color: pasteNote.error ? '#ff8080' : '#9f9', border: `1px solid ${pasteNote.error ? '#a33' : '#2e6b45'}`
+        }}>{pasteNote.text}</div>
+      )}
       {/* Auth failed overlay */}
       {authFailed && (
         <div style={{

@@ -209,6 +209,10 @@ app.use('/api/voice', authenticateToken, (req, res, next) => {
   next();
 }, voiceApi);
 
+// Files pasted or dropped onto a terminal: saved here, and the browser
+// types the path (see server/paste-files.js)
+app.use('/api/paste-file', authenticateToken, require('./paste-files'));
+
 // Claude Code chat view: which terminals are currently running Claude Code
 app.get('/api/claude/panels', authenticateToken, (req, res) => {
   res.json({ status: 'ok', panels: claudeSessions.listClaudePanes() });
