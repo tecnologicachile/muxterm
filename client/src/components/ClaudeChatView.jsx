@@ -518,6 +518,24 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
           >Enviar ▶</Box>
         </Box>
       )}
+      {working && (
+        // Its own strip, in words and away from the mic: a red square next
+        // to the recorder's red square got pressed for the wrong one.
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, fontSize: '12px', color: '#9a9a9a' }}>
+          <CircularProgress size={12} sx={{ color: '#ffa726' }} />
+          <Box component="span" sx={{ flex: 1 }}>Claude está trabajando…</Box>
+          <Box
+            component="button"
+            onClick={onInterrupt}
+            title="Detener a Claude, como Esc en el terminal"
+            sx={{
+              fontSize: '11px', px: 1, py: '2px', borderRadius: '3px', cursor: 'pointer', fontFamily: 'inherit',
+              color: '#ffa726', backgroundColor: 'rgba(255,167,38,0.10)', border: '1px solid #8a5a14',
+              '&:hover': { backgroundColor: 'rgba(255,167,38,0.22)', color: '#ffc46b' }
+            }}
+          >Detener (Esc)</Box>
+        </Box>
+      )}
       <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-end' }}>
         <TextField
           multiline maxRows={6} fullWidth size="small"
@@ -576,15 +594,6 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
               <StopIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </>
-        )}
-        {working && (
-          <IconButton
-            onClick={onInterrupt}
-            sx={{ color: '#ff3b3b', backgroundColor: 'rgba(255,59,59,0.12)', '&:hover': { color: '#ff6b6b' } }}
-            title="Detener a Claude (Esc)"
-          >
-            <StopIcon sx={{ fontSize: 18 }} />
-          </IconButton>
         )}
         <IconButton
           onClick={send}
