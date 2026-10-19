@@ -97,6 +97,14 @@ function apply(st, events, { historical = false } = {}) {
   const tid = st.terminalId;
   for (const ev of events) {
     if (ev.sidechain) continue;
+    // A turn can start with no prompt: a background shell that finishes
+    // (<task-notification>) or a message from another session wakes Claude
+    // up, and neither is something you typed. Claude writing anything after
+    // a finished turn means it is working again.
+    if (!st.busy && (ev.kind === 'text' || ev.kind === 'thinking' || ev.kind === 'tool')) {
+      st.busy = true; st.since = ev.ts || new Date().toISOString();
+      st.turnText = '';
+    }
     if (ev.kind === 'prompt') {
       st.busy = true; st.waiting = false; st.waitingTool = null; st.since = ev.ts || new Date().toISOString();
       st.turnText = '';
