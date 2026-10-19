@@ -1260,7 +1260,7 @@ function TerminalView() {
               const isDropTarget = dragOverWindowTab === win.id && draggingPanelForWindow;
               // Has recent activity (within 2s) on any panel of this window?
               const now = Date.now();
-              const hasActivity = winPanels.some(p => { const cs = p.terminalId && claudeStatus[p.terminalId]; return cs && (cs.command || (cs.agents && cs.agents.length)); });
+              const hasActivity = winPanels.some(p => { const cs = p.terminalId && claudeStatus[p.terminalId]; return cs && (cs.command || (cs.agents && cs.agents.length) || cs.shells); });
               const winBusy = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].busy);
               const winWaiting = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].waiting);
               const winUnseen = winPanels.filter(p => p.terminalId && unseen[p.terminalId]);

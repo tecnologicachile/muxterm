@@ -196,6 +196,28 @@ function readActivity(tmuxSession) {
   } catch (e) { return none; }
 }
 
+// Shells Claude left running in the background. Claude Code counts them in
+// its status bar under the input box ("⏵⏵ bypass permissions on · 1 shell ·")
+// and in the done line ("✻ Worked for 1m 31s · 1 shell still running"); the
+// transcript says nothing once the turn is over.
+function readBackgroundShells(tmuxSession) {
+  try {
+    const plain = readScreen(tmuxSession).split('\n').map(l => l.replace(/\x1b\[[0-9;]*m/g, ''));
+    let last = -1;
+    plain.forEach((l, i) => { if (l.trim().startsWith('────')) last = i; });
+    let n = 0;
+    if (last >= 0) {
+      for (const l of plain.slice(last + 1)) {
+        const m = l.match(/(?:^|·)\s*(\d+) shells?\s*(?:·|$)/);
+        if (m) n = Math.max(n, Number(m[1]));
+      }
+    }
+    const m = readActivity(tmuxSession).text.match(/(\d+) shells? still running/);
+    if (m) n = Math.max(n, Number(m[1]));
+    return n;
+  } catch (e) { return 0; }
+}
+
 function readSuggestion(tmuxSession) {
   try {
     const out = readScreen(tmuxSession);
@@ -376,7 +398,7 @@ function describeWatchers() {
   return out;
 }
 
-module.exports = { listPanes, readSuggestion, readPermission, readStatusLine,
+module.exports = { listPanes, readSuggestion, readPermission, readStatusLine, readBackgroundShells,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };

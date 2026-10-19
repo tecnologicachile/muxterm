@@ -64,7 +64,7 @@ function publicState(st) {
     permission: st.permission ? st.permission.title : null,
     lastText: st.lastText, finishedAt: st.finishedAt, since: st.since,
     command: st.command || null, commandSince: st.commandSince || null,
-    agents: st.agents || []
+    agents: st.agents || [], shells: st.shells || 0
   };
 }
 
@@ -175,7 +175,7 @@ function tick() {
       if (cmd !== st.command) { st.command = cmd; st.commandSince = cmd ? new Date().toISOString() : null; changed = true; }
       if (isClaude !== st.claude) {
         st.claude = isClaude;
-        if (isClaude) start(st); else { st.file = null; st.busy = false; st.waiting = false; st.waitingTool = null; st.agents = []; }
+        if (isClaude) start(st); else { st.file = null; st.busy = false; st.waiting = false; st.waitingTool = null; st.agents = []; st.shells = 0; }
         changed = true;
       }
       if (!isClaude) { if (changed) emit(st); continue; }
@@ -183,6 +183,8 @@ function tick() {
         const agents = liveAgents(st.file);
         const key = agents.map(a => a.id).join(',');
         if (key !== st.agentsKey) { st.agentsKey = key; st.agents = agents; changed = true; }
+        const shells = sessions.readBackgroundShells(p.tmuxSession);
+        if (shells !== (st.shells || 0)) { st.shells = shells; changed = true; }
       }
       if (changed) emit(st);
       if ((st.ticks % RERESOLVE_TICKS) === 0) {

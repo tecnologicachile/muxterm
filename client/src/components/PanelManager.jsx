@@ -693,13 +693,17 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
               const agents = (cs && cs.agents) || [];
               const waiting = !!(cs && cs.waiting);
               const busy = !!(cs && cs.busy);
-              const bg = !waiting && !busy && agents.length > 0;
+              const shells = (cs && cs.shells) || 0;
+              const bg = !waiting && !busy && (agents.length > 0 || shells > 0);
               const running = !waiting && !busy && !bg && !!(cs && cs.command);
               const on = waiting || busy || bg || running;
               const color = waiting ? '#ffa726' : busy ? '#00ff00' : bg ? '#5ec87a' : running ? '#9a9a9a' : '#00ff00';
               const title = waiting ? (cs.permission ? `Claude pide permiso: ${cs.permission}` : 'Claude te pregunta algo')
                 : busy ? 'Claude está trabajando'
-                : bg ? `${agents.length === 1 ? '1 agente' : agents.length + ' agentes'} en segundo plano · ${agents.map(a => `${a.name} ${agoShort(a.since)}`).join(', ')}`
+                : bg ? [
+                    agents.length ? `${agents.length === 1 ? '1 agente' : agents.length + ' agentes'} en segundo plano · ${agents.map(a => `${a.name} ${agoShort(a.since)}`).join(', ')}` : '',
+                    shells ? `${shells === 1 ? '1 shell' : shells + ' shells'} en segundo plano` : ''
+                  ].filter(Boolean).join(' · ')
                 : running ? `Ejecutando ${cs.command} · ${agoShort(cs.commandSince)}`
                 : cs ? (cs.claude ? 'Claude en reposo' : 'En reposo') : '';
               return (
