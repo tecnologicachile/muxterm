@@ -161,6 +161,25 @@ function splitPasted(text) {
   return parts.filter(p => p.text.trim());
 }
 
+// Claude Code's line above its input box, in Spanish: while working only the
+// elapsed time is useful ("1m 52s"); once done, "Worked for 1m 31s · done
+// 12:09 a. m. · 1 shell still running" reads "Trabajó 1m 31s · terminó
+// 12:09 a. m. · 1 shell sigue corriendo". Parts it does not know stay as they are.
+function activityEs(text, working) {
+  if (!text) return '';
+  if (working) {
+    const m = text.match(/\(((?:\d+[hm]\s*)*\d+s)/);
+    return m ? m[1] : '';
+  }
+  const plural = (n, one, many) => (n === '1' ? one : many);
+  return text.split(' · ').map(part => part
+    .replace(/^[A-Z][a-z]+ for (.+)$/, 'Trabajó $1')
+    .replace(/^done (.+)$/, 'terminó $1')
+    .replace(/^(\d+) shells? still running$/, (m, n) => `${n} ${plural(n, 'shell sigue', 'shells siguen')} corriendo`)
+    .replace(/^(\d+) (?:agents?|tasks?) still running$/, (m, n) => `${n} ${plural(n, 'agente sigue', 'agentes siguen')} corriendo`)
+  ).join(' · ');
+}
+
 function MiniMarkdown({ text }) {
   const nodes = [];
   const lines = String(text || '').split('\n');
@@ -415,7 +434,7 @@ function ToolCard({ ev }) {
  * Its own component on purpose: the draft lives here, so typing re-renders this
  * box alone instead of the whole conversation on every keystroke.
  */
-function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceToggle, suggestion, working, onInterrupt }) {
+function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceToggle, suggestion, working, activity, onInterrupt }) {
   const [draft, setDraft] = useState('');
   const useSuggestion = () => {
     if (!suggestion) return;
@@ -523,7 +542,7 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
         // to the recorder's red square got pressed for the wrong one.
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, fontSize: '12px', color: '#9a9a9a' }}>
           <CircularProgress size={12} sx={{ color: '#ffa726' }} />
-          <Box component="span" sx={{ flex: 1 }}>Claude está trabajando…</Box>
+          <Box component="span" sx={{ flex: 1 }}>Claude está trabajando…{activityEs(activity, true) ? ` ${activityEs(activity, true)}` : ''}</Box>
           <Box
             component="button"
             onClick={onInterrupt}
@@ -640,6 +659,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // Claude Code busy with a prompt (spinner line on screen). Esc or the stop
   // button sends it Escape, which is how the terminal interrupts it.
   const [working, setWorking] = useState(false);
+  const [activity, setActivity] = useState('');
   const interrupt = () => {
     if (!socket) return;
     socket.emit('send-keys', { terminalId, keys: '\x1b' });
@@ -738,6 +758,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if ('permission' in payload) setPermission(payload.permission || null);
       if ('status' in payload) setStatusLine(payload.status || null);
       if ('working' in payload) setWorking(!!payload.working);
+      if ('activity' in payload) setActivity(payload.activity || '');
       // A reconnect re-sends the whole backlog. Clearing it made the
       // conversation blank and redraw, which is the flicker you see on coming
       // back to the tab. The merge dedupes by uuid, so only wipe when the
@@ -1155,6 +1176,13 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           <Box sx={{ color: '#666', fontSize: '12px', p: 2, textAlign: 'center' }}>Esperando actividad de Claude…</Box>
         )}
         {messageNodes}
+        {!working && activity && (
+          // What Claude Code shows as "✻ Worked for …" once it is done.
+          <Box sx={{ color: '#777', fontSize: '11px', mt: 0.5, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box component="span" sx={{ color: '#5ec87a' }}>✻</Box>
+            {activityEs(activity, false)}
+          </Box>
+        )}
       </Box>
 
       {speechError && (
@@ -1303,6 +1331,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         waiting={waiting}
         suggestion={suggestion}
         working={working}
+        activity={activity}
         onInterrupt={interrupt}
         isActive={isActive}
         recording={recording}
