@@ -41,6 +41,19 @@ function audioFilename(mime) {
   return 'audio.webm';
 }
 
+// What to tell the user when OpenAI refuses. A 429 is either the account out
+// of credit (it stays that way until someone pays) or a passing rate limit;
+// "Transcription failed (429)" said neither.
+function openAiError(status, detail) {
+  if (status === 401) return 'OpenAI rechazó la API key (401). Revísala en Configuración.';
+  if (status === 429) {
+    return /insufficient_quota|credit_balance_exhausted/.test(detail)
+      ? 'La cuenta de OpenAI se quedó sin crédito. Recárgala en platform.openai.com/settings/organization/billing.'
+      : 'OpenAI está limitando las solicitudes (429). Espera un momento y vuelve a intentar.';
+  }
+  return null;
+}
+
 /**
  * POST /api/voice/transcribe
  * multipart/form-data with field `audio`. Returns { text } from Whisper.
@@ -72,9 +85,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
     if (!r.ok) {
       const detail = await r.text().catch(() => '');
       logger.error(`Whisper transcription failed (${r.status}): ${detail.slice(0, 300)}`);
-      const message = r.status === 401
-        ? 'OpenAI rejected the API key (401).'
-        : `Transcription failed (${r.status}).`;
+      const message = openAiError(r.status, detail) || `No se pudo transcribir (${r.status}).`;
       return res.status(502).json({ status: 'error', message });
     }
 
@@ -146,7 +157,7 @@ router.post('/speak', express.json(), async (req, res) => {
     if (!r.ok) {
       const detail = await r.text().catch(() => '');
       logger.error(`TTS failed (${r.status}): ${detail.slice(0, 300)}`);
-      return res.status(502).json({ status: 'error', message: `No se pudo generar la voz (${r.status})` });
+      return res.status(502).json({ status: 'error', message: openAiError(r.status, detail) || `No se pudo generar la voz (${r.status})` });
     }
 
     // Send it whole, with a length. Streamed without one, a drop mid-body
