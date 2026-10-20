@@ -135,7 +135,9 @@ router.get('/download', (req, res) => {
   try {
     const filePath = req.query.path && expandHome(String(req.query.path));
     if (!filePath || !isFile(filePath)) return res.status(404).json({ status: 'error', message: 'Not found' });
-    res.download(filePath);
+    // send refuses dot paths by default; ~/.claude/… and ~/.cache/… are
+    // where Claude and MuxTerm keep files worth opening.
+    res.download(filePath, { dotfiles: 'allow' });
   } catch (e) {
     res.status(500).json({ status: 'error', message: e.message });
   }
