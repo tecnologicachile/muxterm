@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { execSync } = require('child_process');
 const multer = require('multer');
 const ttydManager = require('./ttyd-manager');
@@ -117,11 +118,23 @@ router.post('/upload', upload.single('file'), (req, res) => {
   }
 });
 
+// Claude writes paths as /abs/path or ~/path; both name a file here.
+const expandHome = (p) => (p === '~' || p.startsWith('~/')) ? path.join(os.homedir(), p.slice(1)) : p;
+const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch (e) { return false; } };
+
+// Which of these paths are files. A path mentioned in a terminal or a reply
+// can have spaces ("Factura 1344 - Tecnológica Chile.pdf. Tiene 4 páginas"),
+// so the client sends every place it could end and keeps the one that exists.
+router.post('/exists', (req, res) => {
+  const paths = Array.isArray(req.body && req.body.paths) ? req.body.paths.slice(0, 200) : [];
+  res.json({ status: 'ok', existing: paths.filter(p => typeof p === 'string' && isFile(expandHome(p))) });
+});
+
 // Download file
 router.get('/download', (req, res) => {
   try {
-    const filePath = req.query.path;
-    if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ status: 'error', message: 'Not found' });
+    const filePath = req.query.path && expandHome(String(req.query.path));
+    if (!filePath || !isFile(filePath)) return res.status(404).json({ status: 'error', message: 'Not found' });
     res.download(filePath);
   } catch (e) {
     res.status(500).json({ status: 'error', message: e.message });

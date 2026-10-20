@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { eventFiles, carriesFiles, uploadFiles, clipboardFiles } from '../utils/pasteFiles';
+import { resolvePaths, wrappedPaths, openPath } from '../utils/filePaths';
 import { v4 as uuidv4 } from 'uuid';
 import { useSocket } from '../utils/SocketContext';
 import logger from '../utils/logger';
@@ -635,21 +636,59 @@ function Terminal({ terminalId, onClose, onTerminalCreated, isActive, hidden, pa
                                 }
                                 if ((y - 1) < first || (y - 1) > last) { callback(undefined); return; }
                                 const links = [];
+                                const taken = [];
+                                // [a, b] are offsets in the logical line; null when not on row y.
+                                const span = (a, b) => {
+                                  const sRow = first + Math.floor(a / cols), eRow = first + Math.floor(b / cols);
+                                  if ((y - 1) < sRow || (y - 1) > eRow) return null;
+                                  return { start: { x: (a % cols) + 1, y: sRow + 1 }, end: { x: (b % cols) + 1, y: eRow + 1 } };
+                                };
                                 const re = /https?:\/\/[^\s"'<>`]+/g;
                                 let m;
                                 while ((m = re.exec(text))) {
                                   const url = m[0].replace(/[.,;:!?)\]}'"]+$/, '');
                                   const a = m.index, b = m.index + url.length - 1;
-                                  const sRow = first + Math.floor(a / cols), eRow = first + Math.floor(b / cols);
-                                  if ((y - 1) < sRow || (y - 1) > eRow) continue;
+                                  taken.push([a, b]);
+                                  const range = span(a, b);
+                                  if (!range) continue;
                                   links.push({
                                     text: url,
-                                    range: { start: { x: (a % cols) + 1, y: sRow + 1 }, end: { x: (b % cols) + 1, y: eRow + 1 } },
+                                    range,
                                     decorations: { underline: true, pointerCursor: true },
                                     activate: (_e, u) => { window.open(u, '_blank', 'noopener,noreferrer'); },
                                   });
                                 }
-                                callback(links.length ? links : undefined);
+                                // File paths, once the server says which exist: on
+                                // this logical line, and across rows Claude Code
+                                // wrapped itself.
+                                const fileLink = (path, range) => ({
+                                  text: path,
+                                  range,
+                                  decorations: { underline: true, pointerCursor: true },
+                                  activate: () => { openPath(path); },
+                                });
+                                const near = [y - 3, y - 2, y - 1, y, y + 1].map(i => (i >= 0 ? rowStr(i) : '')).join('\n');
+                                if (text.indexOf('/') < 0 && near.indexOf('/') < 0) { callback(links.length ? links : undefined); return; }
+                                Promise.all([
+                                  resolvePaths(text),
+                                  wrappedPaths(rowStr, y - 1, term.buffer.active.length - 1),
+                                ]).then(([found, wrapped]) => {
+                                  const seen = new Set();
+                                  for (const f of found) {
+                                    const a = f.start, b = f.end - 1;
+                                    if (taken.some(([ta, tb]) => a <= tb && b >= ta)) continue;
+                                    const range = span(a, b);
+                                    if (!range) continue;
+                                    seen.add(`${range.start.y}:${range.start.x}`);
+                                    links.push(fileLink(f.path, range));
+                                  }
+                                  for (const f of wrapped) {
+                                    const range = { start: { x: f.start.col + 1, y: f.start.row + 1 }, end: { x: f.end.col + 1, y: f.end.row + 1 } };
+                                    if (seen.has(`${range.start.y}:${range.start.x}`)) continue;
+                                    links.push(fileLink(f.path, range));
+                                  }
+                                  callback(links.length ? links : undefined);
+                                }, () => callback(links.length ? links : undefined));
                               } catch (_) { callback(undefined); }
                             },
                           };

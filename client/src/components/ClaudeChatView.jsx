@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { Box, Typography, IconButton, TextField, CircularProgress } from '@mui/material';
 import { eventFiles, carriesFiles, uploadFiles } from '../utils/pasteFiles';
+import { pathCandidates, resolvePaths, openPath } from '../utils/filePaths';
 import {
   ExpandMore as ExpandMoreIcon,
   ChevronRight as ChevronRightIcon,
@@ -70,6 +71,31 @@ import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpe
 
 /* ---------- tiny markdown renderer (builds React nodes, never raw HTML) ---------- */
 
+// A file Claude mentions ("Armé el PDF: /tmp/…/Factura 1344.pdf") opens with a
+// click. Whether "Chile.pdf. Tiene 4 páginas" ends at .pdf is the server's
+// call (which reading is a file), so the links appear once it answers.
+function PathText({ text }) {
+  const [found, setFound] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    resolvePaths(text).then(f => { if (alive) setFound(f); }, () => {});
+    return () => { alive = false; };
+  }, [text]);
+  if (!found || !found.length) return text;
+  const out = [];
+  let last = 0;
+  found.forEach((f, i) => {
+    if (f.start > last) out.push(text.slice(last, f.start));
+    out.push(<a key={i} href="#" title="Abrir archivo" onClick={(e) => { e.preventDefault(); openPath(f.path); }}
+      style={{ color: '#4da6ff', wordBreak: 'break-all', cursor: 'pointer' }}>{f.path}</a>);
+    last = f.end;
+  });
+  if (last < text.length) out.push(text.slice(last));
+  return <>{out}</>;
+}
+
+const linkifyPaths = (text, key) => (pathCandidates(text).length ? <PathText key={key} text={text} /> : text);
+
 // Addresses inside code stay clickable: Claude often fences a link it wants
 // you to open (a login URL, a dashboard), and the terminal makes those
 // clickable too. Everything else in the code is left as plain text.
@@ -79,13 +105,13 @@ function linkifyCode(text, keyBase) {
   let last = 0, m, i = 0;
   while ((m = re.exec(text)) !== null) {
     const url = m[0].replace(/[.,;:!?)\]]+$/, '');
-    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m.index > last) out.push(linkifyPaths(text.slice(last, m.index), `${keyBase}-p${i}`));
     out.push(<a key={`${keyBase}-u${i++}`} href={url} target="_blank" rel="noreferrer" style={{ color: '#4da6ff', wordBreak: 'break-all' }}>{url}</a>);
     last = m.index + url.length;
     re.lastIndex = last;
   }
-  if (!out.length) return text;
-  if (last < text.length) out.push(text.slice(last));
+  if (!out.length) return linkifyPaths(text, `${keyBase}-p`);
+  if (last < text.length) out.push(linkifyPaths(text.slice(last), `${keyBase}-pz`));
   return out;
 }
 
@@ -97,7 +123,7 @@ function inline(text, keyBase) {
   const re = /(`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>"'`\]\)]+|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*\n]+\*)/g;
   let last = 0, m, i = 0;
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m.index > last) out.push(linkifyPaths(text.slice(last, m.index), `${keyBase}-t${i}`));
     const t = m[0];
     const k = `${keyBase}-i${i++}`;
     if (t.startsWith('`')) {
@@ -122,7 +148,7 @@ function inline(text, keyBase) {
     }
     last = m.index + t.length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(linkifyPaths(text.slice(last), `${keyBase}-tz`));
   return out;
 }
 
