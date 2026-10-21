@@ -388,6 +388,8 @@ function Result({ result }) {
       return <Box sx={{ fontSize: '11px', color: '#888', mt: 0.5 }}>“{result.query}” · {result.count} resultados</Box>;
     case 'command':
       return <Box sx={{ fontSize: '11px', color: result.ok ? '#7ddc7d' : '#ff8080', mt: 0.5 }}>{result.name}</Box>;
+    case 'declined':
+      return <Box sx={{ fontSize: '11px', color: '#ffa726', mt: 0.5 }}>Rechazado: no se ejecutó</Box>;
     default:
       return <Mono text={result.text} truncated={result.truncated} fullLength={result.fullLength} />;
   }
@@ -422,6 +424,50 @@ function PeerCard({ ev }) {
           <MiniMarkdown text={ev.text} />
         </Box>
       )}
+    </Box>
+  );
+}
+
+// What Claude asked with AskUserQuestion and what you chose. The terminal
+// keeps a one-line trace of it; here it stays readable in the thread.
+function QuestionCard({ ev }) {
+  const input = ev.input || {};
+  const questions = input.questions || (input.question ? [{ question: input.question, header: input.header, options: (input.options || []).map(o => o.label || o) }] : []);
+  const r = ev.result;
+  const answers = (r && r.type === 'answers' && r.answers) || {};
+  let status = null;
+  if (!r) status = 'Esperando tu respuesta';
+  else if (r.type === 'declined') status = r.clarify ? 'Sin elegir: pediste aclararlo en el chat' : 'Rechazaste la pregunta';
+  return (
+    <Box sx={{ borderLeft: '3px solid #ffa726', pl: 1.25, py: 0.75, mb: 0.75, backgroundColor: 'rgba(255,167,38,0.05)', borderRadius: '0 4px 4px 0' }}>
+      <Box sx={{ fontSize: '9px', color: '#c98a2a', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.5 }}>
+        Pregunta de Claude{questions.length > 1 ? ` · ${questions.length} partes` : ''}
+      </Box>
+      {questions.map((q, qi) => {
+        const ans = answers[q.question];
+        const chosen = new Set(ans ? (q.options || []).filter(o => ans === o || ans.split(', ').includes(o)) : []);
+        const typed = ans && !chosen.size ? ans : '';
+        return (
+          <Box key={qi} sx={{ mb: qi < questions.length - 1 ? 1 : 0 }}>
+            <Box sx={{ fontSize: '12px', color: '#ddd', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {q.header && <Box component="span" sx={{ color: '#ffa726', mr: 0.75 }}>{q.header}:</Box>}
+              {q.question}
+            </Box>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+              {(q.options || []).map((o, oi) => (
+                <Box key={oi} sx={{
+                  fontSize: '11px', borderRadius: 1, px: 0.75, py: '1px',
+                  border: `1px solid ${chosen.has(o) ? '#ffa726' : '#333'}`,
+                  color: chosen.has(o) ? '#ffcc80' : '#777',
+                  backgroundColor: chosen.has(o) ? 'rgba(255,167,38,0.15)' : 'transparent'
+                }}>{chosen.has(o) ? '✓ ' : ''}{o}</Box>
+              ))}
+            </Box>
+            {typed && <Box sx={{ fontSize: '11.5px', color: '#ffcc80', mt: 0.5 }}>Respondiste: {typed}</Box>}
+          </Box>
+        );
+      })}
+      {status && <Box sx={{ fontSize: '11px', color: '#c98a2a', mt: 0.5, fontStyle: 'italic' }}>{status}</Box>}
     </Box>
   );
 }
@@ -1105,6 +1151,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             );
           }
           if (ev.kind === 'tool') {
+            if (ev.name === 'AskUserQuestion') return <Box key={`e${i}`} sx={pad}><QuestionCard ev={ev} /></Box>;
             return <Box key={`e${i}`} sx={pad}><ToolCard ev={ev} /></Box>;
           }
           if (ev.kind === 'note') {

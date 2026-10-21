@@ -37,7 +37,19 @@ function clip(s, max = MAX_TEXT) {
 /** Shape a raw toolUseResult into something the UI can render directly. */
 function normalizeResult(r) {
   if (r == null) return null;
+  // Saying no to a tool call, or to AskUserQuestion's "chat about this",
+  // comes back as a long English instruction meant for Claude.
+  if (typeof r === 'string' && /^(Error: )?The user doesn't want to proceed with this tool use|^User rejected tool use/.test(r)) {
+    return { type: 'declined', clarify: /wants to clarify these questions/.test(r) };
+  }
   if (typeof r === 'string') return { type: 'generic', ...clip(r) };
+
+  // AskUserQuestion answered: { questions, answers: { question: label(s) } }.
+  if (r.answers && typeof r.answers === 'object' && Array.isArray(r.questions)) {
+    const answers = {};
+    for (const [q, a] of Object.entries(r.answers)) answers[q] = clip(String(a), 600).text;
+    return { type: 'answers', answers };
+  }
 
   if (r.structuredPatch) {
     return {
@@ -223,6 +235,13 @@ function clipInput(name, input) {
     pick.options = (q.options || []).slice(0, 10).map(opt => ({
       label: clip(opt.label || '', 120).text,
       description: clip(opt.description || '', 300).text
+    }));
+    // All of them, for the card that stays in the thread once answered.
+    pick.questions = input.questions.slice(0, 4).map(qq => ({
+      question: clip(qq.question || '', 400).text,
+      header: qq.header || '',
+      multiSelect: !!qq.multiSelect,
+      options: (qq.options || []).slice(0, 10).map(opt => clip(opt.label || '', 120).text)
     }));
   }
   if (name === 'ExitPlanMode' && typeof input.plan === 'string') {
