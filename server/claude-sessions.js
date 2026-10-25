@@ -7,7 +7,7 @@
  * config. A SessionStart hook can register the exact transcript path (see
  * scripts/muxterm-claude-hook.sh); when it has, that wins over the cwd guess.
  */
-const { execSync } = require('child_process');
+const { execSync, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -95,12 +95,41 @@ function hookRegistration(terminalId) {
  * between the last two rule lines, and the suggestion is the dim text after
  * the prompt marker, while anything typed is bright.
  */
-// One screen read per pane per second serves both the suggestion and the
-// permission prompt, however many watchers ask.
+// Every Claude pane's screen, read by one tmux call that refreshScreens()
+// starts each second without waiting for it. Starting a process costs this
+// server tens of milliseconds (it is a big process to fork), and a sync
+// capture per pane per second kept it frozen most of the time: with 27
+// sessions every page and API call waited 4-10 s. Readers get what the last
+// refresh saw, about a second old at most.
 const screenCache = new Map();
+const SCREEN_SEP = '@@muxterm-screen@@ ';
+let refreshing = false;
+function refreshScreens() {
+  if (refreshing) return;
+  const targets = listClaudePanes().map(p => p.tmuxSession);
+  for (const s of screenCache.keys()) if (!targets.includes(s)) screenCache.delete(s);
+  if (!targets.length) return;
+  const args = ['-L', 'muxterm'];
+  targets.forEach((s, i) => {
+    if (i) args.push(';');
+    args.push('display-message', '-p', '-t', s, SCREEN_SEP + s, ';', 'capture-pane', '-p', '-e', '-t', s);
+  });
+  refreshing = true;
+  // A pane that closed stops the chain there; the panes before it still count.
+  execFile('tmux', args, { encoding: 'utf8', timeout: 5000, maxBuffer: 32 * 1024 * 1024 }, (err, out) => {
+    refreshing = false;
+    const at = Date.now();
+    for (const chunk of String(out || '').split(SCREEN_SEP).slice(1)) {
+      const nl = chunk.indexOf('\n');
+      if (nl > 0) screenCache.set(chunk.slice(0, nl), { at, out: chunk.slice(nl + 1) });
+    }
+  });
+}
+
 function readScreen(tmuxSession) {
   const c = screenCache.get(tmuxSession);
-  if (c && Date.now() - c.at < 1000) return c.out;
+  if (c && Date.now() - c.at < 5000) return c.out;
+  // A pane the refresh has not seen yet, or a refresh that keeps failing.
   let out = '';
   try { out = execSync(`tmux -L muxterm capture-pane -p -e -t ${tmuxSession}`, { encoding: 'utf8', timeout: 2000 }); } catch (e) {}
   screenCache.set(tmuxSession, { at: Date.now(), out });
@@ -398,7 +427,7 @@ function describeWatchers() {
   return out;
 }
 
-module.exports = { listPanes, readSuggestion, readPermission, readStatusLine, readBackgroundShells,
+module.exports = { listPanes, readSuggestion, readPermission, readStatusLine, readBackgroundShells, refreshScreens,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };

@@ -162,6 +162,8 @@ function start(st) {
 
 function tick() {
   try {
+    // Screens for the next tick; this one reads what the last refresh saw.
+    sessions.refreshScreens();
     const panes = sessions.listPanes();
     const alive = new Set(panes.map(p => p.terminalId));
     for (const id of [...states.keys()]) if (!alive.has(id)) states.delete(id);
