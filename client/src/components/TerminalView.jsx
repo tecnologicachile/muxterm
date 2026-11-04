@@ -1261,7 +1261,7 @@ function TerminalView() {
               // Has recent activity (within 2s) on any panel of this window?
               const now = Date.now();
               const hasActivity = winPanels.some(p => { const cs = p.terminalId && claudeStatus[p.terminalId]; return cs && (cs.command || (cs.agents && cs.agents.length) || cs.shells); });
-              const winBusy = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].busy);
+              const winBusy = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].busy && !claudeStatus[p.terminalId].waiting);
               const winWaiting = winPanels.some(p => p.terminalId && claudeStatus[p.terminalId] && claudeStatus[p.terminalId].waiting);
               const winUnseen = winPanels.filter(p => p.terminalId && unseen[p.terminalId]);
               const isTabDragTarget = dragOverTabId === win.id && draggingTabId && draggingTabId !== win.id;
@@ -1359,14 +1359,18 @@ function TerminalView() {
                     />
                   ) : (
                     <>
-                      {/* Amber: Claude is asking or finished unseen; green: working. */}
-                      {(winWaiting || winUnseen.length > 0) ? (
+                      {/* Amber: Claude is asking or finished unseen; green: working.
+                          Both can hold at once in one window (one pane finished
+                          while another works), so each gets its own dot: an amber
+                          mark must not hide that something is still running. */}
+                      {(winWaiting || winUnseen.length > 0) && (
                         <span style={{
                           width: 7, height: 7, borderRadius: '50%', backgroundColor: '#ffa726',
                           animation: winWaiting ? 'muxpulse 1s ease-in-out infinite' : 'none', marginRight: 2,
                           boxShadow: '0 0 4px #ffa726'
-                        }} title={winWaiting ? 'Claude te pregunta algo' : winUnseen.map(p => `${p.name || 'Terminal'}: terminó`).join(' · ')} />
-                      ) : (hasActivity || winBusy) && (
+                        }} title={winWaiting ? 'Claude te pregunta algo' : winUnseen.map(p => `${p.name || 'Terminal'} terminó y no lo has visto`).join(' · ')} />
+                      )}
+                      {(hasActivity || winBusy) && (
                         <span style={{
                           width: 6, height: 6, borderRadius: '50%', backgroundColor: '#00ff00',
                           animation: 'muxpulse 1s ease-in-out infinite', marginRight: 2
