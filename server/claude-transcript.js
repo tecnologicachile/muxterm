@@ -241,7 +241,10 @@ function clipInput(name, input) {
       question: clip(qq.question || '', 400).text,
       header: qq.header || '',
       multiSelect: !!qq.multiSelect,
-      options: (qq.options || []).slice(0, 10).map(opt => clip(opt.label || '', 120).text)
+      options: (qq.options || []).slice(0, 10).map(opt => clip(opt.label || '', 120).text),
+      // Kept apart from `options` (plain labels, which the answered card reads)
+      // for the picker in the chat view, which shows every step.
+      details: (qq.options || []).slice(0, 10).map(opt => clip(opt.description || '', 300).text)
     }));
   }
   if (name === 'ExitPlanMode' && typeof input.plan === 'string') {

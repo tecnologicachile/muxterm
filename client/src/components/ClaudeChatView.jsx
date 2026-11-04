@@ -726,6 +726,9 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // A tool permission prompt read off the terminal screen, answered from here
   // by sending its number to the pane.
   const [permission, setPermission] = useState(null);
+  // Where a question picker stands on screen: which step shows, where the
+  // cursor is, what is ticked, and whether it reached the final review.
+  const [picker, setPicker] = useState(null);
   // Claude Code's own status line (model, context used…), read off the pane.
   const [statusLine, setStatusLine] = useState(null);
   // Claude Code busy with a prompt (spinner line on screen). Esc or the stop
@@ -749,23 +752,59 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const [picked, setPicked] = useState(new Set());
   const [answering, setAnswering] = useState(false);
   const [answerFailed, setAnswerFailed] = useState(false);
+  // While keys go out the screen changes under them; a reading taken halfway
+  // must not end the wait. Whatever the screen shows once they are all sent
+  // does.
+  const sendingRef = useRef(false);
+  const pickerKeyRef = useRef('');
   const sendSeq = async (keys) => {
-    for (const k of keys) {
-      socket.emit('send-keys', { terminalId, keys: k });
-      await new Promise(r => setTimeout(r, 70));
-    }
+    sendingRef.current = true;
+    const before = pickerKeyRef.current;
+    try {
+      for (const k of keys) {
+        socket.emit('send-keys', { terminalId, keys: k });
+        await new Promise(r => setTimeout(r, 70));
+      }
+    } finally { sendingRef.current = false; }
+    // The next reading after this ends the wait (effect below). If the final
+    // screen was already read while keys were still going out, no reading
+    // will differ from it: settle on it after a moment.
+    setTimeout(() => {
+      if (!sendingRef.current && pickerKeyRef.current !== before) { setAnswering(false); setAnswerFailed(false); }
+    }, 1500);
   };
-  const answerPick = async (indexes) => {
+  const moveKeys = (from, to) => {
+    const k = [];
+    for (let i = from; i < to; i++) k.push('\x1b[B');
+    for (let i = from; i > to; i--) k.push('\x1b[A');
+    return k;
+  };
+  // One step of the picker, starting from where its cursor is on screen. A
+  // single choice is Enter on it, which also moves the picker on to the next
+  // step. In a multi-select Enter ticks like Space does, so tick only what
+  // differs from the screen, then Enter on the row under "Type something":
+  // Next, or Submit when it is the only question.
+  const answerStep = async ({ q, indexes, from, ticked }) => {
     if (!socket || !indexes.length) return;
     setAnswering(true); setAnswerFailed(false);
     const seq = [];
-    let cursor = 0;
-    for (const idx of [...indexes].sort((a, b) => a - b)) {
-      for (; cursor < idx; cursor++) seq.push('\x1b[B');
-      if (indexes.length > 1 || waiting?.input?.multiSelect) seq.push(' ');
+    let pos = from;
+    if (!q.multiSelect) {
+      seq.push(...moveKeys(pos, indexes[0]), '\r');
+    } else {
+      const want = new Set(indexes);
+      const have = new Set(ticked);
+      const flip = [...new Set([...want, ...have])].filter(i => want.has(i) !== have.has(i)).sort((a, b) => a - b);
+      for (const i of flip) { seq.push(...moveKeys(pos, i), ' '); pos = i; }
+      seq.push(...moveKeys(pos, q.options.length + 1), '\r');
     }
-    seq.push('\r');
     await sendSeq(seq);
+  };
+  // The review after the last step: "1. Submit answers" sends them all.
+  const submitReview = async (from) => {
+    if (!socket) return;
+    setAnswering(true); setAnswerFailed(false);
+    await sendSeq([...moveKeys(from || 0, 0), '\r']);
   };
 
   // Remembered per device: you want this on the phone with headphones, not
@@ -828,6 +867,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       setError('');
       if (typeof payload.suggestion === 'string') setSuggestion(payload.suggestion);
       if ('permission' in payload) setPermission(payload.permission || null);
+      if ('picker' in payload) setPicker(payload.picker || null);
       if ('status' in payload) setStatusLine(payload.status || null);
       if ('working' in payload) setWorking(!!payload.working);
       if ('activity' in payload) setActivity(payload.activity || '');
@@ -1180,6 +1220,48 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     return () => clearTimeout(t);
   }, [answering, waiting]);
 
+  // The questions of a pending AskUserQuestion, and which one the terminal is
+  // on: the step whose text is showing under the tab row. Ticking a box
+  // already marks its tab done, so "first tab not done" would be wrong.
+  const qs = (() => {
+    const inp = waiting && waiting.name === 'AskUserQuestion' && waiting.input;
+    if (!inp) return null;
+    const first = (inp.options || []).map(o => (typeof o === 'string' ? '' : o.description || ''));
+    if (inp.questions && inp.questions.length) return inp.questions.map((q, k) => ({ ...q, details: q.details || (k === 0 ? first : []) }));
+    if (!inp.options || !inp.options.length) return null;
+    return [{ question: inp.question, header: inp.header, multiSelect: !!inp.multiSelect,
+      options: inp.options.map(o => (typeof o === 'string' ? o : o.label)), details: first }];
+  })();
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  let step = 0;
+  // Text on screen that matches none of the questions (Claude Code can redraw
+  // them reworded): better to send nothing than to answer the wrong step.
+  let stepUnknown = false;
+  if (qs && picker && picker.shown) {
+    const sh = norm(picker.shown).slice(0, 40);
+    const k = qs.findIndex(q => norm(q.question).startsWith(sh) || sh.startsWith(norm(q.question).slice(0, 40)));
+    if (k >= 0) step = k;
+    else stepUnknown = qs.length > 1;
+  }
+  const inReview = !!(qs && picker && picker.review);
+  const curQ = qs && !inReview ? qs[step] : null;
+  const cursorAt = picker && !picker.review ? (picker.onNext && curQ ? curQ.options.length + 1 : (picker.cursor ?? 0)) : 0;
+  const ticked = picker && curQ && curQ.multiSelect ? (picker.checked || []).filter(i => i < curQ.options.length) : [];
+  // Several steps or ticks need to know where the terminal is; a lone single
+  // choice works from the top without it.
+  const pickerReady = !stepUnknown && (!!picker || !!(qs && qs.length === 1 && !qs[0].multiSelect));
+  // Each change on screen (next step, review, ticks) ends the wait for the
+  // keys just sent, and the boxes start from what the terminal has ticked.
+  const pickerKey = JSON.stringify(picker);
+  useEffect(() => {
+    pickerKeyRef.current = pickerKey;
+    // Always: ticks from the step just left must not show on the next one.
+    // A reading taken halfway is corrected by the one after.
+    setPicked(new Set(ticked));
+    if (sendingRef.current) return;
+    setAnswering(false); setAnswerFailed(false);
+  }, [pickerKey]);
+
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0a0a' }}>
@@ -1317,58 +1399,95 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
               }}
             >Ir al terminal</Box>
           </Box>
-          {waiting.input && waiting.input.question && (
-            <Box sx={{ color: '#ddd', fontSize: '12px', mb: 0.5 }}>{waiting.input.question}</Box>
-          )}
-          {waiting.input && waiting.input.options && waiting.input.options.length > 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              {waiting.input.options.map((opt, i) => {
-                const label = typeof opt === 'string' ? opt : opt.label;
-                const desc = typeof opt === 'string' ? '' : opt.description;
-                const multi = !!waiting.input.multiSelect;
-                const on = picked.has(i);
+          {qs && qs.length > 1 && (
+            // The steps, as the terminal's tab row shows them.
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.75, alignItems: 'center' }}>
+              {qs.map((q, k) => {
+                const now = !inReview && k === step;
+                const done = inReview || (!now && (k < step || !!(picker && picker.tabs && picker.tabs[k] && picker.tabs[k].done)));
                 return (
-                  <Box
-                    key={i}
-                    component="button"
-                    disabled={answering}
-                    onClick={() => {
-                      if (multi) setPicked(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
-                      else answerPick([i]);
-                    }}
-                    sx={{
-                      textAlign: 'left', cursor: answering ? 'wait' : 'pointer', borderRadius: 1, px: 1, py: 0.6,
-                      border: `1px solid ${on ? '#ffa726' : '#444'}`, background: on ? 'rgba(255,167,38,0.18)' : 'rgba(255,255,255,0.03)',
-                      color: '#ddd', fontSize: '12px', '&:hover': { borderColor: '#ffa726' }
-                    }}
-                  >
-                    <Box component="span" sx={{ color: '#ffa726', mr: 0.75 }}>{multi ? (on ? '☑' : '☐') : `${i + 1}.`}</Box>
-                    {label}
-                    {desc && <Box sx={{ color: '#888', fontSize: '11px', mt: 0.25 }}>{desc}</Box>}
-                  </Box>
+                  <Box key={k} sx={{
+                    fontSize: '10.5px', px: 0.75, py: '1px', borderRadius: 1,
+                    border: `1px solid ${now ? '#ffa726' : '#444'}`, color: now ? '#ffa726' : done ? '#8fd18f' : '#888'
+                  }}>{done ? '✓ ' : ''}{q.header || `Pregunta ${k + 1}`}</Box>
                 );
               })}
-              {waiting.input.multiSelect && (
-                <Box
-                  component="button"
-                  disabled={answering || !picked.size}
-                  onClick={() => answerPick([...picked])}
-                  sx={{ alignSelf: 'flex-start', cursor: 'pointer', border: '1px solid #ffa726', background: 'rgba(255,167,38,0.18)', color: '#ffa726', borderRadius: 1, fontSize: '11.5px', padding: '4px 12px', opacity: picked.size ? 1 : 0.5 }}
-                >Confirmar {picked.size ? `(${picked.size})` : ''}</Box>
-              )}
+              <Box sx={{ fontSize: '10.5px', color: inReview ? '#ffa726' : '#777', ml: 0.5 }}>
+                {inReview ? 'Revisa y envía' : `Pregunta ${step + 1} de ${qs.length}`}
+              </Box>
             </Box>
+          )}
+          {curQ && (
+            <>
+              <Box sx={{ color: '#ddd', fontSize: '12px', mb: 0.5 }}>{curQ.question}</Box>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {(curQ.options || []).map((label, i) => {
+                  const desc = (curQ.details || [])[i];
+                  const multi = !!curQ.multiSelect;
+                  const on = picked.has(i);
+                  return (
+                    <Box
+                      key={`${step}-${i}`}
+                      component="button"
+                      disabled={answering || !pickerReady}
+                      onClick={() => {
+                        if (multi) setPicked(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
+                        else answerStep({ q: curQ, indexes: [i], from: cursorAt, ticked });
+                      }}
+                      sx={{
+                        textAlign: 'left', cursor: answering ? 'wait' : 'pointer', borderRadius: 1, px: 1, py: 0.6,
+                        border: `1px solid ${on ? '#ffa726' : '#444'}`, background: on ? 'rgba(255,167,38,0.18)' : 'rgba(255,255,255,0.03)',
+                        color: '#ddd', fontSize: '12px', '&:hover': { borderColor: '#ffa726' }
+                      }}
+                    >
+                      <Box component="span" sx={{ color: '#ffa726', mr: 0.75 }}>{multi ? (on ? '☑' : '☐') : `${i + 1}.`}</Box>
+                      {label}
+                      {desc && <Box sx={{ color: '#888', fontSize: '11px', mt: 0.25 }}>{desc}</Box>}
+                    </Box>
+                  );
+                })}
+                {curQ.multiSelect && (
+                  <Box
+                    component="button"
+                    disabled={answering || !pickerReady || !picked.size}
+                    onClick={() => answerStep({ q: curQ, indexes: [...picked], from: cursorAt, ticked })}
+                    sx={{ alignSelf: 'flex-start', cursor: 'pointer', border: '1px solid #ffa726', background: 'rgba(255,167,38,0.18)', color: '#ffa726', borderRadius: 1, fontSize: '11.5px', padding: '4px 12px', opacity: picked.size ? 1 : 0.5 }}
+                  >{qs.length > 1 ? 'Siguiente' : 'Confirmar'} {picked.size ? `(${picked.size})` : ''}</Box>
+                )}
+              </Box>
+              {!pickerReady && (
+                <Box sx={{ color: '#8a7a55', fontSize: '10.5px', mt: 0.5 }}>
+                  {stepUnknown ? 'No reconozco qué pregunta muestra el terminal; respóndela ahí.' : 'Leyendo el menú en el terminal…'}
+                </Box>
+              )}
+            </>
+          )}
+          {inReview && (
+            // Claude Code's last screen: every answer, then "Submit answers".
+            <>
+              {(picker.answers || []).map((a, k) => (
+                <Box key={k} sx={{ fontSize: '12px', color: '#ccc', mb: 0.25 }}>
+                  {a.question}{' '}
+                  <Box component="span" sx={{ color: '#8fd18f' }}>→ {a.answer || 'sin respuesta'}</Box>
+                </Box>
+              ))}
+              <Box
+                component="button"
+                disabled={answering}
+                onClick={() => submitReview(picker.cursor || 0)}
+                sx={{ mt: 0.75, cursor: 'pointer', border: '1px solid #ffa726', background: 'rgba(255,167,38,0.18)', color: '#ffa726', borderRadius: 1, fontSize: '11.5px', padding: '4px 12px' }}
+              >Enviar respuestas</Box>
+            </>
           )}
           {waiting.name === 'ExitPlanMode' && (
             <Box sx={{ color: '#bbb', fontSize: '11.5px' }}>Claude pide aprobar un plan.</Box>
           )}
           {answering && <Box sx={{ color: '#ffa726', fontSize: '11px', mt: 0.5 }}>Respondiendo en el terminal…</Box>}
           {answerFailed && (
-            <Box sx={{ color: '#ff8080', fontSize: '11px', mt: 0.5 }}>El cuadro no se cerró; revísalo en el terminal.</Box>
+            <Box sx={{ color: '#ff8080', fontSize: '11px', mt: 0.5 }}>El terminal no avanzó; revísalo ahí.</Box>
           )}
-          {waiting.input && waiting.input.questionCount > 1 && (
-            <Box sx={{ color: '#8a7a55', fontSize: '10px', mt: 0.5 }}>
-              Esta pregunta tiene {waiting.input.questionCount} partes; las siguientes se responden en el terminal.
-            </Box>
+          {qs && (
+            <Box sx={{ color: '#8a7a55', fontSize: '10px', mt: 0.5 }}>Para escribir otra respuesta o cambiar una anterior, usa el terminal.</Box>
           )}
           {waiting.name !== 'AskUserQuestion' && (
             <Box sx={{ color: '#8a7a55', fontSize: '10px', mt: 0.5 }}>Se responde en el terminal.</Box>

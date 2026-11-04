@@ -171,6 +171,70 @@ function readPermission(tmuxSession) {
 }
 
 /**
+ * Where an AskUserQuestion picker stands, read off the screen, so the chat
+ * view answers the step that is actually showing. With several questions
+ * Claude Code draws a tab row over the question:
+ *   ←  ☒ Biblioteca  ☐ José Pablo  ✔ Submit  →
+ * and walks it one step per answer; after the last one comes a review,
+ * "Ready to submit your answers?  ❯ 1. Submit answers  2. Cancel". A lone
+ * single-select question has no tab row and sends on Enter.
+ * Returns { tabs: [{ header, done }], shown, review, cursor, onNext, checked }
+ * or null. `cursor` is the 0-based option under ❯; `onNext` when ❯ sits on the
+ * Next/Submit row of a multi-select; `checked` lists ticked options.
+ */
+function readPicker(tmuxSession) {
+  try {
+    const plain = readScreen(tmuxSession).split('\n')
+      .map(l => l.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-9;]*m/g, '').replace(/\s+$/, ''));
+    let tabRow = -1;
+    for (let i = plain.length - 1; i >= 0; i--) if (/^\s*←\s.*✔\s*Submit\s*→\s*$/.test(plain[i])) { tabRow = i; break; }
+    let hint = -1;
+    for (let i = plain.length - 1; i >= 0 && i > plain.length - 40; i--) if (/Enter to select/.test(plain[i])) { hint = i; break; }
+    const review = tabRow >= 0 && plain.slice(tabRow).some(l => /Ready to submit your answers\?/.test(l));
+    if (hint < 0 && !review) return null;
+    const tabs = [];
+    if (tabRow >= 0) {
+      const inner = plain[tabRow].replace(/^\s*←\s*/, '').replace(/✔\s*Submit\s*→\s*$/, '');
+      for (const m of inner.matchAll(/([☐☒])\s*(.+?)(?=\s+[☐☒]|\s*$)/g)) tabs.push({ header: m[2].trim(), done: m[1] === '☒' });
+    }
+    // The question is the first text under the tab row. A lone question has
+    // only one step, so all that matters there is where its options start:
+    // the last "1." above the hint ("Chat about this" is never number 1).
+    let from = tabRow >= 0 ? tabRow + 1 : -1;
+    if (tabRow < 0) {
+      for (let i = hint - 1; i >= 0 && i > hint - 40; i--) if (/^\s*❯?\s*1\.\s/.test(plain[i])) { from = i; break; }
+      if (from < 0) return null;
+    }
+    while (from < plain.length && plain[from].trim() === '') from++;
+    const shown = review || tabRow < 0 ? '' : (plain[from] || '').replace(/^\s*│\s*/, '').trim();
+    let cursor = null, onNext = false;
+    const checked = [];
+    const end = hint >= 0 ? hint : plain.length;
+    for (let i = from; i < end; i++) {
+      const l = plain[i];
+      const m = l.match(/^\s*(❯)?\s*(\d+)\.\s+(\[([✔ ])\]\s*)?/);
+      if (m) {
+        if (m[1]) cursor = Number(m[2]) - 1;
+        if (m[4] === '✔') checked.push(Number(m[2]) - 1);
+        continue;
+      }
+      if (/^\s*❯\s+(Next|Submit)\s*$/.test(l)) onNext = true;
+    }
+    // The review lists each question ("● …") with its answer ("→ …").
+    const answers = [];
+    if (review) {
+      for (let i = tabRow + 1; i < plain.length; i++) {
+        const q = plain[i].match(/^\s*●\s+(.+)$/);
+        if (q) answers.push({ question: q[1].trim(), answer: '' });
+        const a = plain[i].match(/^\s*→\s*(.*)$/);
+        if (a && answers.length) answers[answers.length - 1].answer = a[1].trim();
+      }
+    }
+    return { tabs, shown, review, cursor, onNext, checked, answers };
+  } catch (e) { return null; }
+}
+
+/**
  * Claude Code's status lines under its input box: model, project and branch,
  * context used, usage, permission mode, agents. Screen only, like the rest.
  */
@@ -323,7 +387,7 @@ function watch(terminalId, onEvents) {
     const tail = transcript.readTail(w.file);
     // A joining listener gets the current suggestion too; it is otherwise
     // only sent when it changes.
-    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null, status: w.statusKey ? JSON.parse(w.statusKey) : null, working: !!w.working, activity: w.activity || '' });
+    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null, picker: w.pickerKey ? JSON.parse(w.pickerKey) : null, status: w.statusKey ? JSON.parse(w.statusKey) : null, working: !!w.working, activity: w.activity || '' });
     return;
   }
 
@@ -337,9 +401,10 @@ function watch(terminalId, onEvents) {
   const pane0 = listClaudePanes().find(p => p.terminalId === terminalId);
   const perm0 = pane0 ? readPermission(pane0.tmuxSession) : null;
   const status0 = pane0 ? readStatusLine(pane0.tmuxSession) : null;
-  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0), statusKey: JSON.stringify(status0), ...(pane0 ? (({ working, text }) => ({ working, activity: text }))(readActivity(pane0.tmuxSession)) : { working: false, activity: '' }) };
+  const picker0 = pane0 ? readPicker(pane0.tmuxSession) : null;
+  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0), pickerKey: JSON.stringify(picker0), statusKey: JSON.stringify(status0), ...(pane0 ? (({ working, text }) => ({ working, activity: text }))(readActivity(pane0.tmuxSession)) : { working: false, activity: '' }) };
   watchers.set(terminalId, w);
-  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0, status: status0, working: w.working, activity: w.activity });
+  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0, picker: picker0, status: status0, working: w.working, activity: w.activity });
 
   // Poll the size: the file is appended by another process, and polling stat is
   // more dependable than fs.watch for that across filesystems.
@@ -372,12 +437,14 @@ function watch(terminalId, onEvents) {
         const suggestion = pane ? readSuggestion(pane.tmuxSession) : '';
         const permission = pane ? readPermission(pane.tmuxSession) : null;
         const permKey = JSON.stringify(permission);
+        const picker = pane ? readPicker(pane.tmuxSession) : null;
+        const pickerKey = JSON.stringify(picker);
         const status = pane ? readStatusLine(pane.tmuxSession) : null;
         const statusKey = JSON.stringify(status);
         const { working, text: activity } = pane ? readActivity(pane.tmuxSession) : { working: false, text: '' };
-        if (suggestion !== w.suggestion || permKey !== w.permKey || statusKey !== w.statusKey || working !== w.working || activity !== w.activity) {
-          w.suggestion = suggestion; w.permKey = permKey; w.statusKey = statusKey; w.working = working; w.activity = activity;
-          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission, status, working, activity });
+        if (suggestion !== w.suggestion || permKey !== w.permKey || pickerKey !== w.pickerKey || statusKey !== w.statusKey || working !== w.working || activity !== w.activity) {
+          w.suggestion = suggestion; w.permKey = permKey; w.pickerKey = pickerKey; w.statusKey = statusKey; w.working = working; w.activity = activity;
+          for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission, picker, status, working, activity });
         }
       }
       if (w.reset) { w.reset = false; w.offset = 0; }
@@ -427,7 +494,7 @@ function describeWatchers() {
   return out;
 }
 
-module.exports = { listPanes, readSuggestion, readPermission, readStatusLine, readBackgroundShells, refreshScreens,
+module.exports = { listPanes, readSuggestion, readPermission, readPicker, readStatusLine, readBackgroundShells, refreshScreens,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
   watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
 };
