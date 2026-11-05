@@ -1372,9 +1372,12 @@ function TerminalView() {
                       )}
                       {(hasActivity || winBusy) && (
                         <span style={{
-                          width: 6, height: 6, borderRadius: '50%', backgroundColor: '#00ff00',
-                          animation: 'muxpulse 1s ease-in-out infinite', marginRight: 2
-                        }} title={winBusy ? 'Claude está trabajando' : 'Agentes en segundo plano o un programa en ejecución'} />
+                          // Only Claude at work pulses. A shell, agent or program left
+                          // running in the background (a browser Claude opened days ago)
+                          // gets a steady, dimmer dot so it does not read as "working".
+                          width: 6, height: 6, borderRadius: '50%', backgroundColor: winBusy ? '#00ff00' : '#2e7d32',
+                          animation: winBusy ? 'muxpulse 1s ease-in-out infinite' : 'none', marginRight: 2
+                        }} title={winBusy ? 'Claude está trabajando' : 'Claude está quieto; queda algo corriendo en segundo plano (un shell, agentes o un programa)'} />
                       )}
                       <style>{`@keyframes muxpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
                       <span style={winUnseen.length > 0 && !isActive ? { color: '#ffa726' } : undefined}>{win.name}</span>
