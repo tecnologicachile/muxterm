@@ -106,8 +106,12 @@ function apply(st, events, { historical = false } = {}) {
       st.turnText = '';
     }
     if (ev.kind === 'prompt') {
-      st.busy = true; st.waiting = false; st.waitingTool = null; st.since = ev.ts || new Date().toISOString();
-      st.turnText = '';
+      // A message typed while Claude works joins the running turn: it does
+      // not restart the clock or end a wait on a question.
+      if (!(ev.midTurn && st.busy)) {
+        st.busy = true; st.waiting = false; st.waitingTool = null; st.since = ev.ts || new Date().toISOString();
+        st.turnText = '';
+      }
       activity.record({ terminalId: tid, kind: 'prompt', ts: ev.ts, summary: ev.text, ref: ev.uuid || 'prompt:' + ev.ts, seen: true });
     }
     else if (ev.kind === 'text' && ev.text) {

@@ -114,13 +114,31 @@ function parseLine(line) {
     if (o.subtype === 'away_summary') return [{ kind: 'turn', ts: o.timestamp, uuid: o.uuid, reason: 'away' }];
     return [];
   }
-  if (NOISE_TYPES.has(o.type)) return [];
-
   const base = {
     uuid: o.uuid,
     ts: o.timestamp,
     sidechain: !!o.isSidechain    // subagent thread
   };
+
+  // What you type while Claude is working is not logged as a user line:
+  // Claude Code queues it and hands it to Claude mid-turn as an attachment
+  // (queued_command, commandMode "prompt"), and it never shows up again as
+  // a prompt. It is still something you said. A background task finishing
+  // mid-turn arrives the same way, with commandMode "task-notification".
+  if (o.type === 'attachment') {
+    const a = o.attachment || {};
+    if (a.type !== 'queued_command') return [];
+    const p = typeof a.prompt === 'string' ? a.prompt
+      : Array.isArray(a.prompt) ? a.prompt.filter(b => b && b.type === 'text').map(b => b.text).join('\n') : '';
+    if (!p.trim()) return [];
+    if (a.commandMode === 'prompt') return [{ ...base, kind: 'prompt', midTurn: true, ...clip(p, MAX_MESSAGE) }];
+    if (a.commandMode === 'task-notification') {
+      const m = p.match(/<summary>([\s\S]*?)<\/summary>/);
+      return [{ ...base, kind: 'note', text: clip(m ? m[1].trim() : 'Tarea en segundo plano terminada', 200).text }];
+    }
+    return [];
+  }
+  if (NOISE_TYPES.has(o.type)) return [];
 
   if (o.type === 'user') {
     const c = o.message && o.message.content;

@@ -1187,6 +1187,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           if (ev.kind === 'prompt') {
             return (
               <Box key={`e${i}`} sx={{ ...pad, mb: 1, mt: 1.5, borderLeft: '3px solid #00aa55', pl: 1.25, backgroundColor: 'rgba(0,170,85,0.06)', py: 0.75, borderRadius: '0 4px 4px 0' }}>
+                {ev.midTurn && <Box sx={{ fontSize: '9px', color: '#6a8a78', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25 }}>Mientras trabajaba</Box>}
                 {splitPasted(ev.text).map((part, j) => part.pasted ? (
                   <Box key={j} sx={{ my: 0.5, pl: 1, borderLeft: '2px solid #3a5a48', color: '#b5b5b5', fontSize: '12px' }}>
                     <Box sx={{ fontSize: '9px', color: '#6a8a78', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25 }}>Texto pegado</Box>
