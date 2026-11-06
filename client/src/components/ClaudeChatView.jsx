@@ -137,14 +137,16 @@ function inline(text, keyBase) {
       const cut = t.indexOf('](');
       const label = t.slice(1, cut), href = t.slice(cut + 2, -1);
       out.push(<a key={k} href={href} target="_blank" rel="noreferrer" style={{ color: '#4da6ff' }}>{label}</a>);
+    // Emphasis can hold a link, code or a path ("**https://…/mcp**"): its
+    // text goes through inline() again instead of being shown as is.
     } else if (t.startsWith('***')) {
-      out.push(<strong key={k}><em>{t.slice(3, -3)}</em></strong>);
+      out.push(<strong key={k}><em>{inline(t.slice(3, -3), k)}</em></strong>);
     } else if (t.startsWith('**')) {
-      out.push(<strong key={k}>{t.slice(2, -2)}</strong>);
+      out.push(<strong key={k}>{inline(t.slice(2, -2), k)}</strong>);
     } else if (t.startsWith('~~')) {
-      out.push(<span key={k} style={{ textDecoration: 'line-through', opacity: 0.7 }}>{t.slice(2, -2)}</span>);
+      out.push(<span key={k} style={{ textDecoration: 'line-through', opacity: 0.7 }}>{inline(t.slice(2, -2), k)}</span>);
     } else {
-      out.push(<em key={k}>{t.slice(1, -1)}</em>);
+      out.push(<em key={k}>{inline(t.slice(1, -1), k)}</em>);
     }
     last = m.index + t.length;
   }
