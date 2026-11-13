@@ -158,7 +158,7 @@ function start(st) {
   st.file = r.file || null;
   st.offset = 0;
   if (!st.file) return;
-  const tail = transcript.readTail(st.file);
+  const tail = transcript.readTailSync(st.file);
   st.offset = tail.size;
   st.busy = false; st.waiting = false; st.waitingTool = null;
   apply(st, tail.events, { historical: true });

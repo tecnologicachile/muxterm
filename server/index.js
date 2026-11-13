@@ -1267,6 +1267,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  // "Cargar anteriores": the stretch of the transcript before a byte offset.
+  // Only for a terminal this socket already watches, which checked ownership.
+  socket.on('claude-older', async (data, ack) => {
+    if (typeof ack !== 'function') return;
+    try {
+      const terminalId = data && data.terminalId;
+      if (!terminalId || !claudeListeners.has(terminalId)) return ack({ error: 'not watching' });
+      const r = await claudeSessions.older(terminalId, data.file, Number(data.before));
+      ack(r || { error: 'stale' });
+    } catch (e) {
+      ack({ error: e.message });
+    }
+  });
+
   socket.on('claude-unwatch', (data) => {
     const terminalId = data && data.terminalId;
     const listener = terminalId && claudeListeners.get(terminalId);

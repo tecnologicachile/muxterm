@@ -71,11 +71,7 @@ function registerFromHook({ terminalId, transcriptPath, sessionId, cwd }) {
   registry.set(terminalId, { transcriptPath, sessionId, cwd, at: Date.now() });
   // A /clear starts a new transcript; re-point any live watcher at it.
   const w = watchers.get(terminalId);
-  if (w && w.file !== transcriptPath) {
-    w.file = transcriptPath;
-    w.offset = 0;
-    w.reset = true;
-  }
+  if (w && w.file !== transcriptPath) switchFile(w, transcriptPath, 'hook');
   return true;
 }
 
@@ -376,6 +372,51 @@ function resolveTranscript(terminalId) {
   return file ? { file, source: 'cwd', cwd: pane.cwd } : { file: null, source: 'none', cwd: pane.cwd };
 }
 
+/** What a joining listener needs besides events; otherwise sent on change. */
+function stateOf(w) {
+  return { suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null, picker: w.pickerKey ? JSON.parse(w.pickerKey) : null, status: w.statusKey ? JSON.parse(w.statusKey) : null, working: !!w.working, activity: w.activity || '' };
+}
+
+/**
+ * Send the history up to w.offset to these listeners. It is read
+ * asynchronously (a busy session needs 10-15 MB for a useful stretch), so
+ * lines appended meanwhile are queued per listener and delivered right
+ * after it: the view never gets new events before the history they follow.
+ */
+function sendBacklog(w, fns, extra = {}) {
+  const file = w.file, end = w.offset;
+  for (const fn of fns) { w.ready.delete(fn); w.queued.set(fn, []); }
+  transcript.readBefore(file, end).then(tail => {
+    if (w.file !== file) return;   // switched again; a newer backlog is on its way
+    for (const fn of fns) {
+      if (!w.listeners.has(fn) || w.ready.has(fn)) continue;
+      fn({ terminalId: w.terminalId, events: tail.events, file, backlog: true, start: tail.start, more: tail.more, ...stateOf(w), ...extra });
+      const q = w.queued.get(fn) || [];
+      w.queued.delete(fn);
+      if (q.length) fn({ terminalId: w.terminalId, events: q, file });
+      w.ready.add(fn);
+    }
+  });
+}
+
+/** Follow another transcript file (a /clear, a resumed session). */
+function switchFile(w, file, source) {
+  w.file = file;
+  try { w.offset = fs.statSync(file).size; } catch (e) { w.offset = 0; }
+  sendBacklog(w, [...w.listeners], source ? { source } : {});
+}
+
+/**
+ * The stretch of the transcript before byte `before`, for "Cargar anteriores".
+ * Answers null when nobody watches this terminal or the file has changed.
+ */
+async function older(terminalId, file, before) {
+  const w = watchers.get(terminalId);
+  if (!w || w.file !== file || !(before > 0)) return null;
+  const r = await transcript.readBefore(file, before);
+  return { events: r.events, start: r.start, more: r.more, file };
+}
+
 /**
  * Start (or join) a tail for this terminal. `onEvents(payload)` fires with the
  * backlog first, then with each batch appended afterwards.
@@ -384,10 +425,7 @@ function watch(terminalId, onEvents) {
   let w = watchers.get(terminalId);
   if (w) {
     w.listeners.add(onEvents);
-    const tail = transcript.readTail(w.file);
-    // A joining listener gets the current suggestion too; it is otherwise
-    // only sent when it changes.
-    onEvents({ terminalId, events: tail.events, file: w.file, backlog: true, suggestion: w.suggestion || '', permission: w.permKey ? JSON.parse(w.permKey) : null, picker: w.pickerKey ? JSON.parse(w.pickerKey) : null, status: w.statusKey ? JSON.parse(w.statusKey) : null, working: !!w.working, activity: w.activity || '' });
+    sendBacklog(w, [onEvents]);
     return;
   }
 
@@ -397,14 +435,15 @@ function watch(terminalId, onEvents) {
     return;
   }
 
-  const tail = transcript.readTail(file);
+  let size = 0;
+  try { size = fs.statSync(file).size; } catch (e) {}
   const pane0 = listClaudePanes().find(p => p.terminalId === terminalId);
   const perm0 = pane0 ? readPermission(pane0.tmuxSession) : null;
   const status0 = pane0 ? readStatusLine(pane0.tmuxSession) : null;
   const picker0 = pane0 ? readPicker(pane0.tmuxSession) : null;
-  w = { file, offset: tail.size, listeners: new Set([onEvents]), timer: null, reset: false, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0), pickerKey: JSON.stringify(picker0), statusKey: JSON.stringify(status0), ...(pane0 ? (({ working, text }) => ({ working, activity: text }))(readActivity(pane0.tmuxSession)) : { working: false, activity: '' }) };
+  w = { terminalId, file, offset: size, listeners: new Set([onEvents]), ready: new Set(), queued: new Map(), timer: null, suggestion: pane0 ? readSuggestion(pane0.tmuxSession) : '', permKey: JSON.stringify(perm0), pickerKey: JSON.stringify(picker0), statusKey: JSON.stringify(status0), ...(pane0 ? (({ working, text }) => ({ working, activity: text }))(readActivity(pane0.tmuxSession)) : { working: false, activity: '' }) };
   watchers.set(terminalId, w);
-  onEvents({ terminalId, events: tail.events, file, source, backlog: true, suggestion: w.suggestion, permission: perm0, picker: picker0, status: status0, working: w.working, activity: w.activity });
+  sendBacklog(w, [onEvents], { source });
 
   // Poll the size: the file is appended by another process, and polling stat is
   // more dependable than fs.watch for that across filesystems.
@@ -422,11 +461,7 @@ function watch(terminalId, onEvents) {
       if ((++w.ticks % 12) === 0) {
         const r = resolveTranscript(terminalId);
         if (r.file && r.file !== w.file) {
-          w.file = r.file;
-          w.offset = 0;
-          const t = transcript.readTail(w.file);
-          w.offset = t.size;
-          for (const fn of w.listeners) fn({ terminalId, events: t.events, file: w.file, source: r.source, backlog: true });
+          switchFile(w, r.file, r.source);
           return;
         }
       }
@@ -447,10 +482,10 @@ function watch(terminalId, onEvents) {
           for (const fn of w.listeners) fn({ terminalId, events: [], suggestion, permission, picker, status, working, activity });
         }
       }
-      if (w.reset) { w.reset = false; w.offset = 0; }
       const st = fs.statSync(w.file);
       if (st.size === w.offset) return;
-      if (st.size < w.offset) { w.offset = 0; }  // rotated/truncated
+      // Rotated or truncated: start over with a fresh backlog.
+      if (st.size < w.offset) { switchFile(w, w.file); return; }
       const len = st.size - w.offset;
       const buf = Buffer.alloc(len);
       const fd = fs.openSync(w.file, 'r');
@@ -461,7 +496,10 @@ function watch(terminalId, onEvents) {
         if (line.trim()) events.push(...transcript.parseLine(line));
       }
       if (events.length) {
-        for (const fn of w.listeners) fn({ terminalId, events, file: w.file });
+        for (const fn of w.listeners) {
+          if (w.ready.has(fn)) fn({ terminalId, events, file: w.file });
+          else if (w.queued.has(fn)) w.queued.get(fn).push(...events);
+        }
       }
     } catch (e) {
       // File may vanish on /clear; the next hook registration re-points us.
@@ -472,7 +510,7 @@ function watch(terminalId, onEvents) {
 function unwatch(terminalId, onEvents) {
   const w = watchers.get(terminalId);
   if (!w) return;
-  if (onEvents) w.listeners.delete(onEvents);
+  if (onEvents) { w.listeners.delete(onEvents); w.ready.delete(onEvents); w.queued.delete(onEvents); }
   if (!onEvents || w.listeners.size === 0) {
     clearInterval(w.timer);
     watchers.delete(terminalId);
@@ -496,5 +534,5 @@ function describeWatchers() {
 
 module.exports = { listPanes, readSuggestion, readPermission, readPicker, readStatusLine, readBackgroundShells, refreshScreens,
   listClaudePanes, resolveTranscript, registerFromHook, hookRegistration, HOOK_DIR, describeWatchers,
-  watch, unwatch, unwatchAllFor, terminalIdFromTmuxSession
+  watch, unwatch, unwatchAllFor, older, terminalIdFromTmuxSession
 };

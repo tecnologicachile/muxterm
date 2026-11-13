@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { Box, Typography, IconButton, TextField, CircularProgress } from '@mui/material';
 import { eventFiles, carriesFiles, uploadFiles } from '../utils/pasteFiles';
 import { pathCandidates, resolvePaths, openPath } from '../utils/filePaths';
@@ -174,6 +174,54 @@ const splitRow = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.t
 
 // Claude Code wraps what you paste in <pasted_content id="…">…</pasted_content>
 // (sometimes with the slash escaped) and that wrapper lands in the transcript.
+// How many items the thread keeps. History arrives in stretches of ~300
+// and "Cargar anteriores" adds more, so this only guards a tab left open
+// for days.
+const MAX_THREAD = 4000;
+const evKey = (e) => `${e.uuid}|${e.kind}|${e.toolId || ''}`;
+
+/**
+ * Fold transcript events into `next` (mutated and returned): results join
+ * their tool call, turns leave only interruptions, repeats are skipped (a
+ * reconnect re-sends the backlog). A result whose call is not in the thread
+ * waits in `orphans`, for when "Cargar anteriores" brings the call in.
+ */
+function foldEvents(next, incoming, orphans, onTitle) {
+  const seen = new Set();
+  const uuids = new Set();
+  const toolAt = new Map();
+  next.forEach((e, i) => {
+    if (e.uuid) { seen.add(evKey(e)); uuids.add(e.uuid); }
+    if (e.kind === 'tool' && e.toolId) toolAt.set(e.toolId, i);
+  });
+  for (const ev of incoming) {
+    if (ev.kind === 'title') { if (onTitle) onTitle(ev.text); continue; }
+    if (ev.kind === 'turn') {           // bookkeeping for the status tracker…
+      // …except an interruption, which is worth a line in the thread.
+      if (ev.reason === 'interrupted' && !(ev.uuid && uuids.has(ev.uuid))) {
+        next.push({ ...ev, kind: 'note', text: 'Interrumpido' });
+        if (ev.uuid) uuids.add(ev.uuid);
+      }
+      continue;
+    }
+    if (ev.kind === 'result') {
+      const i = toolAt.get(ev.toolId);
+      if (i !== undefined) next[i] = { ...next[i], result: ev.result };
+      else if (orphans && ev.toolId) orphans.set(ev.toolId, ev.result);
+      continue;
+    }
+    if (ev.uuid && seen.has(evKey(ev))) continue;
+    let item = ev;
+    if (ev.kind === 'tool' && ev.toolId) {
+      if (orphans && orphans.has(ev.toolId)) { item = { ...ev, result: orphans.get(ev.toolId) }; orphans.delete(ev.toolId); }
+      toolAt.set(ev.toolId, next.length);
+    }
+    next.push(item);
+    if (ev.uuid) { seen.add(evKey(ev)); uuids.add(ev.uuid); }
+  }
+  return next;
+}
+
 // Split a prompt into typed and pasted parts so the tags never show.
 function splitPasted(text) {
   const src = String(text || '');
@@ -722,6 +770,14 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const scrollRef = useRef(null);
   const stickRef = useRef(true);
   const fileRef = useRef(null);
+  // Where the loaded stretch of the transcript begins ({ file, start, more }).
+  const olderRef = useRef(null);
+  const [olderInfo, setOlderInfo] = useState(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const [olderError, setOlderError] = useState('');
+  const anchorRef = useRef(null);
+  const orphansRef = useRef(new Map());
   const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState('');
   const [suggestion, setSuggestion] = useState('');
@@ -851,31 +907,47 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   useEffect(() => { autoSpeakRef.current = autoSpeak; }, [autoSpeak]);
 
   const merge = useCallback((incoming) => {
-    setEvents(prev => {
-      const next = prev.slice();
-      for (const ev of incoming) {
-        if (ev.kind === 'title') { setTitle(ev.text); continue; }
-        if (ev.kind === 'turn') {           // bookkeeping for the status tracker…
-          // …except an interruption, which is worth a line in the thread.
-          if (ev.reason === 'interrupted' && !(ev.uuid && next.some(e => e.uuid === ev.uuid))) next.push({ ...ev, kind: 'note', text: 'Interrumpido' });
-          continue;
-        }
-        if (ev.kind === 'result') {
-          // Attach to its tool call; if the tool is outside our window, drop it.
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].kind === 'tool' && next[i].toolId === ev.toolId) {
-              next[i] = { ...next[i], result: ev.result };
-              break;
-            }
-          }
-          continue;
-        }
-        if (ev.uuid && next.some(e => e.uuid === ev.uuid && e.kind === ev.kind && e.toolId === ev.toolId)) continue;
-        next.push(ev);
-      }
-      return next.slice(-400);
-    });
+    setEvents(prev => foldEvents(prev.slice(), incoming, orphansRef.current, setTitle).slice(-MAX_THREAD));
   }, []);
+
+  // "Cargar anteriores": the server answers with the stretch of the
+  // transcript before `start`, which goes in front of what is shown while
+  // the view stays on what you were reading.
+  const loadOlder = useCallback(() => {
+    const o = olderRef.current;
+    if (!socket || !o || !o.more || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true); setOlderError('');
+    let done = false;
+    const finish = () => { done = true; loadingOlderRef.current = false; setLoadingOlder(false); };
+    const timer = setTimeout(() => { if (!done) { finish(); setOlderError('El servidor no respondió; inténtalo de nuevo.'); } }, 20000);
+    socket.emit('claude-older', { terminalId, file: o.file, before: o.start }, (res) => {
+      if (done) return;
+      clearTimeout(timer); finish();
+      if (!res || res.error) {
+        setOlderError(res && res.error === 'stale' ? 'La sesión cambió de archivo; ya estás viendo la nueva.' : 'No se pudo cargar lo anterior.');
+        return;
+      }
+      if (res.file !== fileRef.current) return;
+      const el = scrollRef.current;
+      if (el) anchorRef.current = { height: el.scrollHeight, top: el.scrollTop };
+      setEvents(prev => {
+        const older = foldEvents([], res.events, orphansRef.current, null);
+        const have = new Set(prev.filter(e => e.uuid).map(evKey));
+        return [...older.filter(e => !(e.uuid && have.has(evKey(e)))), ...prev];
+      });
+      olderRef.current = { file: res.file, start: res.start, more: res.more };
+      setOlderInfo(olderRef.current);
+    });
+  }, [socket, terminalId]);
+
+  // Keep what you were reading in place when older items go in above it.
+  useLayoutEffect(() => {
+    const a = anchorRef.current, el = scrollRef.current;
+    if (!a || !el) return;
+    anchorRef.current = null;
+    el.scrollTop = a.top + (el.scrollHeight - a.height);
+  }, [events]);
 
   useEffect(() => {
     if (!socket || !terminalId) return;
@@ -896,6 +968,18 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (payload.backlog) {
         if (payload.file && fileRef.current && payload.file !== fileRef.current) setEvents([]);
         if (payload.file) fileRef.current = payload.file;
+        if (payload.file) {
+          // A reconnect re-sends only the recent stretch: keep the older
+          // start if "Cargar anteriores" already went further back.
+          const o = olderRef.current;
+          const same = o && o.file === payload.file;
+          if (!same) orphansRef.current = new Map();
+          const got = typeof payload.start === 'number' ? payload.start : 0;
+          const start = same ? Math.min(o.start, got) : got;
+          olderRef.current = { file: payload.file, start, more: start > 0 };
+          setOlderInfo(olderRef.current);
+          setOlderError('');
+        }
       }
       const incoming = payload.events || [];
       if (payload.backlog) {
@@ -1360,6 +1444,20 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         {!error && events.length === 0 && (
           <Box sx={{ color: '#666', fontSize: '12px', p: 2, textAlign: 'center' }}>Esperando actividad de Claude…</Box>
         )}
+        {!error && events.length > 0 && olderInfo && (olderInfo.more ? (
+          <Box sx={{ textAlign: 'center', mt: 0.5, mb: 1.5 }}>
+            <Box component="button" type="button" onClick={loadOlder} disabled={loadingOlder} sx={{
+              background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: '#8aa', px: 1.5, py: 0.5,
+              fontSize: '11px', fontFamily: 'inherit', cursor: loadingOlder ? 'default' : 'pointer',
+              '&:hover': loadingOlder ? {} : { borderColor: '#00aa55', color: '#cfe' }
+            }}>
+              {loadingOlder ? 'Cargando…' : 'Cargar anteriores'}
+            </Box>
+            {olderError && <Box sx={{ color: '#ffa726', fontSize: '11px', mt: 0.5 }}>{olderError}</Box>}
+          </Box>
+        ) : (
+          <Box sx={{ textAlign: 'center', mt: 0.5, mb: 1.5, fontSize: '10px', color: '#555', letterSpacing: '0.5px' }}>— Inicio de la conversación —</Box>
+        ))}
         {messageNodes}
         {!working && activity && (
           // What Claude Code shows as "✻ Worked for …" once it is done.

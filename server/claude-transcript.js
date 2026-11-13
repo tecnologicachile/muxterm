@@ -271,8 +271,85 @@ function clipInput(name, input) {
   return pick;
 }
 
-/** Read the last chunk of a transcript and parse it. */
-function readTail(file, maxBytes = TAIL_BYTES) {
+// How much history the chat view gets at once. A fixed 2 MB tail held
+// minutes of a busy session: most of the bytes are bookkeeping it never
+// shows (file-history snapshots, hook logs, request blobs). So read back in
+// chunks until there is enough to show, within a hard cap per request.
+const CHUNK_BYTES = 2 * 1024 * 1024;
+const MAX_SCAN_BYTES = 32 * 1024 * 1024;
+const WANT_ITEMS = 300;      // messages, replies and tool calls
+const WANT_PROMPTS = 30;     // or this many of your own messages
+
+// Lines that are pure bookkeeping, recognised without parsing them: a
+// file-history snapshot alone can be hundreds of KB.
+const SKIP_PREFIX = /^\{"type":"(file-history-snapshot|api-request-blob|queue-operation|last-prompt|permission-mode|mode|atis-latch|agent-name|frame-link|cost-state|artifact-[a-z-]+)"/;
+
+const visible = (ev) => ev.kind !== 'result' && ev.kind !== 'turn' && ev.kind !== 'title';
+
+/**
+ * Parse the transcript backwards from byte `end` (default: its end) until
+ * WANT_ITEMS visible events or WANT_PROMPTS prompts, MAX_SCAN_BYTES or the
+ * start of the file. `start` is where the first parsed line begins: pass it
+ * back as `end` to get the stretch before. `more` says whether there is one.
+ * Asynchronous, chunk by chunk: reading 10-15 MB in one go held the event
+ * loop for ~300 ms, the kind of stall that dropped RDP before.
+ */
+async function readBefore(file, end, { wantItems = WANT_ITEMS, wantPrompts = WANT_PROMPTS, maxBytes = MAX_SCAN_BYTES } = {}) {
+  let fh;
+  try {
+    fh = await fs.promises.open(file, 'r');
+    const st = await fh.stat();
+    if (end == null || end > st.size) end = st.size;
+    let pos = end, start = end, carry = Buffer.alloc(0), scanned = 0, items = 0, prompts = 0;
+    const rounds = [];
+    while (pos > 0 && scanned < maxBytes && items < wantItems && prompts < wantPrompts) {
+      const len = Math.min(CHUNK_BYTES, pos);
+      pos -= len; scanned += len;
+      const buf = Buffer.alloc(len);
+      await fh.read(buf, 0, len, pos);
+      let data = carry.length ? Buffer.concat([buf, carry]) : buf;
+      if (pos > 0) {
+        // The first line may have started in the chunk before: keep it for
+        // the next round.
+        const nl = data.indexOf(10);
+        if (nl < 0) { carry = data; continue; }
+        carry = data.subarray(0, nl);
+        data = data.subarray(nl + 1);
+        start = pos + nl + 1;
+      } else {
+        carry = Buffer.alloc(0);
+        start = 0;
+      }
+      const events = [];
+      for (const line of data.toString('utf8').split('\n')) {
+        if (!line.trim() || SKIP_PREFIX.test(line)) continue;
+        for (const ev of parseLine(line)) {
+          events.push(ev);
+          if (visible(ev)) items++;
+          if (ev.kind === 'prompt') prompts++;
+        }
+      }
+      rounds.unshift(events);
+      await new Promise(r => setImmediate(r));
+    }
+    return { events: [].concat(...rounds), size: st.size, start, more: start > 0 };
+  } catch (e) {
+    return { events: [], size: 0, start: 0, more: false, error: e.message };
+  } finally {
+    if (fh) { try { await fh.close(); } catch (e) {} }
+  }
+}
+
+/** The recent end of a transcript, parsed (a promise); see readBefore. */
+function readTail(file) {
+  return readBefore(file, null);
+}
+
+/**
+ * The last TAIL_BYTES, parsed synchronously: enough for the status tracker,
+ * which only needs to know how the latest turn stands.
+ */
+function readTailSync(file, maxBytes = TAIL_BYTES) {
   let fd;
   try {
     const st = fs.statSync(file);
@@ -289,7 +366,7 @@ function readTail(file, maxBytes = TAIL_BYTES) {
     }
     const events = [];
     for (const line of text.split('\n')) {
-      if (line.trim()) events.push(...parseLine(line));
+      if (line.trim() && !SKIP_PREFIX.test(line)) events.push(...parseLine(line));
     }
     return { events, size: st.size };
   } catch (e) {
@@ -327,4 +404,4 @@ function findTranscriptByCwd(cwd, exclude) {
   }
 }
 
-module.exports = { parseLine, readTail, slugForCwd, findTranscriptByCwd, PROJECTS_DIR, TAIL_BYTES };
+module.exports = { parseLine, readTail, readTailSync, readBefore, slugForCwd, findTranscriptByCwd, PROJECTS_DIR, TAIL_BYTES };
