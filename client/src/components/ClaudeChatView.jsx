@@ -195,6 +195,7 @@ function foldEvents(next, incoming, orphans, onTitle) {
     if (e.kind === 'tool' && e.toolId) toolAt.set(e.toolId, i);
   });
   for (const ev of incoming) {
+    if (ev.kind === 'queue') continue;  // foldQueue's business
     if (ev.kind === 'title') { if (onTitle) onTitle(ev.text); continue; }
     if (ev.kind === 'turn') {           // bookkeeping for the status tracker…
       // …except an interruption, which is worth a line in the thread.
@@ -221,6 +222,31 @@ function foldEvents(next, incoming, orphans, onTitle) {
   }
   return next;
 }
+
+// Background tasks, other sessions and agents queue messages too: not yours.
+const NOT_TYPED = /^\s*(<(task-notification|cross-session-message|agent-message|observed_from_primary_session)\b|\[Cross-session )/;
+
+/**
+ * Messages waiting in Claude's queue, from the transcript's queue lines.
+ * The log is not perfectly paired (Claude closed with something queued
+ * leaves it there for good), so a new turn wipes the list: by the time a
+ * turn starts, Claude has taken everything that was waiting.
+ */
+function foldQueue(pending, incoming) {
+  let q = pending;
+  for (const ev of incoming) {
+    if (ev.sidechain) continue;
+    if (ev.kind === 'queue') {
+      // Every enqueue goes in, shown or not: dequeue takes the first one.
+      if (ev.op === 'enqueue') q = [...q, { text: ev.text || '', ts: ev.ts }];
+      else if (ev.op === 'dequeue') q = q.slice(1);
+      else if (ev.op === 'remove') { const i = q.findIndex(e => e.text === ev.text); if (i >= 0) q = [...q.slice(0, i), ...q.slice(i + 1)]; }
+      else if (ev.op === 'popAll') q = [];
+    } else if (ev.kind === 'prompt' && !ev.midTurn && q.length) q = [];
+  }
+  return q;
+}
+const shownQueue = (q) => q.filter(e => e.text.trim() && !NOT_TYPED.test(e.text));
 
 // Split a prompt into typed and pasted parts so the tags never show.
 function splitPasted(text) {
@@ -792,6 +818,10 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // Claude Code busy with a prompt (spinner line on screen). Esc or the stop
   // button sends it Escape, which is how the terminal interrupts it.
   const [working, setWorking] = useState(false);
+  // Messages you typed that Claude has not taken yet (the "❯" lines under
+  // its spinner in the terminal).
+  const pendingRef = useRef([]);
+  const [queued, setQueued] = useState([]);
   const [activity, setActivity] = useState('');
   const interrupt = () => {
     if (!socket) return;
@@ -982,6 +1012,15 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         }
       }
       const incoming = payload.events || [];
+      // The history rebuilds the queue from scratch; what follows updates it.
+      if (payload.backlog || incoming.length) {
+        const q = foldQueue(payload.backlog ? [] : pendingRef.current, incoming);
+        if (q !== pendingRef.current) {
+          const before = shownQueue(pendingRef.current), after = shownQueue(q);
+          pendingRef.current = q;
+          if (before.length !== after.length || before.some((e, i) => e.text !== after[i].text)) setQueued(after);
+        }
+      }
       if (payload.backlog) {
         // Never read the history aloud on opening — only what arrives after.
         for (const ev of incoming) if (ev.kind === 'text' && ev.uuid) spokenRef.current.add(ev.uuid + ':' + (ev.text || '').length);
@@ -1016,7 +1055,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [events]);
+  }, [events, queued]);
 
   // Between replies the element loops near-silence, so the tab keeps a live
   // media session and Android does not freeze it with the screen off.
@@ -1459,6 +1498,17 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           <Box sx={{ textAlign: 'center', mt: 0.5, mb: 1.5, fontSize: '10px', color: '#555', letterSpacing: '0.5px' }}>— Inicio de la conversación —</Box>
         ))}
         {messageNodes}
+        {!error && queued.map((q, i) => (
+          <Box key={`q${i}`} sx={{ mb: 1, mt: 1.5, borderLeft: '3px dashed #557766', pl: 1.25, backgroundColor: 'rgba(0,170,85,0.03)', py: 0.75, borderRadius: '0 4px 4px 0', color: '#aaa' }}>
+            <Box sx={{ fontSize: '9px', color: '#6a8a78', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25 }}>En cola · Claude lo verá al terminar el paso actual</Box>
+            {splitPasted(q.text).map((part, j) => part.pasted ? (
+              <Box key={j} sx={{ my: 0.5, pl: 1, borderLeft: '2px solid #3a5a48', fontSize: '12px' }}>
+                <Box sx={{ fontSize: '9px', color: '#6a8a78', textTransform: 'uppercase', letterSpacing: '1px', mb: 0.25 }}>Texto pegado</Box>
+                <MiniMarkdown text={part.text} />
+              </Box>
+            ) : <MiniMarkdown key={j} text={part.text} />)}
+          </Box>
+        ))}
         {!working && activity && (
           // What Claude Code shows as "✻ Worked for …" once it is done.
           <Box sx={{ color: '#777', fontSize: '11px', mt: 0.5, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>

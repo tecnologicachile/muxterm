@@ -120,6 +120,14 @@ function parseLine(line) {
     sidechain: !!o.isSidechain    // subagent thread
   };
 
+  // Until Claude takes it, a message typed while it works only exists as a
+  // queue line: enqueue, then dequeue (taken when the turn ends), remove
+  // (taken mid-turn, or edited away) or popAll (pulled back into the input).
+  // The view keeps the list of those still waiting.
+  if (o.type === 'queue-operation') {
+    return [{ kind: 'queue', op: o.operation, text: typeof o.content === 'string' ? o.content : '', ts: o.timestamp }];
+  }
+
   // What you type while Claude is working is not logged as a user line:
   // Claude Code queues it and hands it to Claude mid-turn as an attachment
   // (queued_command, commandMode "prompt"), and it never shows up again as
@@ -282,9 +290,9 @@ const WANT_PROMPTS = 30;     // or this many of your own messages
 
 // Lines that are pure bookkeeping, recognised without parsing them: a
 // file-history snapshot alone can be hundreds of KB.
-const SKIP_PREFIX = /^\{"type":"(file-history-snapshot|api-request-blob|queue-operation|last-prompt|permission-mode|mode|atis-latch|agent-name|frame-link|cost-state|artifact-[a-z-]+)"/;
+const SKIP_PREFIX = /^\{"type":"(file-history-snapshot|api-request-blob|last-prompt|permission-mode|mode|atis-latch|agent-name|frame-link|cost-state|artifact-[a-z-]+)"/;
 
-const visible = (ev) => ev.kind !== 'result' && ev.kind !== 'turn' && ev.kind !== 'title';
+const visible = (ev) => ev.kind !== 'result' && ev.kind !== 'turn' && ev.kind !== 'title' && ev.kind !== 'queue';
 
 /**
  * Parse the transcript backwards from byte `end` (default: its end) until

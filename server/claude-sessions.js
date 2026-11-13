@@ -414,7 +414,8 @@ async function older(terminalId, file, before) {
   const w = watchers.get(terminalId);
   if (!w || w.file !== file || !(before > 0)) return null;
   const r = await transcript.readBefore(file, before);
-  return { events: r.events, start: r.start, more: r.more, file };
+  // What was queued back then was delivered long ago.
+  return { events: r.events.filter(e => e.kind !== 'queue'), start: r.start, more: r.more, file };
 }
 
 /**
