@@ -1310,9 +1310,11 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Periodic CWD save every 3 minutes (protects against power loss / crash)
-// Excludes minimized panels — they don't change CWD while minimized
+// Excludes minimized panels — they don't change CWD while minimized.
+// Asynchronous: a blocking save froze the server for seconds and guacd
+// dropped every RDP/VNC client.
 setInterval(() => {
-  try { ttydManager.saveAllCwds(false); } catch (e) {}
+  ttydManager.saveAllCwdsAsync(false).catch(() => {});
 }, 3 * 60 * 1000);
 
 // Auto-update checker — runs every 6 hours if enabled

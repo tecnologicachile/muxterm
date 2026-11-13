@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { spawn, execSync } = require('child_process');
+const { spawn, execSync, execFile, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const database = require('../db/database');
@@ -359,32 +359,47 @@ class TtydProcessManager {
   }
 
   /**
-   * Save CWDs of all active terminals into workspace layouts (for reboot persistence)
+   * Where each tmux session's shell is, from one `tmux list-panes -a` and /proc.
+   *
+   * This used to cost two forks per terminal (tmux display-message, pgrep),
+   * run synchronously every 3 minutes: with 33 terminals the server froze for
+   * 7-8 s, and past ~15 s under load guacd gave up on every RDP/VNC client
+   * ("User is not responding") and the desktops reconnected.
    */
-  /**
-   * Get CWD by tmux session name directly (doesn't need terminals Map)
-   */
-  getCwdByTmuxSession(tmuxSessionName) {
-    try {
-      const panePid = execSync(
-        `tmux -L muxterm display-message -p -t ${tmuxSessionName} '#{pane_pid}'`,
-        { encoding: 'utf8' }
-      ).trim();
-      if (!panePid) return null;
-      let pid = panePid;
-      try {
-        const children = execSync(`pgrep -P ${pid}`, { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-        if (children.length > 0) pid = children[children.length - 1];
-      } catch (e) {}
-      return fs.readlinkSync(`/proc/${pid}/cwd`);
-    } catch (e) {
-      return null;
+  static _parsePanes(out) {
+    const pids = new Map();
+    for (const line of String(out || '').split('\n')) {
+      const [name, active, pid] = line.trim().split(' ');
+      // display-message -t <session> answered for the active pane of the
+      // active window; keep that one.
+      if (name && pid && (active === '11' || !pids.has(name))) pids.set(name, pid);
     }
+    return pids;
   }
 
-  saveAllCwds(includeMinimized = true) {
+  static _cwdOfPane(panePid) {
+    // A program started from the shell (claude, vim…) is where the user is:
+    // its highest-numbered child, as `pgrep -P | tail -1` gave.
+    let pid = panePid;
+    try {
+      const kids = fs.readFileSync(`/proc/${panePid}/task/${panePid}/children`, 'utf8').trim().split(/\s+/).filter(Boolean).map(Number);
+      if (kids.length) pid = Math.max(...kids);
+    } catch (e) {}
+    try { return fs.readlinkSync(`/proc/${pid}/cwd`); } catch (e) { return null; }
+  }
+
+  static get _paneArgs() {
+    return ['-L', 'muxterm', 'list-panes', '-a', '-F', '#{session_name} #{window_active}#{pane_active} #{pane_pid}'];
+  }
+
+  /** Save CWDs of all active terminals into workspace layouts (for reboot persistence). */
+  saveAllCwds(includeMinimized = true, panes = null) {
     let saved = 0;
     try {
+      if (!panes) {
+        try { panes = TtydProcessManager._parsePanes(execFileSync('tmux', TtydProcessManager._paneArgs, { encoding: 'utf8', timeout: 5000 })); }
+        catch (e) { panes = new Map(); }
+      }
       const allUsers = database.getAllUsers();
       for (const user of allUsers) {
         const layout = database.getWorkspaceLayout(user.id);
@@ -398,7 +413,8 @@ class TtydProcessManager {
           if (panel.terminalId && (!panel.type || panel.type === 'local' || panel.type === 'ssh')) {
             // Build tmux session name directly from userId + terminalId
             const tmuxName = `webssh_${sessionId}_${panel.terminalId}`.replace(/-/g, '_');
-            const cwd = this.getCwdByTmuxSession(tmuxName);
+            const pid = panes.get(tmuxName);
+            const cwd = pid ? TtydProcessManager._cwdOfPane(pid) : null;
             if (cwd) {
               panel.lastCwd = cwd;
               changed = true;
@@ -413,8 +429,17 @@ class TtydProcessManager {
     } catch (e) {
       console.error('Error saving CWDs:', e.message);
     }
-    console.log(`[SHUTDOWN] Saved CWDs for ${saved} terminals`);
     return saved;
+  }
+
+  /** The periodic save: tmux is asked without blocking the event loop. */
+  saveAllCwdsAsync(includeMinimized = false) {
+    return new Promise(resolve => {
+      execFile('tmux', TtydProcessManager._paneArgs, { encoding: 'utf8', timeout: 10000 }, (err, out) => {
+        if (err) return resolve(0);
+        resolve(this.saveAllCwds(includeMinimized, TtydProcessManager._parsePanes(out)));
+      });
+    });
   }
 
   /**
