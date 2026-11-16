@@ -1668,129 +1668,137 @@ function TerminalView() {
         </Box>
       )}
 
-      {/* Mobile pill indicator - tap to open drawer */}
-      {isMobile && (panels.length + minimizedPanels.length) > 1 && !mobilePanelListOpen ? (
-        <div onClick={function() { setMobilePanelListOpen(true); }}
-          style={{ position: 'fixed', bottom: 2, left: '50%', transform: 'translateX(-50%)',
-            height: 16, padding: '0 10px', borderRadius: 8,
-            backgroundColor: 'rgba(30,30,30,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 5, zIndex: 1000, cursor: 'pointer' }}>
-          {panels.map(function(p) {
-            return (
+      {/* Phone: pill with the current window's panes; tap opens the list. */}
+      {isMobile && (panels.length + minimizedPanels.length) > 1 && !mobilePanelListOpen ? (() => {
+        const here = panels.filter(p => (p.windowId || 'w1') === activeWindowId);
+        const winName = windows.length > 1 ? ((windows.find(w => w.id === activeWindowId) || {}).name || '') : '';
+        return (
+          <div onClick={() => setMobilePanelListOpen(true)}
+            style={{ position: 'fixed', bottom: 2, left: '50%', transform: 'translateX(-50%)',
+              height: 16, padding: '0 10px', borderRadius: 8, maxWidth: '80vw',
+              backgroundColor: 'rgba(30,30,30,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 5, zIndex: 1000, cursor: 'pointer' }}>
+            {winName ? (
+              <span style={{ fontSize: 9, color: '#9c9', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '45vw', marginRight: 2 }}>{winName}</span>
+            ) : null}
+            {here.map(p => (
               <div key={'pill-' + p.id} style={{
-                width: p.id === activePanel ? 10 : 4, height: 4, borderRadius: 2,
+                width: p.id === activePanel ? 10 : 4, height: 4, borderRadius: 2, flexShrink: 0,
                 backgroundColor: p.id === activePanel ? '#00ff00' : '#555', transition: 'all 0.2s'
               }} />
-            );
-          })}
-        </div>
-      ) : null}
-
-      {/* Mobile panel drawer */}
-      {isMobile && mobilePanelListOpen ? (
-        <div>
-          <div onClick={function() { setMobilePanelListOpen(false); setMobileFilter(''); }}
-            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999 }} />
-          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '60vh', backgroundColor: '#1a1a1a',
-            borderTop: '2px solid #00ff00', borderRadius: '16px 16px 0 0', overflow: 'auto', zIndex: 1001, padding: '12px 0' }}>
-            <div style={{ padding: '0 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>Panels</span>
-              <span style={{ fontSize: 10, color: '#444' }}>{panels.length} active · {minimizedPanels.length} min</span>
-            </div>
-            <div style={{ padding: '0 12px 8px' }}>
-              <input
-                type="text"
-                placeholder="Filter..."
-                value={mobileFilter}
-                onChange={function(e) { setMobileFilter(e.target.value); }}
-                style={{
-                  width: '100%', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.06)',
-                  border: '1px solid #333', borderRadius: 6, color: '#ccc', fontSize: 13,
-                  outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            {/* Windows section (only if more than one window exists) */}
-            {windows.length > 1 ? (
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ padding: '4px 16px', fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>Windows</div>
-                <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', overflowX: 'auto' }}>
-                  {windows.map(function(win) {
-                    const isWinActive = win.id === activeWindowId;
-                    const count = panels.filter(function(p) { return (p.windowId || 'w1') === win.id; }).length;
-                    return (
-                      <div key={'mw-' + win.id}
-                        onClick={function() { setActiveWindowId(win.id); }}
-                        style={{
-                          padding: '6px 12px', borderRadius: 6, whiteSpace: 'nowrap',
-                          backgroundColor: isWinActive ? 'rgba(0,255,0,0.15)' : 'rgba(255,255,255,0.05)',
-                          border: isWinActive ? '1px solid #00ff00' : '1px solid transparent',
-                          color: isWinActive ? '#00ff00' : '#ccc',
-                          fontSize: 12, display: 'flex', alignItems: 'center', gap: 4
-                        }}>
-                        <span>{win.name}</span>
-                        <span style={{ fontSize: 10, opacity: 0.6 }}>{count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {panels
-              .filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); })
-              .map(function(panel, idx) {
-              const panelWin = panel.windowId || 'w1';
-              const winLabel = (windows.find(function(w) { return w.id === panelWin; }) || {}).name || '';
-              return (
-                <div key={'mp-' + panel.id}
-                  onClick={function() {
-                    if (panelWin !== activeWindowId) setActiveWindowId(panelWin);
-                    setActivePanel(panel.id);
-                    setMobilePanelListOpen(false);
-                    setMobileFilter('');
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
-                    backgroundColor: panel.id === activePanel ? 'rgba(0,255,0,0.08)' : 'transparent',
-                    borderLeft: panel.id === activePanel ? '3px solid #00ff00' : '3px solid transparent' }}>
-                  <span style={{ fontSize: 16 }}>{panel.type === 'rdp' || panel.type === 'vnc' ? '🖥️' : panel.type === 'sftp' ? '📁' : '⬛'}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: panel.id === activePanel ? '#00ff00' : '#ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{panel.name || 'Panel ' + (idx + 1)}</div>
-                    <div style={{ fontSize: 10, color: '#555' }}>
-                      {(panel.type || 'local').toUpperCase()}
-                      {windows.length > 1 && winLabel ? ' · ' + winLabel : ''}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {minimizedPanels.filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); }).length > 0 ? (
-              <div>
-                <div style={{ padding: '8px 16px 4px', fontSize: 11, color: '#555', textTransform: 'uppercase' }}>Minimized</div>
-                {minimizedPanels
-                  .filter(function(p) { return !mobileFilter || (p.name || '').toLowerCase().includes(mobileFilter.toLowerCase()); })
-                  .map(function(panel) {
-                  const panelWin = panel.windowId || 'w1';
-                  const winLabel = (windows.find(function(w) { return w.id === panelWin; }) || {}).name || '';
-                  return (
-                    <div key={'mpm-' + panel.id} onClick={function() { handleRestorePanel(panel); setMobilePanelListOpen(false); setMobileFilter(''); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', opacity: 0.6 }}>
-                      <span style={{ fontSize: 16 }}>⬛</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{panel.name || 'Panel'}</div>
-                        {windows.length > 1 && winLabel ? (
-                          <div style={{ fontSize: 10, color: '#555' }}>{winLabel}</div>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
+            ))}
           </div>
-        </div>
-      ) : null}
+        );
+      })() : null}
+
+      {/* Phone: every pane, grouped by window like the desktop sidebar. */}
+      {isMobile && mobilePanelListOpen ? (() => {
+        const close = () => { setMobilePanelListOpen(false); setMobileFilter(''); };
+        const f = mobileFilter.trim().toLowerCase();
+        const match = (p) => !f || (p.name || '').toLowerCase().includes(f);
+        // A minimized pane whose window is gone comes back to the current one.
+        const winOf = (p) => {
+          const wid = p.windowId || 'w1';
+          return windows.some(w => w.id === wid) ? wid : activeWindowId;
+        };
+        // The current window first, the rest in tab order.
+        const ordered = [...windows.filter(w => w.id === activeWindowId), ...windows.filter(w => w.id !== activeWindowId)];
+        const groups = ordered.map(win => {
+          const all = panels.filter(p => winOf(p) === win.id);
+          const allMin = minimizedPanels.filter(p => winOf(p) === win.id);
+          return { win, active: all.filter(match), minimized: allMin.filter(match), total: all.length + allMin.length };
+        }).filter(g => g.active.length + g.minimized.length > 0);
+        const showHeaders = windows.length > 1;
+        const dotFor = (p) => {
+          const cs = p.terminalId && claudeStatus[p.terminalId];
+          if ((cs && cs.waiting) || (p.terminalId && unseen[p.terminalId])) return '#ffa726';
+          if (cs && cs.busy) return '#00ff00';
+          return null;
+        };
+        const icon = (p) => p.type === 'rdp' || p.type === 'vnc' ? '🖥️' : p.type === 'sftp' ? '📁' : '⬛';
+        const row = (panel, minimized) => {
+          const isActive = !minimized && panel.id === activePanel;
+          const dot = dotFor(panel);
+          return (
+            <div key={(minimized ? 'mpm-' : 'mp-') + panel.id}
+              onClick={() => {
+                if (minimized) handleRestorePanel(panel);
+                else {
+                  const wid = panel.windowId || 'w1';
+                  if (wid !== activeWindowId) setActiveWindowId(wid);
+                  setActivePanel(panel.id);
+                }
+                close();
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px 8px ' + (showHeaders ? 24 : 16) + 'px',
+                opacity: minimized ? 0.6 : 1,
+                backgroundColor: isActive ? 'rgba(0,255,0,0.08)' : 'transparent',
+                borderLeft: isActive ? '3px solid #00ff00' : '3px solid transparent' }}>
+              <span style={{ fontSize: 16 }}>{icon(panel)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: isActive ? '#00ff00' : minimized ? '#888' : '#ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{panel.name || 'Terminal'}</div>
+                <div style={{ fontSize: 10, color: '#555' }}>
+                  {(panel.type || 'local') === 'local' ? 'TERMINAL' : (panel.type || '').toUpperCase()}
+                  {minimized ? ' · minimizado' : ''}
+                </div>
+              </div>
+              {dot ? <span style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot, flexShrink: 0 }} /> : null}
+            </div>
+          );
+        };
+        return (
+          <div>
+            <div onClick={close}
+              style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999 }} />
+            <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '70vh', backgroundColor: '#1a1a1a',
+              borderTop: '2px solid #00ff00', borderRadius: '16px 16px 0 0', overflow: 'auto', zIndex: 1001, padding: '12px 0' }}>
+              <div style={{ padding: '0 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>Terminales</span>
+                <span style={{ fontSize: 10, color: '#444' }}>
+                  {panels.length} {panels.length === 1 ? 'activo' : 'activos'}
+                  {minimizedPanels.length ? ' · ' + minimizedPanels.length + (minimizedPanels.length === 1 ? ' minimizado' : ' minimizados') : ''}
+                </span>
+              </div>
+              <div style={{ padding: '0 12px 8px' }}>
+                <input
+                  type="text"
+                  placeholder="Filtrar…"
+                  value={mobileFilter}
+                  onChange={(e) => setMobileFilter(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.06)',
+                    border: '1px solid #333', borderRadius: 6, color: '#ccc', fontSize: 13,
+                    outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+              {groups.length === 0 ? (
+                <div style={{ padding: '12px 16px', fontSize: 12, color: '#555', textAlign: 'center' }}>Nada coincide con «{mobileFilter}»</div>
+              ) : groups.map(g => {
+                const isWinActive = g.win.id === activeWindowId;
+                return (
+                  <div key={'mg-' + g.win.id} style={{ marginBottom: 4 }}>
+                    {showHeaders ? (
+                      <div onClick={() => { setActiveWindowId(g.win.id); close(); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px 4px',
+                          borderTop: '1px solid #262626', cursor: 'pointer' }}>
+                        <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: isWinActive ? 700 : 400,
+                          color: isWinActive ? '#00ff00' : '#888', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {g.win.name}
+                        </span>
+                        {isWinActive ? <span style={{ fontSize: 9, color: '#6a6' }}>actual</span> : null}
+                        <span style={{ fontSize: 10, color: '#555' }}>{g.total}</span>
+                      </div>
+                    ) : null}
+                    {g.active.map(p => row(p, false))}
+                    {g.minimized.map(p => row(p, true))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })() : null}
 
       {/* Sidebar colapsable izquierdo - navegación de terminales */}
       {!isMobile && (panels.length + minimizedPanels.length) > 1 && (() => {
