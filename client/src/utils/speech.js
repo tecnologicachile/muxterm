@@ -174,6 +174,20 @@ export function speechChunks(text, max = 3000) {
   return out;
 }
 
+/**
+ * Which of the replies new to this view to read aloud.
+ *
+ * Live events: all of them. The first history after opening: none. A later
+ * history of the same transcript is a reconnect (a phone with the screen off
+ * drops the socket often): what is new in it arrived while it was down and
+ * used to go unread, so the last few. A history of another transcript (a
+ * resumed or brand-new session in the pane) is old talk: none.
+ */
+export function repliesToRead(fresh, { backlog, primed, sameFile }) {
+  if (!backlog) return fresh;
+  return primed && sameFile ? fresh.slice(-3) : [];
+}
+
 /** Fetch the server-rendered mp3 for `text` as an object URL. */
 export async function fetchSpeechUrl(text, token, attempts = 3) {
   let lastErr = null;

@@ -58,7 +58,7 @@ function CopyButton({ text, title = 'Copiar', sx }) {
   );
 }
 import { useSocket } from '../utils/SocketContext';
-import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, speechChunks } from '../utils/speech';
+import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, speechChunks, repliesToRead } from '../utils/speech';
 
 /**
  * Rich view of the Claude Code session running in a terminal.
@@ -781,6 +781,10 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
 
 const authToken = () => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } };
 
+// A phone: touch and a small screen. Its tab is frozen with the screen off.
+const onPhone = () => typeof window !== 'undefined' && window.innerWidth <= 768 &&
+  typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 // A queued piece of a reply starts its download once, the first time it is
 // needed: while the piece before it plays, so the next one is ready at the end.
 const fetchFor = (item) => {
@@ -999,6 +1003,8 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (payload.backlog || payload.error) linkReadyRef.current();
       if (payload.error) { setError(payload.error); return; }
       setError('');
+      // Before the history below moves fileRef on to a new transcript.
+      const sameFile = !!(payload.file && fileRef.current === payload.file);
       if (typeof payload.suggestion === 'string') setSuggestion(payload.suggestion);
       if ('permission' in payload) setPermission(payload.permission || null);
       if ('picker' in payload) setPicker(payload.picker || null);
@@ -1045,11 +1051,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
         spokenRef.current.add(k);
         if (!ev.narration) fresh.push(ev);
       }
-      // Never read the history aloud on opening. A later history is a
-      // reconnect (a phone with the screen off drops the socket often): what
-      // is new in it arrived while it was down, and used to go unread. The
-      // last few only, should the gap have been long.
-      const toRead = !payload.backlog ? fresh : primedRef.current ? fresh.slice(-3) : [];
+      const toRead = repliesToRead(fresh, { backlog: !!payload.backlog, primed: primedRef.current, sameFile });
       if (payload.backlog) primedRef.current = true;
       // No visibility check: reading with the screen off is the point, and
       // the audio element is what makes it possible.
@@ -1067,14 +1069,17 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     // or the view goes quiet without saying so.
     // Until a fresh history arrives the thread on screen may be behind, and
     // it has to say so: it looked current while it was seconds stale.
-    let slowTimer = null;
+    // Shown only past 400 ms: a history that lands at once needs no notice,
+    // and dimming for it would flicker.
+    let showTimer = null, slowTimer = null;
+    const clearTimers = () => { clearTimeout(showTimer); clearTimeout(slowTimer); };
     const syncing = () => {
-      setLink('sync');
-      clearTimeout(slowTimer);
-      slowTimer = setTimeout(() => setLink(l => (l === 'sync' ? 'down' : l)), 8000);
+      clearTimers();
+      showTimer = setTimeout(() => setLink(l => (l === 'ok' ? 'sync' : l)), 400);
+      slowTimer = setTimeout(() => setLink('down'), 8000);
     };
     const subscribe = () => { syncing(); socket.emit('claude-watch', { terminalId }); };
-    const onDown = () => { clearTimeout(slowTimer); setLink('down'); };
+    const onDown = () => { clearTimers(); setLink('down'); };
     // Back from the screen off, the socket can be dead without knowing it yet,
     // and a live one that is already watching gets no new history. Asking
     // again (unwatch, then watch) brings one either way, and the notice stays
@@ -1084,18 +1089,19 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
       const away = hiddenAt ? Date.now() - hiddenAt : 0;
       hiddenAt = 0;
-      if (away < 5000) return;
+      // A desktop tab is not frozen in the background; only a phone needs it.
+      if (away < 5000 || !onPhone()) return;
       socket.emit('claude-unwatch', { terminalId });
       subscribe();
     };
-    linkReadyRef.current = () => { clearTimeout(slowTimer); setLink('ok'); };
+    linkReadyRef.current = () => { clearTimers(); setLink('ok'); };
     socket.on('claude-events', onEvents);
     socket.on('connect', subscribe);
     socket.on('disconnect', onDown);
     document.addEventListener('visibilitychange', onVisible);
     subscribe();
     return () => {
-      clearTimeout(slowTimer);
+      clearTimers();
       socket.off('claude-events', onEvents);
       socket.off('connect', subscribe);
       socket.off('disconnect', onDown);
@@ -1274,6 +1280,10 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     if (autoSpeak) keepAlive();
     else { const a = audioRef.current; if (a) { try { a.pause(); } catch (e) {} } }
   }, [autoSpeak, keepAlive]);
+
+  // Starting to dictate stops the reading: talking over a reply is how you
+  // interrupt it, and it must not end up in the recording.
+  useEffect(() => { if (recording) stopAll(); }, [recording, stopAll]);
 
   useEffect(() => () => {
     genRef.current += 1;
