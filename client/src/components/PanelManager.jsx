@@ -46,9 +46,6 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordStreamRef = useRef(null);
-  // Held open while hands-free is on: Android refuses to *open* the microphone
-  // with the screen off, but it lets an already-granted stream keep running.
-  const persistentStreamRef = useRef(null);
   // Review dialog after transcription
   const [voiceDialog, setVoiceDialog] = useState({ open: false, terminalId: null, text: '', loading: false, error: '' });
   // Whether stopping should send straight through or open the review dialog.
@@ -140,31 +137,14 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
     return '';
   };
 
+  // The microphone is open only while recording. Holding it open between
+  // dictations switched a Bluetooth headset to its call profile and cut the
+  // reply being read.
   const stopStream = () => {
-    // Never tear down the hands-free stream: reopening it is the thing that
-    // fails once the screen is off.
-    if (recordStreamRef.current && recordStreamRef.current !== persistentStreamRef.current) {
+    if (recordStreamRef.current) {
       recordStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
     }
     recordStreamRef.current = null;
-  };
-
-  const setHandsFreeMic = async (on) => {
-    if (on) {
-      if (persistentStreamRef.current) return true;
-      try {
-        persistentStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-        return true;
-      } catch (e) {
-        persistentStreamRef.current = null;
-        return false;
-      }
-    }
-    if (persistentStreamRef.current) {
-      persistentStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
-      persistentStreamRef.current = null;
-    }
-    return true;
   };
 
   const startVoiceRecording = async (panel) => {
@@ -181,10 +161,7 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
       return;
     }
     try {
-      // Reuse the hands-free stream when there is one; asking again would be
-      // refused with the screen off.
-      const stream = persistentStreamRef.current
-        || await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordStreamRef.current = stream;
       const mimeType = pickMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
@@ -914,7 +891,6 @@ function PanelManager({ panels, activePanel, onPanelSelect, onPanelClose, onTerm
                   isActive={isActive}
                   onNeedsTerminal={() => goToTerminal(panel.id)}
                   recording={recordingPanelId === panel.id}
-                  onHandsFree={setHandsFreeMic}
                   onVoiceToggle={(autoSend) => {
                     if (recordingPanelId === panel.id) stopVoiceRecording(autoSend !== false);
                     else startVoiceRecording(panel);

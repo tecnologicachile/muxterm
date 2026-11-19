@@ -16,7 +16,6 @@ import {
   Stop as StopIcon,
   VolumeUp as VolumeUpIcon,
   PlayArrow as PlayArrowIcon,
-  Headset as HeadsetIcon,
   ContentCopy as CopyIcon,
   Check as CheckIcon
 } from '@mui/icons-material';
@@ -59,7 +58,7 @@ function CopyButton({ text, title = 'Copiar', sx }) {
   );
 }
 import { useSocket } from '../utils/SocketContext';
-import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, toneUri } from '../utils/speech';
+import { toSpeech, speak, stopSpeaking, speechSupported, silentLoopUri, fetchSpeechUrl, speechChunks } from '../utils/speech';
 
 /**
  * Rich view of the Claude Code session running in a terminal.
@@ -782,13 +781,23 @@ function Composer({ terminalId, waiting, onSent, isActive, recording, onVoiceTog
 
 const authToken = () => { try { return localStorage.getItem('token') || ''; } catch (e) { return ''; } };
 
+// A queued piece of a reply starts its download once, the first time it is
+// needed: while the piece before it plays, so the next one is ready at the end.
+const fetchFor = (item) => {
+  if (!item.url) {
+    item.url = fetchSpeechUrl(item.text, authToken());
+    item.url.catch(() => {});   // a piece dropped by "stop" must not raise unhandled
+  }
+  return item.url;
+};
+
 // Inside the companion app the native service owns the media session, the
 // keep-alive and the headset button; the page must not compete for them.
 const inNativeApp = () => typeof window !== 'undefined' && !!window.muxtermNative;
 
 /* ---------- main view ---------- */
 
-export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, recording, onVoiceToggle, onHandsFree }) {
+export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, recording, onVoiceToggle }) {
   const { socket } = useSocket();
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
@@ -818,6 +827,10 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   // Claude Code busy with a prompt (spinner line on screen). Esc or the stop
   // button sends it Escape, which is how the terminal interrupts it.
   const [working, setWorking] = useState(false);
+  // The link to the server as the thread sees it: 'ok', 'sync' (waiting for a
+  // fresh history) or 'down' (disconnected, or the history is slow to come).
+  const [link, setLink] = useState('ok');
+  const linkReadyRef = useRef(() => {});
   // Messages you typed that Claude has not taken yet (the "❯" lines under
   // its spinner in the terminal).
   const pendingRef = useRef([]);
@@ -917,20 +930,19 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     try { return localStorage.getItem('muxterm-autospeak') === '1'; } catch (e) { return false; }
   });
   const spokenRef = useRef(new Set());
+  // The first history after opening is never read aloud; a later one (the
+  // socket came back) reads what arrived while it was down.
+  const primedRef = useRef(false);
   const audioRef = useRef(null);
-  // True while we are the ones pausing or swapping the source, so a pause the
-  // headset caused can be told apart from our own.
-  const internalRef = useRef(false);
+  // Pieces waiting to be read: { text, url } with url a promise once fetched.
   const queueRef = useRef([]);
   const playingRef = useRef(false);
+  // Bumped by "stop": a piece still downloading or playing for an older
+  // generation must not carry on afterwards.
+  const genRef = useRef(0);
+  // Ends the piece playing now, so "stop" does not leave it waiting forever.
+  const finishRef = useRef(null);
   const silentUri = useMemo(() => { try { return silentLoopUri(1); } catch (e) { return ''; } }, []);
-  // With the screen off these beeps are the only feedback that exists.
-  const tones = useMemo(() => {
-    try {
-      return { start: toneUri(660, 150), done: toneUri(1046, 150), error: toneUri(300, 380) };
-    } catch (e) { return null; }
-  }, []);
-  const prevRecordingRef = useRef(false);
 
   const enqueueSpeechRef = useRef(() => {});
   const autoSpeakRef = useRef(autoSpeak);
@@ -981,8 +993,10 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
 
   useEffect(() => {
     if (!socket || !terminalId) return;
+    primedRef.current = false;
     const onEvents = (payload) => {
       if (!payload || payload.terminalId !== terminalId) return;
+      if (payload.backlog || payload.error) linkReadyRef.current();
       if (payload.error) { setError(payload.error); return; }
       setError('');
       if (typeof payload.suggestion === 'string') setSuggestion(payload.suggestion);
@@ -1021,16 +1035,26 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           if (before.length !== after.length || before.some((e, i) => e.text !== after[i].text)) setQueued(after);
         }
       }
-      if (payload.backlog) {
-        // Never read the history aloud on opening — only what arrives after.
-        for (const ev of incoming) if (ev.kind === 'text' && ev.uuid) spokenRef.current.add(ev.uuid + ':' + (ev.text || '').length);
-      } else if (autoSpeakRef.current) {
-        // No visibility check: reading with the screen off is the point, and
-        // the audio element is what makes it possible.
-        for (const ev of incoming.filter(ev => ev.kind === 'text' && ev.text && !ev.narration)) {
-          const k = (ev.uuid || '') + ':' + ev.text.length;
-          if (spokenRef.current.has(k)) continue;
-          spokenRef.current.add(k);
+      // Every reply is marked as heard whether or not AUTO is on, so turning
+      // it on later never reads old ones.
+      const fresh = [];
+      for (const ev of incoming) {
+        if (ev.kind !== 'text' || !ev.text) continue;
+        const k = (ev.uuid || '') + ':' + ev.text.length;
+        if (spokenRef.current.has(k)) continue;
+        spokenRef.current.add(k);
+        if (!ev.narration) fresh.push(ev);
+      }
+      // Never read the history aloud on opening. A later history is a
+      // reconnect (a phone with the screen off drops the socket often): what
+      // is new in it arrived while it was down, and used to go unread. The
+      // last few only, should the gap have been long.
+      const toRead = !payload.backlog ? fresh : primedRef.current ? fresh.slice(-3) : [];
+      if (payload.backlog) primedRef.current = true;
+      // No visibility check: reading with the screen off is the point, and
+      // the audio element is what makes it possible.
+      if (autoSpeakRef.current) {
+        for (const ev of toRead) {
           const t = toSpeech(ev.text);
           if (t) enqueueSpeechRef.current(t);
         }
@@ -1041,13 +1065,41 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     // phone does that constantly), and socket.io reuses the same object on
     // reconnect, so nothing here would re-run. Re-subscribe on every connect
     // or the view goes quiet without saying so.
-    const subscribe = () => socket.emit('claude-watch', { terminalId });
+    // Until a fresh history arrives the thread on screen may be behind, and
+    // it has to say so: it looked current while it was seconds stale.
+    let slowTimer = null;
+    const syncing = () => {
+      setLink('sync');
+      clearTimeout(slowTimer);
+      slowTimer = setTimeout(() => setLink(l => (l === 'sync' ? 'down' : l)), 8000);
+    };
+    const subscribe = () => { syncing(); socket.emit('claude-watch', { terminalId }); };
+    const onDown = () => { clearTimeout(slowTimer); setLink('down'); };
+    // Back from the screen off, the socket can be dead without knowing it yet,
+    // and a live one that is already watching gets no new history. Asking
+    // again (unwatch, then watch) brings one either way, and the notice stays
+    // up until it lands.
+    let hiddenAt = 0;
+    const onVisible = () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      const away = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      if (away < 5000) return;
+      socket.emit('claude-unwatch', { terminalId });
+      subscribe();
+    };
+    linkReadyRef.current = () => { clearTimeout(slowTimer); setLink('ok'); };
     socket.on('claude-events', onEvents);
     socket.on('connect', subscribe);
+    socket.on('disconnect', onDown);
+    document.addEventListener('visibilitychange', onVisible);
     subscribe();
     return () => {
+      clearTimeout(slowTimer);
       socket.off('claude-events', onEvents);
       socket.off('connect', subscribe);
+      socket.off('disconnect', onDown);
+      document.removeEventListener('visibilitychange', onVisible);
       socket.emit('claude-unwatch', { terminalId });
     };
   }, [socket, terminalId, merge]);
@@ -1058,66 +1110,35 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   }, [events, queued]);
 
   // Between replies the element loops near-silence, so the tab keeps a live
-  // media session and Android does not freeze it with the screen off.
-  const [handsFree, setHandsFree] = useState(false);
-  // Flips the first time Android actually hands us a headset key, which is the
-  // only proof that the routing works.
-  const [mediaKeys, setMediaKeys] = useState(false);
-
+  // media session and Android does not freeze it with the screen off. Never
+  // while a reply plays: swapping the source then is what cut replies short.
   const keepAlive = useCallback(() => {
-    if (inNativeApp()) { setHandsFree(true); return; }   // the service already holds it
+    if (inNativeApp()) return;   // the app's service already holds it
     const a = audioRef.current;
-    if (!a || !autoSpeakRef.current || !silentUri) return;
+    if (!a || !autoSpeakRef.current || !silentUri || playingRef.current) return;
     try {
-      internalRef.current = true;
       a.loop = true;
       a.volume = 0.05;
       if (a.src !== silentUri) a.src = silentUri;
-      const p = a.play();
-      if (p && p.then) p.then(() => setHandsFree(true)).catch(() => setHandsFree(false));
-      // Android only routes headset buttons to a page it shows as a player,
-      // and it only shows one that declares metadata and playback state.
-      if ('mediaSession' in navigator) {
-        try {
-          navigator.mediaSession.metadata = new window.MediaMetadata({
-            title: 'muxterm — manos libres',
-            artist: 'Pulsa play para dictar',
-            album: 'Modo conversación'
-          });
-          navigator.mediaSession.playbackState = 'playing';
-        } catch (e) {}
-      }
-    } catch (e) { setHandsFree(false); }
-  }, [silentUri]);
-
-  // Through the element that is already playing: with the screen off Android
-  // refuses to start a brand-new audio element, which is how the beeps were
-  // being played and why they were silent.
-  const beep = useCallback((uri) => {
-    const a = audioRef.current;
-    if (!a || !uri) return;
-    try {
-      internalRef.current = true;
-      a.loop = false;
-      a.volume = 0.9;
-      a.src = uri;
-      a.onended = () => keepAlive();
       a.play().catch(() => {});
     } catch (e) {}
-  }, [keepAlive]);
+  }, [silentUri]);
 
   const playNext = useCallback(async () => {
     const a = audioRef.current;
     if (!a || playingRef.current) return;
-    const text = queueRef.current.shift();
-    if (!text) { keepAlive(); return; }
+    const item = queueRef.current.shift();
+    if (!item) { keepAlive(); return; }
 
+    const gen = genRef.current;
     playingRef.current = true;
     setSpeaking(true);
     let url = null;
     try {
-      url = await fetchSpeechUrl(text, authToken());
-      internalRef.current = true;
+      url = await fetchFor(item);
+      if (gen !== genRef.current) return;          // stopped while it downloaded
+      // The next piece downloads while this one plays: no silence between them.
+      if (queueRef.current[0]) fetchFor(queueRef.current[0]);
       a.loop = false;
       a.volume = 1;
       a.src = url;
@@ -1130,14 +1151,37 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       }
       await a.play();
       await new Promise((resolve) => {
-        a.onended = resolve;
-        a.onerror = resolve;
+        let retry = null;
+        // Android pauses us for a notification sound or a call. That used to
+        // empty the whole queue; now the piece carries on once it has passed,
+        // and if it cannot, the next one plays.
+        const onPause = () => {
+          if (a.ended) return;
+          clearTimeout(retry);
+          retry = setTimeout(() => {
+            if (gen !== genRef.current || !a.paused || a.ended) return;
+            a.play().catch(() => done());
+          }, 2500);
+        };
+        const done = () => {
+          clearTimeout(retry);
+          a.removeEventListener('pause', onPause);
+          a.onended = null;
+          a.onerror = null;
+          finishRef.current = null;
+          resolve();
+        };
+        a.addEventListener('pause', onPause);
+        a.onended = done;
+        a.onerror = done;
+        finishRef.current = done;
       });
     } catch (e) {
+      if (gen !== genRef.current) return;
       // Falling back to the browser voice only helps while the screen is on,
       // which is exactly when it is still allowed to speak.
       if (document.visibilityState === 'visible' && speechSupported()) {
-        await new Promise((resolve) => speak(text, { onEnd: resolve, onError: resolve }));
+        await new Promise((resolve) => speak(item.text, { onEnd: resolve, onError: resolve }));
       } else {
         setSpeechError(((e && e.message) || 'No se pudo reproducir la voz')
           + (e && (e.network || e.final) ? '' : '. Revisa en Ajustes de Android → Texto a voz que haya una voz instalada'));
@@ -1145,27 +1189,48 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
       }
     } finally {
       if (url) { try { URL.revokeObjectURL(url); } catch (e) {} }
-      playingRef.current = false;
-      setSpeaking(false);
+      if (gen === genRef.current) { playingRef.current = false; setSpeaking(false); }
     }
+    if (gen !== genRef.current) return;
     if (queueRef.current.length) playNext(); else keepAlive();
   }, [keepAlive]);
 
   const enqueueSpeech = useCallback((text) => {
     if (!text) return;
-    queueRef.current.push(text);
+    // Long replies go in pieces: the server reads at most 4000 characters, and
+    // anything past that used to be dropped mid-sentence.
+    for (const piece of speechChunks(text)) queueRef.current.push({ text: piece, url: null });
+    // Arriving while another plays: start downloading now, not when it ends.
+    if (playingRef.current && queueRef.current[0]) fetchFor(queueRef.current[0]);
     playNext();
   }, [playNext]);
 
-  const stopAll = useCallback(() => {
+  // Stops the reading and drops what was waiting. `idle` leaves the element
+  // quiet instead of going back to the near-silent loop (AUTO switched off).
+  const stopAll = useCallback((idle) => {
+    genRef.current += 1;
+    for (const it of queueRef.current) {
+      if (it.url) it.url.then((u) => { try { URL.revokeObjectURL(u); } catch (e) {} }, () => {});
+    }
     queueRef.current = [];
     stopSpeaking();
     const a = audioRef.current;
-    if (a) { try { internalRef.current = true; a.pause(); a.onended = null; } catch (e) {} }
+    if (a) { try { a.pause(); } catch (e) {} }
+    if (finishRef.current) finishRef.current();
     playingRef.current = false;
     setSpeaking(false);
-    keepAlive();
+    if (idle !== true) keepAlive();
   }, [keepAlive]);
+
+  // The phone's media controls (notification, lock screen) stop the reading
+  // outright, rather than leaving a paused piece the code above would resume.
+  useEffect(() => {
+    if (!autoSpeak || !('mediaSession' in navigator) || inNativeApp()) return;
+    const set = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {} };
+    set('pause', () => stopAll());
+    set('stop', () => stopAll());
+    return () => { set('pause', null); set('stop', null); };
+  }, [autoSpeak, stopAll]);
 
   const speakLast = () => {
     if (autoSpeakRef.current) keepAlive();   // this tap is a gesture: use it
@@ -1179,22 +1244,18 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   };
 
   const toggleAutoSpeak = () => {
-    setAutoSpeak(v => {
-      const next = !v;
-      try { localStorage.setItem('muxterm-autospeak', next ? '1' : '0'); } catch (e) {}
-      if (next) {
-        // Start the audio inside the click: autoplay rules can block a play()
-        // that only happens later from an effect, and then no media session
-        // exists and the headset button has nowhere to go.
-        autoSpeakRef.current = true;
-        setTimeout(() => keepAlive(), 0);
-      } else {
-        setHandsFree(false);
-        try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
-      }
-      if (!next) { queueRef.current = []; stopSpeaking(); const a = audioRef.current; if (a) { try { a.pause(); } catch (e) {} } setSpeaking(false); }
-      return next;
-    });
+    const next = !autoSpeakRef.current;
+    try { localStorage.setItem('muxterm-autospeak', next ? '1' : '0'); } catch (e) {}
+    autoSpeakRef.current = next;
+    if (next) {
+      // Start the audio inside the click: autoplay rules can block a play()
+      // that only happens later from an effect.
+      keepAlive();
+    } else {
+      stopAll(true);
+      try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
+    }
+    setAutoSpeak(next);
   };
 
   useEffect(() => { enqueueSpeechRef.current = enqueueSpeech; }, [enqueueSpeech]);
@@ -1209,32 +1270,17 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     try { window.muxtermNative.setContext(authToken(), terminalId, window.location.origin); } catch (e) {}
   }, [terminalId, isActive]);
 
-  // Hold the microphone open while hands-free is on, and let it go when off.
-  const [micHeld, setMicHeld] = useState(false);
-  useEffect(() => {
-    if (!onHandsFree) return;
-    // Inside the companion app the service records natively; a page holding
-    // the microphone open at the same time starves it, and Whisper is then
-    // handed silence — which it "transcribes" as subtitle credits.
-    if (inNativeApp()) { setMicHeld(true); return; }
-    let alive = true;
-    Promise.resolve(onHandsFree(!!autoSpeak)).then(ok => {
-      if (alive) setMicHeld(!!autoSpeak && ok !== false);
-    });
-    return () => { alive = false; };
-  }, [autoSpeak, onHandsFree]);
-
-  useEffect(() => () => { if (onHandsFree) onHandsFree(false); }, [onHandsFree]);
-
   useEffect(() => {
     if (autoSpeak) keepAlive();
     else { const a = audioRef.current; if (a) { try { a.pause(); } catch (e) {} } }
   }, [autoSpeak, keepAlive]);
 
   useEffect(() => () => {
+    genRef.current += 1;
     stopSpeaking();
     const a = audioRef.current;
     if (a) { try { a.pause(); } catch (e) {} }
+    if (finishRef.current) finishRef.current();
   }, []);
 
   const onScroll = () => {
@@ -1242,68 +1288,6 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
     if (!el) return;
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   };
-
-  // Announce recording state out loud while hands-free is in play.
-  useEffect(() => {
-    if (!tones || !autoSpeak) { prevRecordingRef.current = !!recording; return; }
-    const was = prevRecordingRef.current;
-    prevRecordingRef.current = !!recording;
-    if (!was && recording) beep(tones.start);
-    if (was && !recording) beep(tones.done);
-  }, [recording, autoSpeak, tones, beep]);
-
-  // Bluetooth headset buttons reach the page as media session actions, and the
-  // silent keep-alive loop is what keeps that session alive with the screen
-  // off — so the hardware button works without an app.
-  useEffect(() => {
-    if (!autoSpeak || !('mediaSession' in navigator) || inNativeApp()) return;
-    const set = (action, fn) => {
-      try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {}
-    };
-
-    const startRecording = () => {
-      if (!onVoiceToggle) return;
-      onVoiceToggle(true);
-      // Silence after a press means the mic never opened; say so with a tone.
-      setTimeout(() => {
-        if (!prevRecordingRef.current && tones) beep(tones.error);
-      }, 1600);
-    };
-
-    // Left unset on purpose: registering them suppresses the pause that the
-    // listener below relies on to notice the button.
-    // Headsets that do have them keep the more explicit mapping.
-    set('nexttrack', () => { if (recording) { onVoiceToggle && onVoiceToggle(true); } else startRecording(); });
-    set('previoustrack', () => speakLast());
-    return () => { set('nexttrack', null); set('previoustrack', null); };
-  }, [autoSpeak, recording, onVoiceToggle, tones, stopAll, beep]);   // eslint-disable-line
-
-  // Android's default response to the headset button is to pause our audio, and
-  // that pause does arrive even where setActionHandler never fires. So the
-  // event itself is the trigger: more reliable than asking to be told.
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a || !autoSpeak || inNativeApp()) return;
-    const onPause = () => {
-      if (internalRef.current) { internalRef.current = false; return; }
-      setMediaKeys(true);
-      if (recording) { if (onVoiceToggle) onVoiceToggle(true); return; }
-      if (playingRef.current) { stopAll(); return; }
-      if (onVoiceToggle) {
-        onVoiceToggle(true);
-        setTimeout(() => { if (!prevRecordingRef.current && tones) beep(tones.error); }, 1600);
-      }
-    };
-    // Our own src swaps settle quickly; clear the flag so a later real pause is
-    // not mistaken for one of ours.
-    const onPlaying = () => { internalRef.current = false; };
-    a.addEventListener('pause', onPause);
-    a.addEventListener('playing', onPlaying);
-    return () => {
-      a.removeEventListener('pause', onPause);
-      a.removeEventListener('playing', onPlaying);
-    };
-  }, [autoSpeak, recording, onVoiceToggle, stopAll, tones, beep]);
 
   // Built once per batch of events so typing in the composer never rebuilds
   // hundreds of styled nodes.
@@ -1445,21 +1429,6 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
             >
               {speaking ? <StopIcon sx={{ fontSize: 17 }} /> : <PlayArrowIcon sx={{ fontSize: 17 }} />}
             </IconButton>
-            {autoSpeak && !inNativeApp() && (
-              // In a browser the page itself has to hold the media session and
-              // the mic; one small icon says whether it does. The app's service
-              // holds them regardless, so there is nothing to show there.
-              <IconButton
-                size="small"
-                onClick={() => keepAlive()}
-                title={handsFree
-                  ? `Manos libres activo${micHeld ? ', micrófono listo' : ', sin micrófono'}${mediaKeys ? ', botón del auricular detectado' : ''}`
-                  : 'Manos libres inactivo: toca para activarlo'}
-                sx={{ padding: '3px', color: handsFree ? '#00aa55' : '#ffa726' }}
-              >
-                <HeadsetIcon sx={{ fontSize: 15 }} />
-              </IconButton>
-            )}
             <Box
               onClick={toggleAutoSpeak}
               title={autoSpeak ? 'Lectura automática activada' : 'Lectura automática desactivada'}
@@ -1478,7 +1447,23 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
           </Box>
         )}
       </Box>
-      <Box ref={scrollRef} onScroll={onScroll} data-chat-scroll={terminalId} sx={{ flex: 1, overflow: 'auto', px: 1.5, py: 1, ...darkScroll }}>
+      {link !== 'ok' && events.length > 0 && (
+        // Only over a thread already on screen: that is the one that can pass
+        // for current when it is not. A first load has its own placeholder.
+        <Box sx={{
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.5, fontSize: '11px',
+          color: link === 'down' ? '#ffa726' : '#9a9a9a',
+          backgroundColor: link === 'down' ? 'rgba(255,167,38,0.10)' : 'rgba(255,255,255,0.04)',
+          borderBottom: '1px solid #222'
+        }}>
+          <CircularProgress size={10} sx={{ color: link === 'down' ? '#ffa726' : '#888' }} />
+          {link === 'down' ? 'Sin conexión con el servidor, reconectando… lo de abajo puede no estar al día' : 'Actualizando la conversación…'}
+        </Box>
+      )}
+      <Box ref={scrollRef} onScroll={onScroll} data-chat-scroll={terminalId} sx={{
+        flex: 1, overflow: 'auto', px: 1.5, py: 1, ...darkScroll,
+        opacity: link !== 'ok' && events.length > 0 ? 0.6 : 1, transition: 'opacity 0.2s'
+      }}>
         {error && <Box sx={{ color: '#ffa726', fontSize: '12px', p: 2, textAlign: 'center' }}>{error}</Box>}
         {!error && events.length === 0 && (
           <Box sx={{ color: '#666', fontSize: '12px', p: 2, textAlign: 'center' }}>Esperando actividad de Claude…</Box>

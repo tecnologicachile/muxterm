@@ -147,6 +147,33 @@ export function silentLoopUri(seconds = 30) {
   return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
 }
 
+/**
+ * Split `text` into pieces the server reads whole, cutting between sentences.
+ *
+ * The server stops at 4000 characters, so a longer reply used to end in the
+ * middle with no warning.
+ */
+export function speechChunks(text, max = 3000) {
+  const out = [];
+  let buf = '';
+  const flush = () => { if (buf.trim()) out.push(buf.trim()); buf = ''; };
+  for (const piece of String(text || '').split(/(?<=[.!?…:;])\s+/)) {
+    let p = piece;
+    // One "sentence" longer than a whole piece: cut it at a space.
+    while (p.length > max) {
+      flush();
+      let cut = p.lastIndexOf(' ', max);
+      if (cut < max / 2) cut = max;
+      out.push(p.slice(0, cut).trim());
+      p = p.slice(cut).trim();
+    }
+    if (buf && buf.length + 1 + p.length > max) flush();
+    buf = buf ? buf + ' ' + p : p;
+  }
+  flush();
+  return out;
+}
+
 /** Fetch the server-rendered mp3 for `text` as an object URL. */
 export async function fetchSpeechUrl(text, token, attempts = 3) {
   let lastErr = null;
