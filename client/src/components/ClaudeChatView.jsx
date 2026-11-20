@@ -946,7 +946,7 @@ export default function ClaudeChatView({ terminalId, isActive, onNeedsTerminal, 
   const genRef = useRef(0);
   // Ends the piece playing now, so "stop" does not leave it waiting forever.
   const finishRef = useRef(null);
-  const silentUri = useMemo(() => { try { return silentLoopUri(1); } catch (e) { return ''; } }, []);
+  const silentUri = useMemo(() => { try { return silentLoopUri(); } catch (e) { return ''; } }, []);
 
   const enqueueSpeechRef = useRef(() => {});
   const autoSpeakRef = useRef(autoSpeak);

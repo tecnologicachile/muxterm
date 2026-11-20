@@ -117,33 +117,36 @@ export function stopSpeaking() {
 }
 
 /**
- * A long, near-silent WAV to loop between replies.
- *
- * Half a minute rather than a second: Chrome does not surface media controls —
- * and therefore does not route headset buttons — for clips it considers too
- * short to be real media.
+ * A long, inaudible WAV to loop between replies.
  *
  * A tab that is actively playing media does not get frozen with the screen off,
  * which is what keeps the socket alive and lets the next reply be spoken. It is
- * deliberately not digital silence: some engines discard a wholly silent track.
+ * deliberately not digital silence: some engines discard a wholly silent track,
+ * and Chrome only counts a tab as playing when there is some level.
+ *
+ * The level goes into a 15 Hz sine, below what the ear hears and what earbuds
+ * reproduce. It used to alternate one step up and down every sample: a 4 kHz
+ * tone, right where hearing is sharpest, and with a one-second loop it came
+ * and went every second — a faint, endless beep while AUTO was on. The length
+ * is a whole number of cycles, so the loop joins without a click.
  */
 export function silentLoopUri(seconds = 30) {
   const rate = 8000;
-  const n = rate * seconds;
-  const bytes = new Uint8Array(44 + n);
+  const hz = 15;
+  const n = rate * Math.max(1, Math.round(seconds));   // whole seconds: whole cycles of 15 Hz
+  const bytes = new Uint8Array(44 + n * 2);
   const dv = new DataView(bytes.buffer);
   const put = (off, str) => { for (let i = 0; i < str.length; i++) bytes[off + i] = str.charCodeAt(i); };
-  put(0, 'RIFF'); dv.setUint32(4, 36 + n, true); put(8, 'WAVEfmt ');
+  put(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); put(8, 'WAVEfmt ');
   dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-  dv.setUint32(24, rate, true); dv.setUint32(28, rate, true);
-  dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
-  put(36, 'data'); dv.setUint32(40, n, true);
-  // Near-silence, deliberately not digital zero: some engines discard a wholly
-  // silent track. Making it audibly loud was tried to win hardware media keys
-  // and did not, so there is no reason to make anyone listen to it.
-  for (let i = 0; i < n; i++) bytes[44 + i] = 128 + (i % 2);
-  // A blob rather than a data URI: base64 would inflate half a minute of audio
-  // to something the browser has to parse on every start.
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  put(36, 'data'); dv.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    dv.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * hz * i / rate) * 0.02 * 32767), true);
+  }
+  // A blob rather than a data URI: base64 would inflate the audio to something
+  // the browser has to parse on every start.
   return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
 }
 
